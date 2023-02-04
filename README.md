@@ -6,16 +6,18 @@ In NDC v1, there will be only two mechanisms to vote: simple proposal voting and
 
 ## Proposal types
 
-- Constitution ratification → Voting Body
-- Elect house representatives → Voting Body
-- Dissolve a house and call for new elections → Voting Body
-- Veto HoM (1) Big Budget Decisions, and (2) Recurring Budget Items → Voting Body
-- Transfer Funds → HoM
-- Budget proposal → HoM
-- Veto → CoA
-- Reinstate representative → TC / CoA
-- Investigate → TC
-- Remove representative → TC
+| Proposal                                                          | Voting Entity |
+| :---------------------------------------------------------------- | :------------ |
+| Constitution ratification                                         | Voting Body   |
+| Elect house representatives                                       | Voting Body   |
+| Dissolve a house and call for new elections                       | Voting Body   |
+| Veto HoM (1) Big Budget Decisions, and (2) Recurring Budget Items | Voting Body   |
+| Transfer Funds                                                    | HoM           |
+| Budget proposal                                                   | HoM           |
+| Veto                                                              | CoA           |
+| Reinstate representative                                          | TC / CoA      |
+| Investigate                                                       | TC            |
+| Remove representative                                             | TC            |
 
 NDC can only make Voting Body proposals. This repository provides smart contracts for NDC v1.
 
