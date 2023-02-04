@@ -1,0 +1,20 @@
+[workspace]
+members = [
+    "voting",
+    # "elections"
+]
+
+
+# compilation profile for a release target
+[profile.release]
+codegen-units = 1
+# "s" = optimize for binary size ("z" would additionally turn off loop vectorization)
+# 3  all optimiations
+opt-level = 3
+# link time optimization
+lto = true
+panic = "abort"
+overflow-checks = true
+debug = false
+debug-assertions = false
+rpath = false
