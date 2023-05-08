@@ -26,16 +26,16 @@ NDC can only make Voting Body proposals. This repository provides smart contract
 - user can only vote for active proposals
 - user can overwrite his vote
 
-### Stake weighted voting
+### Approval Voting
 
 The main purpose is Constitution Ratification - passes when [NEAR Supermajority Constent](https://github.com/near-ndc/gov/blob/main/framework-v1/ratification-and-election-process.md#voting) is met.
 
 Setting a proposal will require a big bond of NEAR (to be defined). Such proposal passes when [NEAR Consent](https://github.com/near-ndc/gov/blob/main/framework-v1/ratification-and-election-process.md#voting) is met.
 
-### Stake Weighted Elections
+### Elections
 
 Elections for NDC v1 Houses.
-Candidates can only be submitted by GWG, following the process approved by the community.
+Candidates can only be submitted by the Voting Committee, following the process approved by the community.
 
 ## TODO
 
