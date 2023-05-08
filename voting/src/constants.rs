@@ -11,5 +11,4 @@ pub const SECOND: u64 = 1_000_000_000;
 pub const VOTE_COST: Balance = 150 * MICRO_NEAR;
 
 pub const GAS_VOTE: Gas = Gas(70 * Gas::ONE_TERA.0);
-
 pub const GAS_VOTE_CALLBACK: Gas = Gas(5 * Gas::ONE_TERA.0);

@@ -58,9 +58,15 @@ impl Contract {
 
     /// creates new empty proposal
     /// returns proposal ID
-    pub fn creat_proposal(&mut self, start: u64) -> u32 {
-        // TODO: check permissions
-        // - add fun parameters (description ...)
+    pub fn creat_proposal(
+        &mut self,
+        start: u64,
+        title: String,
+        ref_link: String,
+        ref_hash: String,
+    ) -> u32 {
+        // TODO: discuss if other options for allowing other parties to submit a proposal
+
         let min_start = self.start_margin as u64 + env::block_timestamp() / SECOND;
         require!(
             start >= min_start,
@@ -69,7 +75,14 @@ impl Contract {
         self.prop_counter += 1;
         self.proposals.insert(
             &self.prop_counter,
-            &Proposal::new(start, start + self.prop_duration as u64),
+            &Proposal::new(
+                self.prop_counter,
+                start,
+                start + self.prop_duration as u64,
+                title,
+                ref_link,
+                ref_hash,
+            ),
         );
         self.prop_counter
     }
@@ -80,7 +93,7 @@ impl Contract {
         let p = self._proposal(prop_id);
         p.assert_active();
         let user = env::predecessor_account_id();
-        if !p.voted.contains_key(&user) {
+        if !p.votes.contains_key(&user) {
             require!(
                 env::attached_deposit() >= VOTE_COST,
                 format!(

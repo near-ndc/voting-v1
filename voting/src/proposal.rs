@@ -4,6 +4,7 @@ use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{env, require, AccountId};
 
 use crate::constants::*;
+use uint::hex;
 
 #[derive(BorshDeserialize, BorshSerialize)]
 enum PropType {
@@ -33,13 +34,24 @@ pub struct Consent {
 #[serde(crate = "near_sdk::serde")]
 pub enum Vote {
     Abstain,
-    No,
     Yes,
+    No,
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+pub enum Result {
+    Ongoing,
+    Yes,
+    No,
 }
 
 #[derive(BorshDeserialize, BorshSerialize)]
 pub struct Proposal {
-    pub voted: LookupMap<AccountId, Vote>,
+    pub title: String,
+    pub ref_link: String,
+    pub ref_hash: Vec<u8>,
+    pub votes: LookupMap<AccountId, Vote>,
     pub yes: u128,
     pub no: u128,
     pub abstain: u128,
@@ -50,9 +62,29 @@ pub struct Proposal {
 }
 
 impl Proposal {
-    pub fn new(start: u64, end: u64) -> Self {
+    pub fn new(
+        prop_id: u32,
+        start: u64,
+        end: u64,
+        title: String,
+        ref_link: String,
+        ref_hash: String,
+    ) -> Self {
+        require!(
+            10 <= title.len() && title.len() <= 250,
+            "title length must be between 10 and 250 bytes"
+        );
+        require!(
+            6 <= ref_link.len() && ref_link.len() <= 120,
+            "ref_link length must be between 6 and 120 bytes"
+        );
+        require!(ref_hash.len() == 64, "ref_hash length must be 64 hex");
+        let ref_hash = hex::decode(ref_hash).expect("ref_hash must be a proper hex string");
         Self {
-            voted: LookupMap::new(crate::StorageKey::ProposalVoted),
+            title,
+            ref_link,
+            ref_hash,
+            votes: LookupMap::new(crate::StorageKey::ProposalVotes(prop_id)),
             yes: 0,
             no: 0,
             abstain: 0,
@@ -64,15 +96,8 @@ impl Proposal {
 
 #[derive(Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
-pub enum Result {
-    Ongoing,
-    Yes,
-    No,
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(crate = "near_sdk::serde")]
 pub struct ProposalView {
+    pub result: Result,
     pub yes: u128,
     pub no: u128,
     pub abstain: u128,
@@ -80,18 +105,23 @@ pub struct ProposalView {
     pub start: u64,
     /// end of voting as Unix timestamp (in seconds)
     pub end: u64,
-    pub result: Result,
+    title: String,
+    ref_link: String,
+    ref_hash: String,
 }
 
 impl From<Proposal> for ProposalView {
     fn from(p: Proposal) -> Self {
         ProposalView {
+            result: Result::No, // TODO
             yes: p.yes,
             no: p.no,
             abstain: p.abstain,
             start: p.start,
             end: p.end,
-            result: Result::No, // TODO
+            title: p.title,
+            ref_link: p.ref_link,
+            ref_hash: hex::encode(&p.ref_hash),
         }
     }
 }
@@ -112,7 +142,7 @@ impl Proposal {
         self.assert_active();
 
         // TODO: save Aggregated Vote to make sure we handle vote overwrite correctly
-        if let Some(previous) = self.voted.get(user) {
+        if let Some(previous) = self.votes.get(user) {
             if previous == vote {
                 return;
             }
@@ -123,7 +153,7 @@ impl Proposal {
             }
         }
 
-        self.voted.insert(&user, &vote);
+        self.votes.insert(&user, &vote);
         match vote {
             Vote::No => self.no += 1,
             Vote::Yes => self.no += 1,
