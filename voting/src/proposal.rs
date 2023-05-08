@@ -12,6 +12,7 @@ use uint::hex;
 pub enum PropType {
     Constitution,
     HouseDismiss(HouseType),
+    // TODO: consider TextProposal
 }
 
 #[derive(Serialize, Deserialize, BorshDeserialize, BorshSerialize)]

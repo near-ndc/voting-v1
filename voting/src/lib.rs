@@ -32,6 +32,11 @@ pub struct Contract {
     /// address which can pause the contract and make proposal.
     /// Should be a multisig / DAO;
     pub gwg: AccountId,
+    pub sbt_registry: AccountId,
+    /// Gooddollar SBT issuer account for proof of humanity
+    pub sbt_gd_issuer: AccountId,
+    /// SBT class ID used for Facetech verification
+    pub sbt_gd_class_id: u64,
 }
 
 #[near_bindgen]
@@ -39,6 +44,9 @@ impl Contract {
     #[init]
     pub fn new(
         gwg: AccountId,
+        sbt_registry: AccountId,
+        sbt_gd_issuer: AccountId,
+        sbt_gd_class_id: u64,
         sup_consent: Consent,
         consent: Consent,
         prop_duration: u32,
@@ -47,6 +55,9 @@ impl Contract {
         Self {
             pause: false,
             gwg,
+            sbt_registry,
+            sbt_gd_issuer,
+            sbt_gd_class_id,
             sup_consent,
             consent,
             prop_duration,
@@ -110,9 +121,20 @@ impl Contract {
         );
 
         // TODO: call staking contract and i-am-human
-        ext_self::ext(env::current_account_id())
-            .with_static_gas(GAS_VOTE_CALLBACK)
-            .on_vote_verified(prop_id, user, vote)
+
+        // call SBT registry to verify G$ SBT
+        ext_sbtreg::ext(self.sbt_registry.clone())
+            .sbt_tokens_by_owner(
+                user.clone(),
+                Some(self.sbt_gd_issuer.clone()),
+                Some(self.sbt_gd_class_id.clone()),
+                Some(1),
+            )
+            .then(
+                ext_self::ext(env::current_account_id())
+                    .with_static_gas(GAS_VOTE_CALLBACK)
+                    .on_vote_verified(prop_id, user, vote),
+            )
     }
 
     /*****************
