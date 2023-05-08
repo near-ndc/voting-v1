@@ -1,15 +1,15 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::UnorderedMap;
-// use near_sdk::json_types::U64;
-// use near_sdk::serde::{Deserialize, Serialize};
-// use near_sdk::CryptoHash;
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise};
 
+mod consent;
 mod constants;
 mod ext;
 mod proposal;
 mod storage;
 mod view;
+
+use crate::consent::*;
 pub use crate::constants::*;
 pub use crate::ext::*;
 pub use crate::proposal::*;
@@ -60,12 +60,13 @@ impl Contract {
     /// returns proposal ID
     pub fn creat_proposal(
         &mut self,
+        typ: PropType,
         start: u64,
         title: String,
         ref_link: String,
         ref_hash: String,
     ) -> u32 {
-        // TODO: discuss if other options for allowing other parties to submit a proposal
+        // TODO: discuss other options to allow other parties to submit a proposal
 
         let min_start = self.start_margin as u64 + env::block_timestamp() / SECOND;
         require!(
@@ -76,6 +77,7 @@ impl Contract {
         self.proposals.insert(
             &self.prop_counter,
             &Proposal::new(
+                typ,
                 self.prop_counter,
                 start,
                 start + self.prop_duration as u64,

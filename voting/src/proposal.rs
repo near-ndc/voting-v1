@@ -3,30 +3,23 @@ use near_sdk::collections::LookupMap;
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{env, require, AccountId};
 
+use crate::consent::Consent;
 use crate::constants::*;
 use uint::hex;
 
-#[derive(BorshDeserialize, BorshSerialize)]
-enum PropType {
+#[derive(Serialize, Deserialize, BorshDeserialize, BorshSerialize)]
+#[serde(crate = "near_sdk::serde")]
+pub enum PropType {
     Constitution,
     HouseDismiss(HouseType),
 }
 
-#[derive(BorshDeserialize, BorshSerialize)]
-enum HouseType {
+#[derive(Serialize, Deserialize, BorshDeserialize, BorshSerialize)]
+#[serde(crate = "near_sdk::serde")]
+pub enum HouseType {
     HouseOfMerit,
     CouncilOfAdvisors,
     TransparencyCommission,
-}
-
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
-#[serde(crate = "near_sdk::serde")]
-pub struct Consent {
-    /// percent of total stake voting required to pass a proposal.
-    pub quorum: u8,
-    /// #yes votes threshold as percent value (eg 12 = 12%)
-    pub threshold: u8,
-    // TODO: min amount of accounts
 }
 
 /// Simple vote: user uses his all power to vote for a single option.
@@ -48,21 +41,39 @@ pub enum Result {
 
 #[derive(BorshDeserialize, BorshSerialize)]
 pub struct Proposal {
+    pub typ: PropType,
     pub title: String,
     pub ref_link: String,
     pub ref_hash: Vec<u8>,
     pub votes: LookupMap<AccountId, Vote>,
-    pub yes: u128,
-    pub no: u128,
-    pub abstain: u128,
+    pub yes: u64,
+    pub no: u64,
+    pub abstain: u64,
     /// start of voting as Unix timestamp (in seconds)
     pub start: u64,
     /// end of voting as Unix timestamp (in seconds)
     pub end: u64,
 }
 
+#[derive(Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct ProposalView {
+    pub result: Result,
+    pub yes: u64,
+    pub no: u64,
+    pub abstain: u64,
+    /// start of voting as Unix timestamp (in seconds)
+    pub start: u64,
+    /// end of voting as Unix timestamp (in seconds)
+    pub end: u64,
+    title: String,
+    ref_link: String,
+    ref_hash: String,
+}
+
 impl Proposal {
     pub fn new(
+        typ: PropType,
         prop_id: u32,
         start: u64,
         end: u64,
@@ -81,6 +92,7 @@ impl Proposal {
         require!(ref_hash.len() == 64, "ref_hash length must be 64 hex");
         let ref_hash = hex::decode(ref_hash).expect("ref_hash must be a proper hex string");
         Self {
+            typ,
             title,
             ref_link,
             ref_hash,
@@ -92,41 +104,33 @@ impl Proposal {
             end,
         }
     }
-}
 
-#[derive(Serialize, Deserialize)]
-#[serde(crate = "near_sdk::serde")]
-pub struct ProposalView {
-    pub result: Result,
-    pub yes: u128,
-    pub no: u128,
-    pub abstain: u128,
-    /// start of voting as Unix timestamp (in seconds)
-    pub start: u64,
-    /// end of voting as Unix timestamp (in seconds)
-    pub end: u64,
-    title: String,
-    ref_link: String,
-    ref_hash: String,
-}
-
-impl From<Proposal> for ProposalView {
-    fn from(p: Proposal) -> Self {
-        ProposalView {
-            result: Result::No, // TODO
-            yes: p.yes,
-            no: p.no,
-            abstain: p.abstain,
-            start: p.start,
-            end: p.end,
-            title: p.title,
-            ref_link: p.ref_link,
-            ref_hash: hex::encode(&p.ref_hash),
+    pub fn compute_result(&self, c: &Consent) -> Result {
+        if self.end <= env::block_timestamp() / SECOND {
+            return Result::Ongoing;
+        }
+        let yesno = self.yes + self.no;
+        if yesno + self.abstain >= c.quorum && self.yes > (yesno * c.threshold as u64 / 100) {
+            Result::Yes
+        } else {
+            Result::No
         }
     }
-}
 
-impl Proposal {
+    pub fn to_view(&self, c: &Consent) -> ProposalView {
+        ProposalView {
+            result: self.compute_result(c),
+            yes: self.yes,
+            no: self.no,
+            abstain: self.abstain,
+            start: self.start,
+            end: self.end,
+            title: self.title.clone(),
+            ref_link: self.ref_link.clone(),
+            ref_hash: hex::encode(&self.ref_hash),
+        }
+    }
+
     pub fn assert_active(&self) {
         let now = env::block_timestamp() / SECOND;
         require!(
