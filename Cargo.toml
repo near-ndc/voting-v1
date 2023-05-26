@@ -1,7 +1,8 @@
 [workspace]
 members = [
     "voting",
-    # "elections"
+    # "elections",
+    "nominations"
 ]
 
 
