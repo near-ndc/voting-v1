@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, LookupSet};
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise};
@@ -59,7 +61,7 @@ impl Contract {
         end: u64,
         ref_link: String,
         credits: u16,
-        candidates: Vec<AccountId>,
+        #[allow(unused_mut)] mut candidates: Vec<AccountId>,
     ) -> u32 {
         self.assert_admin();
         let min_start = env::block_timestamp() / SECOND;
@@ -69,8 +71,12 @@ impl Contract {
             6 <= ref_link.len() && ref_link.len() <= 120,
             "ref_link length must be between 6 and 120 bytesx"
         );
+        let cs: HashSet<&AccountId> = HashSet::from_iter(candidates.iter());
+        require!(cs.len() == candidates.len(), "duplicated candidates");
+        candidates.sort();
 
         self.prop_counter += 1;
+        let l = candidates.len();
         let p = Proposal {
             typ,
             start,
@@ -78,7 +84,7 @@ impl Contract {
             ref_link,
             credits,
             candidates,
-            votes: LookupMap::new(StorageKey::ProposalVotes(self.prop_counter)),
+            result: vec![0; l],
             voters: LookupSet::new(StorageKey::ProposalVoters(self.prop_counter)),
         };
 
@@ -86,9 +92,9 @@ impl Contract {
         self.prop_counter
     }
 
-    /// aggregated vote for a binary proposal
+    /// election vote using quadratic mechanism
     #[payable]
-    pub fn elect(&mut self, prop_id: u32, vote: Vote) -> Promise {
+    pub fn vote(&mut self, prop_id: u32, vote: Vote) -> Promise {
         let p = self._proposal(prop_id);
         p.assert_active();
         let user = env::predecessor_account_id();
@@ -104,7 +110,9 @@ impl Contract {
             env::prepaid_gas() >= GAS_VOTE,
             format!("not enough gas, min: {:?}", GAS_VOTE)
         );
+        validate_vote(&vote, p.credits, &p.candidates);
 
+        // TODO
         // call SBT registry to verify  SBT
         // ext_sbtreg::ext(self.sbt_registry.clone())
         //     .sbt_tokens_by_owner(
@@ -126,7 +134,7 @@ impl Contract {
     #[private]
     pub fn on_vote_verified(&mut self, prop_id: u32, user: AccountId, vote: Vote) {
         let mut p = self._proposal(prop_id);
-        // p.vote_on_verified(&user, vote);
+        p.vote_on_verified(&user, vote);
     }
 
     /*****************

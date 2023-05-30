@@ -1,5 +1,7 @@
+use std::collections::HashSet;
+
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::{LookupMap, LookupSet};
+use near_sdk::collections::LookupSet;
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{env, require, AccountId};
 
@@ -21,55 +23,44 @@ pub struct Proposal {
     pub start: u64,
     /// end of voting as Unix timestamp (in seconds)
     pub end: u64,
-    /// total amount of credits each voter will have
+    /// max amount of credits each voter has
     pub credits: u16,
+    /// list of valid candidates. Must be ordered.
     pub candidates: Vec<AccountId>,
-    pub votes: LookupMap<u16, u64>,
+    /// running result (ongoing sum of votes per candidate), in the same order as `candidates`.
+    /// result[i] = sum of votes for candidates[i]
+    pub result: Vec<u64>,
     pub voters: LookupSet<AccountId>,
 }
 
-// #[derive(Serialize, Deserialize)]
-// #[serde(crate = "near_sdk::serde")]
-// pub struct ProposalView {
-//     pub result: Result,
-//     pub yes: u64,
-//     pub no: u64,
-//     pub abstain: u64,
-//     /// start of voting as Unix timestamp (in seconds)
-//     pub start: u64,
-//     /// end of voting as Unix timestamp (in seconds)
-//     pub end: u64,
-//     title: String,
-//     ref_link: String,
-//     ref_hash: String,
-// }
+#[derive(Serialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct ProposalView {
+    pub typ: HouseType,
+    pub ref_link: String,
+    /// start of voting as Unix timestamp (in seconds)
+    pub start: u64,
+    /// end of voting as Unix timestamp (in seconds)
+    pub end: u64,
+    /// max amount of credits each voter has
+    pub credits: u16,
+    pub candidates: Vec<AccountId>,
+    /// sum of votes per candidate in the same as self.candidates
+    pub result: Vec<u64>,
+}
 
 impl Proposal {
-    //     pub fn compute_result(&self, c: &Consent) -> Result {
-    //         if self.end <= env::block_timestamp() / SECOND {
-    //             return Result::Ongoing;
-    //         }
-    //         let yesno = self.yes + self.no;
-    //         if yesno + self.abstain >= c.quorum && self.yes > (yesno * c.threshold as u64 / 100) {
-    //             Result::Yes
-    //         } else {
-    //             Result::No
-    //         }
-    //     }
-
-    //     pub fn to_view(&self, c: &Consent) -> ProposalView {
-    //         ProposalView {
-    //             result: self.compute_result(c),
-    //             yes: self.yes,
-    //             no: self.no,
-    //             abstain: self.abstain,
-    //             start: self.start,
-    //             end: self.end,
-    //             title: self.title.clone(),
-    //             ref_link: self.ref_link.clone(),
-    //             ref_hash: hex::encode(&self.ref_hash),
-    //         }
-    //     }
+    pub fn to_view(self) -> ProposalView {
+        ProposalView {
+            typ: self.typ,
+            ref_link: self.ref_link,
+            start: self.start,
+            end: self.end,
+            credits: self.credits,
+            candidates: self.candidates,
+            result: self.result,
+        }
+    }
 
     pub fn assert_active(&self) {
         let now = env::block_timestamp() / SECOND;
@@ -79,31 +70,32 @@ impl Proposal {
         )
     }
 
-    //     /// once vote proof has been verify, we call this function to register a vote.
-    //     /// User can vote multiple times, as long as the vote is active. Subsequent
-    //     /// calls will overwrite previous votes.
-    //     pub fn vote_on_verified(&mut self, user: &AccountId, vote: Vote) {
-    //         self.assert_active();
-
-    //         // TODO: save Aggregated Vote to make sure we handle vote overwrite correctly
-    //         if let Some(previous) = self.votes.get(user) {
-    //             if previous == vote {
-    //                 return;
-    //             }
-    //             match previous {
-    //                 Vote::No => self.no -= 1,
-    //                 Vote::Yes => self.no -= 1,
-    //                 Vote::Abstain => self.abstain -= 1,
-    //             }
-    //         }
-
-    //         self.votes.insert(&user, &vote);
-    //         match vote {
-    //             Vote::No => self.no += 1,
-    //             Vote::Yes => self.no += 1,
-    //             Vote::Abstain => self.abstain += 1,
-    //         }
-    //     }
+    /// once vote proof has been verify, we call this function to register a vote.
+    /// User can vote multiple times, as long as the vote is active. Subsequent
+    /// calls will overwrite previous votes.
+    pub fn vote_on_verified(&mut self, user: &AccountId, vote: Vote) {
+        self.assert_active();
+        require!(!self.voters.contains(&user), "user already voted");
+        for v in vote {
+            let idx = self.candidates.binary_search(&v.0).unwrap() as usize;
+            self.result[idx] += v.1 as u64;
+        }
+    }
 }
 
 pub type Vote = Vec<(AccountId, u16)>;
+
+/// * valid_candidates must be a sorted slice.
+pub fn validate_vote(vs: &Vote, max_credits: u16, valid_candidates: &Vec<AccountId>) {
+    let mut credits = 0;
+    let mut vote_for = HashSet::new();
+    for v in vs {
+        credits += v.1 * v.1;
+        require!(vote_for.insert(&v.0), "double vote for the same candidate");
+        require!(
+            valid_candidates.binary_search(&v.0).is_ok(),
+            "vote for unknown candidate"
+        );
+    }
+    require!(credits <= max_credits, "vote with too much credits");
+}
