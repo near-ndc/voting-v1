@@ -1,17 +1,17 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::UnorderedMap;
+use near_sdk::collections::{LookupMap, LookupSet};
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise};
 
 mod constants;
+mod ext;
 mod proposal;
 mod storage;
 mod view;
-// mod ext;
 
 pub use crate::constants::*;
+pub use crate::ext::*;
 pub use crate::proposal::*;
 use crate::storage::*;
-//pub use crate::ext::*;
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -45,41 +45,44 @@ impl Contract {
             sbt_registry,
             iah_issuer,
             iah_class_id,
-            proposals: UnorderedMap::new(StorageKey::Proposals),
+            proposals: LookupMap::new(StorageKey::Proposals),
             prop_counter: 0,
         }
     }
 
     /// creates new empty proposal
-    /// returns proposal ID
+    /// returns the new proposal ID
     pub fn creat_proposal(
         &mut self,
-        typ: PropType,
+        typ: HouseType,
         start: u64,
-        title: String,
+        end: u64,
         ref_link: String,
-        ref_hash: String,
+        credits: u16,
+        candidates: Vec<AccountId>,
     ) -> u32 {
-        // TODO: discuss other options to allow other parties to submit a proposal
-
-        let min_start = self.start_margin as u64 + env::block_timestamp() / SECOND;
+        self.assert_admin();
+        let min_start = env::block_timestamp() / SECOND;
+        require!(min_start < start, "proposal start must be in the future");
+        require!(start < end, "proposal start must be before end");
         require!(
-            start >= min_start,
-            format!("proposal start after {} unix time", min_start)
+            6 <= ref_link.len() && ref_link.len() <= 120,
+            "ref_link length must be between 6 and 120 bytesx"
         );
+
         self.prop_counter += 1;
-        self.proposals.insert(
-            &self.prop_counter,
-            &Proposal::new(
-                typ,
-                self.prop_counter,
-                start,
-                start + self.prop_duration as u64,
-                title,
-                ref_link,
-                ref_hash,
-            ),
-        );
+        let p = Proposal {
+            typ,
+            start,
+            end,
+            ref_link,
+            credits,
+            candidates,
+            votes: LookupMap::new(StorageKey::ProposalVotes(self.prop_counter)),
+            voters: LookupSet::new(StorageKey::ProposalVoters(self.prop_counter)),
+        };
+
+        self.proposals.insert(&self.prop_counter, &p);
         self.prop_counter
     }
 
@@ -89,35 +92,31 @@ impl Contract {
         let p = self._proposal(prop_id);
         p.assert_active();
         let user = env::predecessor_account_id();
-        if !p.votes.contains_key(&user) {
-            require!(
-                env::attached_deposit() >= VOTE_COST,
-                format!(
-                    "requires {}yocto deposit for storage fees for every new vote",
-                    VOTE_COST
-                )
-            );
-        }
+        require!(!p.voters.contains(&user), "caller already voted",);
+        require!(
+            env::attached_deposit() >= VOTE_COST,
+            format!(
+                "requires {}yocto deposit for storage fees for every new vote",
+                VOTE_COST
+            )
+        );
         require!(
             env::prepaid_gas() >= GAS_VOTE,
             format!("not enough gas, min: {:?}", GAS_VOTE)
         );
 
-        // TODO: call staking contract and i-am-human
-
-        // call SBT registry to verify G$ SBT
-        ext_sbtreg::ext(self.sbt_registry.clone())
-            .sbt_tokens_by_owner(
-                user.clone(),
-                Some(self.sbt_gd_issuer.clone()),
-                Some(self.sbt_gd_class_id.clone()),
-                Some(1),
-            )
-            .then(
-                ext_self::ext(env::current_account_id())
-                    .with_static_gas(GAS_VOTE_CALLBACK)
-                    .on_vote_verified(prop_id, user, vote),
-            )
+        // call SBT registry to verify  SBT
+        // ext_sbtreg::ext(self.sbt_registry.clone())
+        //     .sbt_tokens_by_owner(
+        //         user.clone(),
+        //         Some(self.iah_issuer.clone()),
+        //         Some(self.iah_class_id.clone()),
+        //         Some(1),
+        //     )
+        //     .then(
+        ext_self::ext(env::current_account_id())
+            .with_static_gas(GAS_VOTE_CALLBACK)
+            .on_vote_verified(prop_id, user, vote)
     }
 
     /*****************
@@ -127,15 +126,19 @@ impl Contract {
     #[private]
     pub fn on_vote_verified(&mut self, prop_id: u32, user: AccountId, vote: Vote) {
         let mut p = self._proposal(prop_id);
-        p.vote_on_verified(&user, vote);
+        // p.vote_on_verified(&user, vote);
     }
 
     /*****************
-     * PRIVATE
+     * INTERNAL
      ****************/
 
+    #[inline]
     fn assert_admin(&self) {
-        // TODO
+        require!(
+            self.authority == env::predecessor_account_id(),
+            "not an admin"
+        );
     }
 }
 
