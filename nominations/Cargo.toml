@@ -1,7 +1,7 @@
 [package]
-name = "ndc-voting"
+name = "ndc-nominations"
 version = "1.0.0"
-authors = ["Robert Zaremba 'https://zaremba.ch/'"]
+authors = ["NDC GWG (https://near.social/#/mob.near/widget/ProfilePage?accountId=govworkinggroup.near)"]
 edition = "2021"
 
 [lib]
@@ -9,8 +9,6 @@ crate-type = ["cdylib"]
 
 
 [dependencies]
-near-sdk = "4.1"
-uint = { version = "0.9.5", default-features = false }
-serde_json = "1.0"
-
-voting = { path = "../voting" }
+uint.workspace = true
+near-sdk.workspace = true
+serde_json.workspace = true
