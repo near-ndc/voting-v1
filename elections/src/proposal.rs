@@ -23,6 +23,8 @@ pub struct Proposal {
     pub start: u64,
     /// end of voting as Unix timestamp (in seconds)
     pub end: u64,
+    /// min amount of voters to legitimize the voting.
+    pub quorum: u32,
     /// max amount of credits each voter has
     pub credits: u16,
     /// list of valid candidates. Must be ordered.
@@ -42,6 +44,8 @@ pub struct ProposalView {
     pub start: u64,
     /// end of voting as Unix timestamp (in seconds)
     pub end: u64,
+    /// min amount of voters to legitimize the voting.
+    pub quorum: u32,
     /// max amount of credits each voter has
     pub credits: u16,
     pub candidates: Vec<AccountId>,
@@ -56,6 +60,7 @@ impl Proposal {
             ref_link: self.ref_link,
             start: self.start,
             end: self.end,
+            quorum: self.quorum,
             credits: self.credits,
             candidates: self.candidates,
             result: self.result,

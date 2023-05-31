@@ -60,6 +60,7 @@ impl Contract {
         start: u64,
         end: u64,
         ref_link: String,
+        quorum: u32,
         credits: u16,
         #[allow(unused_mut)] mut candidates: Vec<AccountId>,
     ) -> u32 {
@@ -81,6 +82,7 @@ impl Contract {
             typ,
             start,
             end,
+            quorum,
             ref_link,
             credits,
             candidates,
