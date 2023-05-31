@@ -10,5 +10,5 @@ pub const SECOND: u64 = 1_000_000_000;
 // vote: 2 (prefix)+64bytes + 8 (proposal id) for key + 3 * 16  = 124 < 150
 pub const VOTE_COST: Balance = 150 * MICRO_NEAR;
 
-pub const GAS_VOTE: Gas = Gas(70 * Gas::ONE_TERA.0);
+pub const GAS_NOMINATE: Gas = Gas(70 * Gas::ONE_TERA.0);
 pub const GAS_VOTE_CALLBACK: Gas = Gas(5 * Gas::ONE_TERA.0);

@@ -3,7 +3,6 @@ use near_sdk::collections::LookupMap;
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{env, require, AccountId};
 
-use crate::consent::Consent;
 use crate::constants::*;
 use uint::hex;
 
