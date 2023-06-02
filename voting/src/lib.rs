@@ -69,9 +69,10 @@ impl Contract {
 
     /// creates new empty proposal
     /// returns proposal ID
-    pub fn creat_proposal(
+    /// TODO: end proposal
+    pub fn create_proposal(
         &mut self,
-        typ: PropType,
+        proposal_type: ProposalType,
         start: u64,
         title: String,
         ref_link: String,
@@ -88,7 +89,7 @@ impl Contract {
         self.proposals.insert(
             &self.prop_counter,
             &Proposal::new(
-                typ,
+                proposal_type,
                 self.prop_counter,
                 start,
                 start + self.prop_duration as u64,

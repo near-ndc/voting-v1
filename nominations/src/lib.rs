@@ -1,37 +1,32 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::{LookupMap, UnorderedMap};
+use near_sdk::collections::{LookupMap, UnorderedSet};
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, PromiseResult};
 
 mod constants;
-mod proposal;
 mod storage;
-mod view;
 
 pub use crate::constants::*;
-pub use crate::proposal::*;
 use crate::storage::*;
 
 pub mod ext;
 pub use crate::ext::*;
 
 #[derive(BorshDeserialize, BorshSerialize)]
-pub struct Nomination {
-    nominated_by: AccountId,
-    timestamp: u64,
+pub struct NominationKey {
+    nominator: AccountId,
+    nominee: AccountId,
 }
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
-    pub pause: bool,
-    pub gwg: AccountId,
     pub sbt_registry: AccountId,
     /// IAH issuer account for proof of humanity
     pub iah_issuer: AccountId,
     /// IAH class ID used for Facetech verification
     pub iah_class_id: u64,
-    /// map of nominations
-    pub nominations: UnorderedMap<AccountId, Nomination>,
+    /// map of nominations (nominator -> nominee)
+    pub nominations: UnorderedSet<NominationKey>,
     /// start and end time for the nominations
     pub start_time: u64,
     pub end_time: u64,
@@ -43,7 +38,6 @@ pub struct Contract {
 impl Contract {
     #[init]
     pub fn new(
-        gwg: AccountId,
         sbt_registry: AccountId,
         iah_issuer: AccountId,
         iah_class_id: u64,
@@ -51,35 +45,38 @@ impl Contract {
         end_time: u64,
     ) -> Self {
         Self {
-            pause: false,
-            gwg,
             sbt_registry,
             iah_issuer,
             iah_class_id,
             start_time,
             end_time,
-            nominations: UnorderedMap::new(StorageKey::Nominations),
+            nominations: UnorderedSet::new(StorageKey::Nominations),
             nominations_per_user: LookupMap::new(StorageKey::NominationsPerUser),
         }
     }
+    // returns the number of nominations per user. If the user has not been nomianted once returns 0
+    pub fn nominations_per_user(&self, user: AccountId) -> u64 {
+        self.nominations_per_user.get(&user).unwrap_or(0)
+    }
 
-    /// creates a new nomination
-    /// returns proposal ID
+    /// nominate method allows to submit nominatios by verified humans
+    /// + Checks if the nominator is a verified human
+    /// + Checks if the pair (nominator, nominee) has been already submitted
+    /// + Checks if the nomination was submitted during the nomination period
     pub fn nominate(
         &mut self,
-        user: AccountId,
+        nominee: AccountId,
         comment: Option<String>,
         external_resource: Option<String>,
     ) {
-        let nominated_by = env::predecessor_account_id();
-        let storage_start = env::storage_usage();
+        let nominator = env::predecessor_account_id();
 
         // check the nomination period is active
         let current_timestamp = env::block_timestamp();
         require!(
             current_timestamp <= self.end_time && current_timestamp >= self.start_time,
             format!(
-                "It is not nomination period now. start_time: {:?}, end_time: {:?}, got: {:?}",
+                "it is not nomination period now. start_time: {:?}, end_time: {:?}, got: {:?}",
                 self.start_time, self.end_time, current_timestamp
             )
         );
@@ -89,12 +86,10 @@ impl Contract {
             format!("not enough gas, min: {:?}", GAS_NOMINATE)
         );
 
-        // 3. check if user has IAH SBT
-        // 4. callback -> check if user already nominated and cast the nomination
-        // call SBT registry to verify IAH SBT
+        // call SBT registry to verify IAH SBT and cast the nomination is callback based on the return from sbt_tokens_by_owner
         ext_sbtreg::ext(self.sbt_registry.clone())
             .sbt_tokens_by_owner(
-                user.clone(),
+                nominee.clone(),
                 Some(self.iah_issuer.clone()),
                 Some(self.iah_class_id.clone()),
                 Some(1),
@@ -102,7 +97,7 @@ impl Contract {
             .then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(GAS_VOTE_CALLBACK)
-                    .on_nominate_verified(user, nominated_by, current_timestamp),
+                    .on_nominate_verified(nominator, nominee),
             );
     }
 
@@ -111,35 +106,31 @@ impl Contract {
      ****************/
 
     #[private]
-    pub fn on_nominate_verified(
-        &mut self,
-        user: AccountId,
-        nominated_by: AccountId,
-        timestamp: u64,
-    ) {
+    pub fn on_nominate_verified(&mut self, nominator: AccountId, nominee: AccountId) {
         match env::promise_result(0) {
             PromiseResult::NotReady => unreachable!(),
             PromiseResult::Successful(value) => {
                 if let Ok(result) =
                     near_sdk::serde_json::from_slice::<Vec<(AccountId, Vec<OwnedToken>)>>(&value)
                 {
+                    // if len > 0 then its human
                     if result.len() > 0 {
-                        let nomination = Nomination {
-                            nominated_by: nominated_by,
-                            timestamp: timestamp,
-                        };
-                        // TODO: should we take any action if user is nominating the same user again? Currently basically nothing chanes
-                        self.nominations.insert(&user, &nomination);
-                        let num_of_nominations = self
-                            .nominations_per_user
-                            .get(&nomination.nominated_by)
-                            .unwrap_or(0);
-                        self.nominations_per_user
-                            .insert(&nomination.nominated_by, &(num_of_nominations + 1));
+                        let nomination = NominationKey { nominator, nominee };
+                        if !self.nominations.contains(&nomination) {
+                            let num_of_nominations = self
+                                .nominations_per_user
+                                .get(&nomination.nominee)
+                                .unwrap_or(0);
+                            self.nominations_per_user
+                                .insert(&nomination.nominee, &(num_of_nominations + 1));
+                            self.nominations.insert(&nomination);
+                        } else {
+                            env::panic_str("this nomination has been already submitted");
+                        }
                     }
                 }
             }
-            PromiseResult::Failed => env::panic_str("ERR_CALL_FAILED"),
+            PromiseResult::Failed => env::panic_str("sbt_tokens_by_owner call failed"),
         }
     }
 }

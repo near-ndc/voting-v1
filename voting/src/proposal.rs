@@ -9,7 +9,7 @@ use uint::hex;
 
 #[derive(Serialize, Deserialize, BorshDeserialize, BorshSerialize)]
 #[serde(crate = "near_sdk::serde")]
-pub enum PropType {
+pub enum ProposalType {
     Constitution,
     HouseDismiss(HouseType),
     // TODO: consider TextProposal
@@ -42,7 +42,7 @@ pub enum Result {
 
 #[derive(BorshDeserialize, BorshSerialize)]
 pub struct Proposal {
-    pub typ: PropType,
+    pub proposal_type: ProposalType,
     pub title: String,
     pub ref_link: String,
     pub ref_hash: Vec<u8>,
@@ -74,7 +74,7 @@ pub struct ProposalView {
 
 impl Proposal {
     pub fn new(
-        typ: PropType,
+        proposal_type: ProposalType,
         prop_id: u32,
         start: u64,
         end: u64,
@@ -93,7 +93,7 @@ impl Proposal {
         require!(ref_hash.len() == 64, "ref_hash length must be 64 hex");
         let ref_hash = hex::decode(ref_hash).expect("ref_hash must be a proper hex string");
         Self {
-            typ,
+            proposal_type,
             title,
             ref_link,
             ref_hash,
