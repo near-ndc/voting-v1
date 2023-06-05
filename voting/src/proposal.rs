@@ -42,7 +42,7 @@ pub enum Result {
 
 #[derive(BorshDeserialize, BorshSerialize)]
 pub struct Proposal {
-    pub proposal_type: ProposalType,
+    pub prop_type: PropType,
     pub title: String,
     pub ref_link: String,
     pub ref_hash: Vec<u8>,
