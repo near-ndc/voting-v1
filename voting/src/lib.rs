@@ -72,7 +72,7 @@ impl Contract {
     /// TODO: end proposal
     pub fn create_proposal(
         &mut self,
-        proposal_type: PropType,
+        prop_type: PropType,
         start: u64,
         title: String,
         ref_link: String,
