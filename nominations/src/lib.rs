@@ -66,7 +66,7 @@ impl Contract {
     pub fn nominate(
         &mut self,
         nominee: AccountId,
-        comment: Option<String>,
+        comment: String,
         external_resource: Option<String>,
     ) {
         let nominator = env::predecessor_account_id();
