@@ -74,7 +74,7 @@ pub struct ProposalView {
 
 impl Proposal {
     pub fn new(
-        proposal_type: ProposalType,
+        prop_type: ProposalType,
         prop_id: u32,
         start: u64,
         end: u64,
