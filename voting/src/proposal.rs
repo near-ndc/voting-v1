@@ -93,7 +93,7 @@ impl Proposal {
         require!(ref_hash.len() == 64, "ref_hash length must be 64 hex");
         let ref_hash = hex::decode(ref_hash).expect("ref_hash must be a proper hex string");
         Self {
-            proposal_type,
+            prop_type,
             title,
             ref_link,
             ref_hash,
