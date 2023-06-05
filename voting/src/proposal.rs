@@ -9,7 +9,7 @@ use uint::hex;
 
 #[derive(Serialize, Deserialize, BorshDeserialize, BorshSerialize)]
 #[serde(crate = "near_sdk::serde")]
-pub enum ProposalType {
+pub enum PropType {
     Constitution,
     HouseDismiss(HouseType),
     // TODO: consider TextProposal
@@ -74,7 +74,7 @@ pub struct ProposalView {
 
 impl Proposal {
     pub fn new(
-        prop_type: ProposalType,
+        prop_type: PropType,
         prop_id: u32,
         start: u64,
         end: u64,

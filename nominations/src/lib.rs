@@ -11,12 +11,6 @@ use crate::storage::*;
 pub mod ext;
 pub use crate::ext::*;
 
-#[derive(BorshDeserialize, BorshSerialize)]
-pub struct NominationKey {
-    nominator: AccountId,
-    nominee: AccountId,
-}
-
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
