@@ -89,7 +89,7 @@ impl Contract {
         self.proposals.insert(
             &self.prop_counter,
             &Proposal::new(
-                proposal_type,
+                prop_type,
                 self.prop_counter,
                 start,
                 start + self.prop_duration as u64,
