@@ -102,5 +102,5 @@ pub fn validate_vote(vs: &Vote, max_credits: u16, valid_candidates: &Vec<Account
             "vote for unknown candidate"
         );
     }
-    require!(credits <= max_credits, "vote with too much credits");
+    require!(credits <= max_credits, "vote with too many credits");
 }
