@@ -7,6 +7,7 @@ pub enum StorageKey {
     Nominations,
     NominationsPerUser,
     Campaigns,
+    Admins,
 }
 
 #[derive(BorshDeserialize, BorshSerialize)]
@@ -27,7 +28,7 @@ pub struct Campaign {
 
 impl Campaign {
     pub fn assert_active(self) {
-        let current_timestamp = env::block_timestamp();
+        let current_timestamp = env::block_timestamp() / crate::constants::SECOND;
         require!(
             current_timestamp <= self.end_time && current_timestamp >= self.start_time,
             format!(
