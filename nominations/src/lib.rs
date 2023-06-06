@@ -1,5 +1,5 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::{LookupMap, LookupSet};
+use near_sdk::collections::{LazyOption, LookupMap, LookupSet};
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, PromiseResult};
 
 mod constants;
@@ -24,12 +24,21 @@ pub struct Contract {
     /// map of `(campaign, nominee)` => number of received nominations
     pub nominations_sum: LookupMap<(u32, AccountId), u64>,
     pub campaigns: LookupMap<u32, Campaign>,
+    pub campaign_counter: u32,
+
+    /// used for backend key rotation
+    pub admins: LazyOption<Vec<AccountId>>,
 }
 
 #[near_bindgen]
 impl Contract {
     #[init]
-    pub fn new(sbt_registry: AccountId, iah_issuer: AccountId, iah_class_id: u64) -> Self {
+    pub fn new(
+        sbt_registry: AccountId,
+        iah_issuer: AccountId,
+        iah_class_id: u64,
+        admins: Vec<AccountId>,
+    ) -> Self {
         Self {
             sbt_registry,
             iah_issuer,
@@ -37,6 +46,8 @@ impl Contract {
             nominations: LookupSet::new(StorageKey::Nominations),
             nominations_sum: LookupMap::new(StorageKey::NominationsPerUser),
             campaigns: LookupMap::new(StorageKey::Campaigns),
+            campaign_counter: 0,
+            admins: LazyOption::new(StorageKey::Admins, Some(&admins)),
         }
     }
 
@@ -52,6 +63,36 @@ impl Contract {
     /**********
      * FUNCTIONS
      **********/
+
+    pub fn add_campaign(&mut self, name: String, link: String, start_time: u64, end_time: u64) {
+        if let Some(admins) = self.admins.get() {
+            let caller = env::predecessor_account_id();
+            require!(admins.contains(&caller), "not authoirized");
+        }
+        let storage_start = env::storage_usage();
+        require!(
+            name.len() <= MAX_CAMPAIGN_LEN && link.len() <= MAX_CAMPAIGN_LEN,
+            "max name and link length is 200 characters"
+        );
+        let c = Campaign {
+            name,
+            link,
+            start_time,
+            end_time,
+        };
+        self.campaign_counter += 1;
+        self.campaigns.insert(&self.campaign_counter, &c);
+
+        let storage_usage = env::storage_usage();
+        let required_deposit = (storage_usage - storage_start) as u128 * env::storage_byte_cost();
+        require!(
+            env::attached_deposit() >= required_deposit,
+            format!(
+                "not enough NEAR for storage depost, required: {}",
+                required_deposit
+            )
+        );
+    }
 
     /// nominate method allows to submit nominatios by verified humans
     /// + Checks if the nominator is a verified human

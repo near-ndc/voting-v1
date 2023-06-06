@@ -8,3 +8,5 @@ pub const SECOND: u64 = 1_000_000_000;
 
 pub const GAS_NOMINATE: Gas = Gas(70 * Gas::ONE_TERA.0);
 pub const GAS_VOTE_CALLBACK: Gas = Gas(5 * Gas::ONE_TERA.0);
+
+pub const MAX_CAMPAIGN_LEN: usize = 200;
