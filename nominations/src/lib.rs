@@ -71,7 +71,7 @@ impl Contract {
         }
         let storage_start = env::storage_usage();
         require!(
-            name.len() <= 200 && link.len() <= 200,
+            name.len() <= MAX_CAMPAIGN_LEN && link.len() <= MAX_CAMPAIGN_LEN,
             "max name and link length is 200 characters"
         );
         let c = Campaign {
