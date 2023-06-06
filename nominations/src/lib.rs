@@ -70,6 +70,10 @@ impl Contract {
             require!(admins.contains(&caller), "not authoirized");
         }
         let storage_start = env::storage_usage();
+        require!(
+            name.len() <= 200 && link.len() <= 200,
+            "max name and link length is 200 characters"
+        );
         let c = Campaign {
             name,
             link,
