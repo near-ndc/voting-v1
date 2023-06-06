@@ -21,37 +21,37 @@ pub struct Contract {
     pub iah_class_id: u64,
     /// map of nominations (nominator -> nominee)
     pub nominations: UnorderedSet<NominationKey>,
-    /// start and end time for the nominations
-    pub start_time: u64,
-    pub end_time: u64,
-    /// number of nominations per user
-    pub nominations_per_user: LookupMap<AccountId, u64>,
+    /// map of `(campaign, nominee)` => number of received nominations
+    pub nominations_sum: LookupMap<(u32, AccountId), u64>,
+    pub campaigns: LookupMap<u32, Campaign>,
 }
 
 #[near_bindgen]
 impl Contract {
     #[init]
-    pub fn new(
-        sbt_registry: AccountId,
-        iah_issuer: AccountId,
-        iah_class_id: u64,
-        start_time: u64,
-        end_time: u64,
-    ) -> Self {
+    pub fn new(sbt_registry: AccountId, iah_issuer: AccountId, iah_class_id: u64) -> Self {
         Self {
             sbt_registry,
             iah_issuer,
             iah_class_id,
-            start_time,
-            end_time,
             nominations: UnorderedSet::new(StorageKey::Nominations),
-            nominations_per_user: LookupMap::new(StorageKey::NominationsPerUser),
+            nominations_sum: LookupMap::new(StorageKey::NominationsPerUser),
+            campaigns: LookupMap::new(StorageKey::Campaigns),
         }
     }
-    // returns the number of nominations per user. If the user has not been nomianted once returns 0
-    pub fn nominations_per_user(&self, user: AccountId) -> u64 {
-        self.nominations_per_user.get(&user).unwrap_or(0)
+
+    /**********
+     * QUERIES
+     **********/
+
+    /// returns the number of nominations per user. If the user has not been nomianted once returns 0
+    pub fn nominations_per_user(&self, campaign: u32, nominee: AccountId) -> u64 {
+        self.nominations_sum.get(&(campaign, nominee)).unwrap_or(0)
     }
+
+    /**********
+     * FUNCTIONS
+     **********/
 
     /// nominate method allows to submit nominatios by verified humans
     /// + Checks if the nominator is a verified human
@@ -59,22 +59,18 @@ impl Contract {
     /// + Checks if the nomination was submitted during the nomination period
     pub fn nominate(
         &mut self,
+        campaign: u32,
         nominee: AccountId,
-        comment: String,
-        external_resource: Option<String>,
+        #[allow(unused_variables)] comment: String,
+        #[allow(unused_variables)] external_resource: Option<String>,
     ) {
         let nominator = env::predecessor_account_id();
+        let c = self
+            .campaigns
+            .get(&campaign)
+            .expect("campaign ID not found");
 
-        // check the nomination period is active
-        let current_timestamp = env::block_timestamp();
-        require!(
-            current_timestamp <= self.end_time && current_timestamp >= self.start_time,
-            format!(
-                "it is not nomination period now. start_time: {:?}, end_time: {:?}, got: {:?}",
-                self.start_time, self.end_time, current_timestamp
-            )
-        );
-
+        c.assert_active();
         require!(
             env::prepaid_gas() >= GAS_NOMINATE,
             format!("not enough gas, min: {:?}", GAS_NOMINATE)
@@ -91,7 +87,7 @@ impl Contract {
             .then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(GAS_VOTE_CALLBACK)
-                    .on_nominate_verified(nominator, nominee),
+                    .on_nominate_verified(campaign, nominator, nominee),
             );
     }
 
@@ -100,27 +96,30 @@ impl Contract {
      ****************/
 
     #[private]
-    pub fn on_nominate_verified(&mut self, nominator: AccountId, nominee: AccountId) {
+    pub fn on_nominate_verified(
+        &mut self,
+        campaign: u32,
+        nominator: AccountId,
+        nominee: AccountId,
+    ) {
         match env::promise_result(0) {
             PromiseResult::NotReady => unreachable!(),
             PromiseResult::Successful(value) => {
                 if let Ok(result) =
                     near_sdk::serde_json::from_slice::<Vec<(AccountId, Vec<OwnedToken>)>>(&value)
                 {
-                    // if len > 0 then its human
-                    if result.len() > 0 {
-                        let nomination = NominationKey { nominator, nominee };
-                        if !self.nominations.contains(&nomination) {
-                            let num_of_nominations = self
-                                .nominations_per_user
-                                .get(&nomination.nominee)
-                                .unwrap_or(0);
-                            self.nominations_per_user
-                                .insert(&nomination.nominee, &(num_of_nominations + 1));
-                            self.nominations.insert(&nomination);
-                        } else {
-                            env::panic_str("this nomination has been already submitted");
-                        }
+                    // must have SBT tokens
+                    require!(result.len() > 0, "not a human");
+                    let nomination_key = NominationKey {
+                        campaign,
+                        nominator,
+                        nominee: nominee.clone(),
+                    };
+                    if !self.nominations.contains(&nomination_key) {
+                        let key = &(campaign, nominee);
+                        let num_of_nominations = self.nominations_sum.get(&key).unwrap_or(0);
+                        self.nominations_sum.insert(&key, &(num_of_nominations + 1));
+                        self.nominations.insert(&nomination_key);
                     }
                 }
             }

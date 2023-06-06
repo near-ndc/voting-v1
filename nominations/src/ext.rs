@@ -3,7 +3,7 @@ use near_sdk::{ext_contract, AccountId};
 
 #[ext_contract(ext_self)]
 pub trait ExtSelf {
-    fn on_nominate_verified(&mut self, nominator: AccountId, nominee: AccountId);
+    fn on_nominate_verified(&mut self, campaign: u32, nominator: AccountId, nominee: AccountId);
 }
 
 #[ext_contract(ext_sbtreg)]
