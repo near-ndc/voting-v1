@@ -42,7 +42,7 @@ pub enum Result {
 
 #[derive(BorshDeserialize, BorshSerialize)]
 pub struct Proposal {
-    pub typ: PropType,
+    pub prop_type: PropType,
     pub title: String,
     pub ref_link: String,
     pub ref_hash: Vec<u8>,
@@ -74,7 +74,7 @@ pub struct ProposalView {
 
 impl Proposal {
     pub fn new(
-        typ: PropType,
+        prop_type: PropType,
         prop_id: u32,
         start: u64,
         end: u64,
@@ -93,7 +93,7 @@ impl Proposal {
         require!(ref_hash.len() == 64, "ref_hash length must be 64 hex");
         let ref_hash = hex::decode(ref_hash).expect("ref_hash must be a proper hex string");
         Self {
-            typ,
+            prop_type,
             title,
             ref_link,
             ref_hash,

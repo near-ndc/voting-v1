@@ -11,7 +11,7 @@ impl Contract {
 
     pub fn get_proposal(&self, prop_id: u32) -> ProposalView {
         let p = self._proposal(prop_id);
-        let c = match p.typ {
+        let c = match p.prop_type {
             PropType::Constitution => &self.sup_consent,
             _ => &self.consent,
         };

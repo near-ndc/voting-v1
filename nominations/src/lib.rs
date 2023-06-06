@@ -1,79 +1,94 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::UnorderedMap;
-use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise};
+use near_sdk::collections::{LookupMap, LookupSet};
+use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, PromiseResult};
 
-mod consent;
 mod constants;
-mod ext;
-mod proposal;
 mod storage;
-mod view;
 
-use crate::consent::*;
 pub use crate::constants::*;
-pub use crate::ext::*;
-pub use crate::proposal::*;
 use crate::storage::*;
+
+pub mod ext;
+pub use crate::ext::*;
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
-    pub pause: bool,
-    pub gwg: AccountId,
     pub sbt_registry: AccountId,
     /// IAH issuer account for proof of humanity
     pub iah_issuer: AccountId,
     /// IAH class ID used for Facetech verification
     pub iah_class_id: u64,
-    // TODO:
-    // map of nominations
-    // start + end time for nominations
+    /// map of nominations (nominator -> nominee)
+    pub nominations: LookupSet<NominationKey>,
+    /// map of `(campaign, nominee)` => number of received nominations
+    pub nominations_sum: LookupMap<(u32, AccountId), u64>,
+    pub campaigns: LookupMap<u32, Campaign>,
 }
 
 #[near_bindgen]
 impl Contract {
     #[init]
-    pub fn new(
-        gwg: AccountId,
-        sbt_registry: AccountId,
-        iah_issuer: AccountId,
-        iah_class_id: u64,
-    ) -> Self {
+    pub fn new(sbt_registry: AccountId, iah_issuer: AccountId, iah_class_id: u64) -> Self {
         Self {
-            pause: false,
-            gwg,
             sbt_registry,
             iah_issuer,
             iah_class_id,
+            nominations: LookupSet::new(StorageKey::Nominations),
+            nominations_sum: LookupMap::new(StorageKey::NominationsPerUser),
+            campaigns: LookupMap::new(StorageKey::Campaigns),
         }
     }
 
-    /// creates new empty proposal
-    /// returns proposal ID
-    pub fn nominate(&mut self, nominatee: AccountId) -> u32 {
-        // 1. Storage fee
-        // 2. check if in start / end time
-        // 3. check if use has IAH SBT
-        // 4. callback -> check if user already nominated and cast the nomination
+    /**********
+     * QUERIES
+     **********/
 
+    /// returns the number of nominations per user. If the user has not been nomianted once returns 0
+    pub fn nominations_per_user(&self, campaign: u32, nominee: AccountId) -> u64 {
+        self.nominations_sum.get(&(campaign, nominee)).unwrap_or(0)
+    }
+
+    /**********
+     * FUNCTIONS
+     **********/
+
+    /// nominate method allows to submit nominatios by verified humans
+    /// + Checks if the nominator is a verified human
+    /// + Checks if the pair (nominator, nominee) has been already submitted
+    /// + Checks if the nomination was submitted during the nomination period
+    pub fn nominate(
+        &mut self,
+        campaign: u32,
+        nominee: AccountId,
+        #[allow(unused_variables)] comment: String,
+        #[allow(unused_variables)] external_resource: Option<String>,
+    ) {
+        let nominator = env::predecessor_account_id();
+        let c = self
+            .campaigns
+            .get(&campaign)
+            .expect("campaign ID not found");
+
+        c.assert_active();
         require!(
-            env::prepaid_gas() >= GAS_VOTE,
-            format!("not enough gas, min: {:?}", GAS_VOTE)
+            env::prepaid_gas() >= GAS_NOMINATE,
+            format!("not enough gas, min: {:?}", GAS_NOMINATE)
         );
 
-        // call SBT registry to verify IAH SBT
+        // call SBT registry to verify IAH SBT and cast the nomination is callback based on the return from sbt_tokens_by_owner
         ext_sbtreg::ext(self.sbt_registry.clone())
             .sbt_tokens_by_owner(
-                user.clone(),
+                nominee.clone(),
                 Some(self.iah_issuer.clone()),
                 Some(self.iah_class_id.clone()),
                 Some(1),
             )
             .then(
-                ext_self::ext(env::current_account_id())
+                Self::ext(env::current_account_id())
                     .with_static_gas(GAS_VOTE_CALLBACK)
-                    .on_nominate_verified(prop_id, user, vote),
-            )
+                    .on_nominate_verified(campaign, nominator, nominee),
+            );
     }
 
     /*****************
@@ -81,9 +96,35 @@ impl Contract {
      ****************/
 
     #[private]
-    pub fn on_nominate_verified(&mut self, prop_id: u32, user: AccountId, vote: Vote) {
-        let mut p = self._proposal(prop_id);
-        p.vote_on_verified(&user, vote);
+    pub fn on_nominate_verified(
+        &mut self,
+        campaign: u32,
+        nominator: AccountId,
+        nominee: AccountId,
+    ) {
+        match env::promise_result(0) {
+            PromiseResult::NotReady => unreachable!(),
+            PromiseResult::Successful(value) => {
+                if let Ok(result) =
+                    near_sdk::serde_json::from_slice::<Vec<(AccountId, Vec<OwnedToken>)>>(&value)
+                {
+                    // must have SBT tokens
+                    require!(result.len() > 0, "not a human");
+                    let nomination_key = NominationKey {
+                        campaign,
+                        nominator,
+                        nominee: nominee.clone(),
+                    };
+                    if !self.nominations.contains(&nomination_key) {
+                        let key = &(campaign, nominee);
+                        let num_of_nominations = self.nominations_sum.get(&key).unwrap_or(0);
+                        self.nominations_sum.insert(&key, &(num_of_nominations + 1));
+                        self.nominations.insert(&nomination_key);
+                    }
+                }
+            }
+            PromiseResult::Failed => env::panic_str("sbt_tokens_by_owner call failed"),
+        }
     }
 }
 
