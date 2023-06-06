@@ -1,5 +1,5 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::{LookupMap, UnorderedSet};
+use near_sdk::collections::{LookupMap, LookupSet};
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, PromiseResult};
 
 mod constants;
@@ -20,7 +20,7 @@ pub struct Contract {
     /// IAH class ID used for Facetech verification
     pub iah_class_id: u64,
     /// map of nominations (nominator -> nominee)
-    pub nominations: UnorderedSet<NominationKey>,
+    pub nominations: LookupSet<NominationKey>,
     /// map of `(campaign, nominee)` => number of received nominations
     pub nominations_sum: LookupMap<(u32, AccountId), u64>,
     pub campaigns: LookupMap<u32, Campaign>,
@@ -34,7 +34,7 @@ impl Contract {
             sbt_registry,
             iah_issuer,
             iah_class_id,
-            nominations: UnorderedSet::new(StorageKey::Nominations),
+            nominations: LookupSet::new(StorageKey::Nominations),
             nominations_sum: LookupMap::new(StorageKey::NominationsPerUser),
             campaigns: LookupMap::new(StorageKey::Campaigns),
         }
