@@ -7,14 +7,10 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib"]
 
-
 [dependencies]
 uint.workspace = true
 near-sdk.workspace = true
 serde_json.workspace = true
-
-# voting = { path = "../voting" }
-
 
 [dev-dependencies]
 anyhow = "1.0.71"
@@ -22,4 +18,3 @@ tokio = { version = "1.28.2", features = ["full"] }
 workspaces = "0.7.0"
 near-primitives = "0.17.0"
 near-units = "0.2.0"
-base64 = "0.21.2"
