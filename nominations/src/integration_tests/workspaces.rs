@@ -2,20 +2,18 @@ use near_units::parse_near;
 use serde_json::json;
 use workspaces::{Account, Contract, DevNetwork, Worker};
 
-use crate::util::{TokenMetadata, SECOND};
-
-mod util;
+use crate::{TokenMetadata, SECOND};
 
 async fn init(
     worker: &Worker<impl DevNetwork>,
 ) -> anyhow::Result<(Contract, Account, Account, Account, u32)> {
     // deploy contracts
     let ndc_nominations_contract = worker
-        .dev_deploy(include_bytes!("../../res/ndc_nominations.wasm"))
+        .dev_deploy(include_bytes!("../../../res/ndc_nominations.wasm"))
         .await?;
 
     let registry_contract = worker
-        .dev_deploy(include_bytes!("../../res/registry.wasm"))
+        .dev_deploy(include_bytes!("../../../res/registry.wasm"))
         .await?;
 
     let sbt_gd_issuer_acc = worker.dev_create_account().await?;

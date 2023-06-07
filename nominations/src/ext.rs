@@ -1,4 +1,4 @@
-use near_sdk::serde::Deserialize;
+use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{ext_contract, AccountId};
 
 #[ext_contract(ext_self)]
@@ -28,7 +28,7 @@ pub struct OwnedToken {
 }
 
 /// TokenMetadata defines attributes for each SBT token.
-#[derive(Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[serde(crate = "near_sdk::serde")]
 pub struct TokenMetadata {
     pub class: u64,
