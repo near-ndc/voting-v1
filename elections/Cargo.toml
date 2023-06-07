@@ -12,5 +12,3 @@ crate-type = ["cdylib"]
 uint.workspace = true
 near-sdk.workspace = true
 serde_json.workspace = true
-
-# voting = { path = "../voting" }
