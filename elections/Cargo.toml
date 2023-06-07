@@ -7,7 +7,6 @@ edition = "2021"
 [lib]
 crate-type = ["cdylib"]
 
-
 [dependencies]
 uint.workspace = true
 near-sdk.workspace = true
