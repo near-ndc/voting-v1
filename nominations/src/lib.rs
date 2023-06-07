@@ -64,7 +64,14 @@ impl Contract {
      * FUNCTIONS
      **********/
 
-    pub fn add_campaign(&mut self, name: String, link: String, start_time: u64, end_time: u64) {
+    #[payable]
+    pub fn add_campaign(
+        &mut self,
+        name: String,
+        link: String,
+        start_time: u64,
+        end_time: u64,
+    ) -> u32 {
         if let Some(admins) = self.admins.get() {
             let caller = env::predecessor_account_id();
             require!(admins.contains(&caller), "not authoirized");
@@ -72,7 +79,10 @@ impl Contract {
         let storage_start = env::storage_usage();
         require!(
             name.len() <= MAX_CAMPAIGN_LEN && link.len() <= MAX_CAMPAIGN_LEN,
-            "max name and link length is 200 characters"
+            format!(
+                "max name and link length is {} characters",
+                MAX_CAMPAIGN_LEN
+            )
         );
         let c = Campaign {
             name,
@@ -88,10 +98,11 @@ impl Contract {
         require!(
             env::attached_deposit() >= required_deposit,
             format!(
-                "not enough NEAR for storage depost, required: {}",
+                "not enough NEAR for storage deposit, required: {}",
                 required_deposit
             )
         );
+        self.campaign_counter
     }
 
     /// nominate method allows to submit nominatios by verified humans
