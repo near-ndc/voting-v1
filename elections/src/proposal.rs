@@ -27,7 +27,7 @@ pub struct Proposal {
     /// min amount of voters to legitimize the voting.
     pub quorum: u32,
     /// max amount of credits each voter has
-    pub credits: u16,
+    pub seats: u16,
     /// list of valid candidates. Must be ordered.
     pub candidates: Vec<AccountId>,
     /// running result (ongoing sum of votes per candidate), in the same order as `candidates`.
@@ -50,7 +50,7 @@ pub struct ProposalView {
     pub quorum: u32,
     pub voters_num: u32,
     /// max amount of credits each voter has
-    pub credits: u16,
+    pub seats: u16,
     pub candidates: Vec<AccountId>,
     /// sum of votes per candidate in the same as self.candidates
     pub result: Vec<u64>,
@@ -65,7 +65,7 @@ impl Proposal {
             end: self.end,
             quorum: self.quorum,
             voters_num: self.voters_num,
-            credits: self.credits,
+            seats: self.seats,
             candidates: self.candidates,
             result: self.result,
         }

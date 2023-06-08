@@ -61,7 +61,7 @@ impl Contract {
         end: u64,
         ref_link: String,
         quorum: u32,
-        credits: u16,
+        seats: u16,
         #[allow(unused_mut)] mut candidates: Vec<AccountId>,
     ) -> u32 {
         self.assert_admin();
@@ -87,7 +87,7 @@ impl Contract {
             end,
             quorum,
             ref_link,
-            credits,
+            seats,
             candidates,
             result: vec![0; l],
             voters: LookupSet::new(StorageKey::ProposalVoters(self.prop_counter)),
@@ -116,7 +116,7 @@ impl Contract {
             env::prepaid_gas() >= VOTE_GAS,
             format!("not enough gas, min: {:?}", VOTE_GAS)
         );
-        validate_vote(&vote, p.credits, &p.candidates);
+        validate_vote(&vote, p.seats, &p.candidates);
 
         // TODO
         // call SBT registry to verify  SBT
