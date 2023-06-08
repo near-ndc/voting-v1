@@ -3,7 +3,7 @@
 ## Requirements
 
 - Only I Am Human verified accounts can vote.
-- Each account can vote at most one time. Vote
+- Each account can vote at most one time. Votes are not revocable, and can't be changed.
 - Only an authority (set during contract initialization) can create proposals. Each proposal specifies:
 
   - `typ`: must be HouseType variant
