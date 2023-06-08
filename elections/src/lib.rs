@@ -91,6 +91,7 @@ impl Contract {
             candidates,
             result: vec![0; l],
             voters: LookupSet::new(StorageKey::ProposalVoters(self.prop_counter)),
+            voters_num: 0,
         };
 
         self.proposals.insert(&self.prop_counter, &p);

@@ -34,6 +34,7 @@ pub struct Proposal {
     /// result[i] = sum of votes for candidates[i]
     pub result: Vec<u64>,
     pub voters: LookupSet<AccountId>,
+    pub voters_num: u32,
 }
 
 #[derive(Serialize)]
@@ -47,6 +48,7 @@ pub struct ProposalView {
     pub end: u64,
     /// min amount of voters to legitimize the voting.
     pub quorum: u32,
+    pub voters_num: u32,
     /// max amount of credits each voter has
     pub credits: u16,
     pub candidates: Vec<AccountId>,
@@ -62,6 +64,7 @@ impl Proposal {
             start: self.start,
             end: self.end,
             quorum: self.quorum,
+            voters_num: self.voters_num,
             credits: self.credits,
             candidates: self.candidates,
             result: self.result,
@@ -82,6 +85,7 @@ impl Proposal {
     pub fn vote_on_verified(&mut self, user: &AccountId, vote: Vote) {
         self.assert_active();
         require!(!self.voters.contains(&user), "user already voted");
+        self.voters_num += 1;
         for candidate in vote {
             let idx = self.candidates.binary_search(&candidate).unwrap() as usize;
             self.result[idx] += 1;
