@@ -15,6 +15,9 @@ pub use crate::ext::*;
 pub use crate::proposal::*;
 use crate::storage::*;
 
+#[cfg(test)]
+mod integration_tests;
+
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
