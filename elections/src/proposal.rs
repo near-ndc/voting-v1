@@ -10,6 +10,7 @@ use crate::constants::*;
 #[derive(Serialize, Deserialize, BorshDeserialize, BorshSerialize)]
 #[serde(crate = "near_sdk::serde")]
 pub enum HouseType {
+    Other,
     HouseOfMerit,
     CouncilOfAdvisors,
     TransparencyCommission,
@@ -81,26 +82,30 @@ impl Proposal {
     pub fn vote_on_verified(&mut self, user: &AccountId, vote: Vote) {
         self.assert_active();
         require!(!self.voters.contains(&user), "user already voted");
-        for v in vote {
-            let idx = self.candidates.binary_search(&v.0).unwrap() as usize;
-            self.result[idx] += v.1 as u64;
+        for candidate in vote {
+            let idx = self.candidates.binary_search(&candidate).unwrap() as usize;
+            self.result[idx] += 1;
         }
     }
 }
 
-pub type Vote = Vec<(AccountId, u16)>;
+pub type Vote = Vec<AccountId>;
 
 /// * valid_candidates must be a sorted slice.
 pub fn validate_vote(vs: &Vote, max_credits: u16, valid_candidates: &Vec<AccountId>) {
-    let mut credits = 0;
+    require!(
+        vs.len() <= max_credits as usize,
+        format!("max vote is {} seats", max_credits)
+    );
     let mut vote_for = HashSet::new();
-    for v in vs {
-        credits += v.1 * v.1;
-        require!(vote_for.insert(&v.0), "double vote for the same candidate");
+    for candidate in vs {
         require!(
-            valid_candidates.binary_search(&v.0).is_ok(),
+            vote_for.insert(candidate),
+            "double vote for the same candidate"
+        );
+        require!(
+            valid_candidates.binary_search(candidate).is_ok(),
             "vote for unknown candidate"
         );
     }
-    require!(credits <= max_credits, "vote with too many credits");
 }
