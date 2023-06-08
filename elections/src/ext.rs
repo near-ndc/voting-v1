@@ -30,7 +30,8 @@ pub struct OwnedToken {
 }
 
 /// TokenMetadata defines attributes for each SBT token.
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Serialize))]
 #[serde(crate = "near_sdk::serde")]
 pub struct TokenMetadata {
     pub class: u64,

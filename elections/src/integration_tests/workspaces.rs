@@ -43,7 +43,7 @@ async fn init(
     // add sbt_gd_as_an_issuer
     let res = authority_acc
         .call(registry_contract.id(), "admin_add_sbt_issuer")
-        .args_json(json!({"issuer": sbt_gd_issuer_acc.id()}))
+        .args_json(json!({"issuer": iah_gd_issuer.id()}))
         .max_gas()
         .transact()
         .await?;
@@ -59,7 +59,7 @@ async fn init(
     };
     let token_spec = vec![(alice_acc.id(), vec![token_metadata])];
 
-    let res = sbt_gd_issuer_acc
+    let res = iah_gd_issuer
         .call(registry_contract.id(), "sbt_mint")
         .args_json(json!({ "token_spec": [token_spec] }))
         .deposit(parse_near!("1 N"))
