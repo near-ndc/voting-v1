@@ -16,7 +16,7 @@ async fn init(
         .dev_deploy(include_bytes!("../../../res/registry.wasm"))
         .await?;
 
-    let sbt_gd_issuer_acc = worker.dev_create_account().await?;
+    let iah_gd_issuer = worker.dev_create_account().await?;
     let authority_acc = worker.dev_create_account().await?;
     let iah_issuer = worker.dev_create_account().await?;
     let alice_acc = worker.dev_create_account().await?;
