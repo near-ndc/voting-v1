@@ -54,6 +54,7 @@ impl Contract {
 
     /// creates new empty proposal
     /// returns the new proposal ID
+    /// NOTE: storage is paid from the account state
     pub fn creat_proposal(
         &mut self,
         typ: HouseType,
@@ -321,7 +322,7 @@ mod tests {
 
     #[test]
     #[should_panic(
-        expected = "requires 150000000000000000000 yocto deposit for storage fees for every new vote"
+        expected = "requires 2000000000000000000000 yocto deposit for storage fees for every new vote"
     )]
     fn vote_wrong_deposit() {
         let (mut ctx, mut ctr) = setup(&admin());
