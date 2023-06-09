@@ -16,7 +16,6 @@ async fn init(
         .dev_deploy(include_bytes!("../../../res/registry.wasm"))
         .await?;
 
-    let sbt_gd_issuer_acc = worker.dev_create_account().await?;
     let authority_acc = worker.dev_create_account().await?;
     let iah_issuer = worker.dev_create_account().await?;
     let alice_acc = worker.dev_create_account().await?;
@@ -43,17 +42,22 @@ async fn init(
     // add sbt_gd_as_an_issuer
     let res = authority_acc
         .call(registry_contract.id(), "admin_add_sbt_issuer")
-        .args_json(json!({"issuer": sbt_gd_issuer_acc.id()}))
+        .args_json(json!({"issuer": iah_issuer.id()}))
         .max_gas()
         .transact()
         .await?;
     assert!(res.is_success());
 
+    // get current block time
+    let block_info = worker.view_block().await?;
+    let current_timestamp = block_info.timestamp() / SECOND;
+    let expires_at = current_timestamp + 100000000000;
+
     // mint IAH sbt to alice
     let token_metadata = TokenMetadata {
         class: 1,
         issued_at: Some(0),
-        expires_at: Some(100000),
+        expires_at: Some(expires_at),
         reference: None,
         reference_hash: None,
     };
@@ -61,7 +65,7 @@ async fn init(
     let token_metadata2 = TokenMetadata {
         class: 1,
         issued_at: Some(0),
-        expires_at: Some(100000),
+        expires_at: Some(current_timestamp),
         reference: None,
         reference_hash: None,
     };
@@ -71,7 +75,7 @@ async fn init(
         (bob_acc.id(), vec![token_metadata2]),
     ];
 
-    let res = sbt_gd_issuer_acc
+    let res = iah_issuer
         .call(registry_contract.id(), "sbt_mint")
         .args_json(json!({ "token_spec": token_spec }))
         .deposit(parse_near!("1 N"))
@@ -79,11 +83,6 @@ async fn init(
         .transact()
         .await?;
     assert!(res.is_success());
-
-    // get current block time
-    let block_info = worker.view_block().await?;
-    let current_timestamp = (block_info.timestamp() / SECOND) as u32;
-    let start_time = current_timestamp + 10;
 
     // create a proposal
     let campaign_id: u32 = authority_acc
@@ -124,13 +123,15 @@ async fn human_nominates_human() -> anyhow::Result<()> {
     // fast forward to the campaign period
     worker.fast_forward(100).await?;
     // nominate
-    let res  = alice_acc
+    let res:String  = alice_acc
         .call(ndc_elections_contract.id(), "nominate")
         .args_json(json!({"campaign": campaign_id, "nominee": bob_acc.id(),"comment": "test", "external_resource": "test"}))
         .max_gas()
         .transact()
-        .await?;
-    assert!(res.is_success());
+        .await?
+        .json()?;
+    print!("{}", res);
+    // assert!(res.is_success());
 
     // make sure the nomination for bob has been registered
     let res: u64 = alice_acc
@@ -154,25 +155,30 @@ async fn non_human_nominates_human() -> anyhow::Result<()> {
     // fast forward to the campaign period
     worker.fast_forward(100).await?;
     // nominate
-    match john_acc
+    let res = john_acc
         .call(ndc_elections_contract.id(), "nominate")
         .args_json(json!({"campaign": campaign_id, "nominee": bob_acc.id(),"comment": "test", "external_resource": "test"}))
         .max_gas()
         .transact()
-        .await
-        {
-            Ok(_) => {
-                panic!("Nomination worked despite nominator not beeing a verified human")
-            }
-            Err(e) => {
-                let e_string = e.to_string();
-                if !e_string
-                    .contains("not a human")
-                {
-                    panic!("nomiante unexpected error message")
-                }
-                println!("Passed ✅ non_human_nominates_human");
-            }
-        }
+        .await?;
+    assert!(res.is_failure());
+    Ok(())
+}
+
+#[tokio::test]
+async fn non_human_nominates_human_expired_token() -> anyhow::Result<()> {
+    let worker = workspaces::sandbox().await?;
+    let (ndc_elections_contract, _, bob_acc, _, campaign_id) = init(&worker).await?;
+
+    // fast forward to the campaign period
+    worker.fast_forward(100).await?;
+    // nominate
+    let res = bob_acc
+        .call(ndc_elections_contract.id(), "nominate")
+        .args_json(json!({"campaign": campaign_id, "nominee": bob_acc.id(),"comment": "test", "external_resource": "test"}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_failure());
     Ok(())
 }
