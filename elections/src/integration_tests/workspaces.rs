@@ -16,7 +16,6 @@ async fn init(
         .dev_deploy(include_bytes!("../../../res/registry.wasm"))
         .await?;
 
-    let iah_gd_issuer = worker.dev_create_account().await?;
     let authority_acc = worker.dev_create_account().await?;
     let iah_issuer = worker.dev_create_account().await?;
     let alice_acc = worker.dev_create_account().await?;
@@ -43,7 +42,7 @@ async fn init(
     // add sbt_gd_as_an_issuer
     let res = authority_acc
         .call(registry_contract.id(), "admin_add_sbt_issuer")
-        .args_json(json!({"issuer": iah_gd_issuer.id()}))
+        .args_json(json!({"issuer": iah_issuer.id()}))
         .max_gas()
         .transact()
         .await?;
@@ -59,9 +58,9 @@ async fn init(
     };
     let token_spec = vec![(alice_acc.id(), vec![token_metadata])];
 
-    let res = iah_gd_issuer
+    let res = iah_issuer
         .call(registry_contract.id(), "sbt_mint")
-        .args_json(json!({ "token_spec": [token_spec] }))
+        .args_json(json!({ "token_spec": token_spec }))
         .deposit(parse_near!("1 N"))
         .max_gas()
         .transact()
@@ -75,8 +74,8 @@ async fn init(
 
     // create a proposal
     let proposal_id: u32 = authority_acc
-    .call(ndc_elections_contract.id(), "creat_proposal")
-    .args_json(json!({"typ": HouseType::HouseOfMerit, "start": start_time, "end": u64::MAX, "ref_link": "test.io", "quorum": 10, "credits": 5, "candidates": [john_acc.id()],}))
+    .call(ndc_elections_contract.id(), "create_proposal")
+    .args_json(json!({"typ": HouseType::HouseOfMerit, "start": start_time, "end": u64::MAX, "ref_link": "test.io", "quorum": 10, "credits": 5, "seats": 1, "candidates": [john_acc.id()],}))
     .max_gas()
     .transact()
     .await?
@@ -99,16 +98,16 @@ async fn vote_by_human() -> anyhow::Result<()> {
     // fast forward to the voting period
     worker.fast_forward(100).await?;
     // create a vote
-    let vote = (john_acc.id(), 2);
 
     let res = alice_acc
         .call(ndc_elections_contract.id(), "vote")
-        .args_json(json!({"prop_id": proposal_id, "vote": [vote],}))
+        .args_json(json!({"prop_id": proposal_id, "vote": [john_acc.id()],}))
         .deposit(VOTE_COST)
         .max_gas()
         .transact()
         .await?;
     assert!(res.is_success());
+
     Ok(())
 }
 
@@ -120,16 +119,15 @@ async fn vote_by_non_human() -> anyhow::Result<()> {
     // fast forward to the voting period
     worker.fast_forward(100).await?;
     // create a vote
-    let vote = (john_acc.id(), 2);
 
     let res = bob_acc
         .call(ndc_elections_contract.id(), "vote")
-        .args_json(json!({"prop_id": proposal_id, "vote": [vote],}))
+        .args_json(json!({"prop_id": proposal_id, "vote": [john_acc.id()],}))
         .deposit(VOTE_COST)
         .max_gas()
         .transact()
         .await?;
-    // TODO: this one should fails once the check for a human is implemented.
     assert!(res.is_failure());
+
     Ok(())
 }

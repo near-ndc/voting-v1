@@ -58,7 +58,7 @@ impl Contract {
     /// creates new empty proposal
     /// returns the new proposal ID
     /// NOTE: storage is paid from the account state
-    pub fn creat_proposal(
+    pub fn create_proposal(
         &mut self,
         typ: HouseType,
         start: u64,
@@ -122,19 +122,19 @@ impl Contract {
         );
         validate_vote(&vote, p.seats, &p.candidates);
 
-        // TODO
         // call SBT registry to verify  SBT
-        // ext_sbtreg::ext(self.sbt_registry.clone())
-        //     .sbt_tokens_by_owner(
-        //         user.clone(),
-        //         Some(self.iah_issuer.clone()),
-        //         Some(self.iah_class_id.clone()),
-        //         Some(1),
-        //     )
-        //     .then(
-        ext_self::ext(env::current_account_id())
-            .with_static_gas(VOTE_GAS_CALLBACK)
-            .on_vote_verified(prop_id, user, vote)
+        ext_sbtreg::ext(self.sbt_registry.clone())
+            .sbt_tokens_by_owner(
+                user.clone(),
+                Some(self.iah_issuer.clone()),
+                Some(self.iah_class_id.clone()),
+                Some(1),
+            )
+            .then(
+                ext_self::ext(env::current_account_id())
+                    .with_static_gas(VOTE_GAS_CALLBACK)
+                    .on_vote_verified(prop_id, user, vote),
+            )
     }
 
     /*****************
@@ -142,7 +142,16 @@ impl Contract {
      ****************/
 
     #[private]
-    pub fn on_vote_verified(&mut self, prop_id: u32, user: AccountId, vote: Vote) {
+    pub fn on_vote_verified(
+        &mut self,
+        #[callback_unwrap] val: Vec<(AccountId, Vec<OwnedToken>)>,
+        prop_id: u32,
+        user: AccountId,
+        vote: Vote,
+    ) {
+        if val.is_empty() {
+            env::panic_str("Voter is not a verified human");
+        }
         let mut p = self._proposal(prop_id);
         p.vote_on_verified(&user, vote);
     }
@@ -224,7 +233,7 @@ mod tests {
     fn create_proposal_wrong_start_time() {
         let (_, mut ctr) = setup(&admin());
 
-        ctr.creat_proposal(
+        ctr.create_proposal(
             crate::HouseType::HouseOfMerit,
             START - 1,
             START + 100,
@@ -240,7 +249,7 @@ mod tests {
     fn create_proposal_end_before_start() {
         let (_, mut ctr) = setup(&admin());
 
-        ctr.creat_proposal(
+        ctr.create_proposal(
             crate::HouseType::HouseOfMerit,
             START + 10,
             START,
@@ -256,7 +265,7 @@ mod tests {
     fn create_proposal_wrong_ref_link_length() {
         let (_, mut ctr) = setup(&admin());
 
-        ctr.creat_proposal(
+        ctr.create_proposal(
             crate::HouseType::HouseOfMerit,
             START + 1,
             START + 10,
@@ -272,7 +281,7 @@ mod tests {
     fn create_proposal_duplicated_candidates() {
         let (_, mut ctr) = setup(&admin());
 
-        ctr.creat_proposal(
+        ctr.create_proposal(
             crate::HouseType::HouseOfMerit,
             START + 1,
             START + 10,
@@ -284,7 +293,7 @@ mod tests {
     }
 
     fn mk_proposal(ctr: &mut Contract) -> u32 {
-        ctr.creat_proposal(
+        ctr.create_proposal(
             crate::HouseType::HouseOfMerit,
             START + 1,
             START + 10,
