@@ -15,6 +15,9 @@ pub use crate::ext::*;
 pub use crate::proposal::*;
 use crate::storage::*;
 
+#[cfg(test)]
+mod integration_tests;
+
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
@@ -54,6 +57,7 @@ impl Contract {
 
     /// creates new empty proposal
     /// returns the new proposal ID
+    /// NOTE: storage is paid from the account state
     pub fn creat_proposal(
         &mut self,
         typ: HouseType,
@@ -61,7 +65,7 @@ impl Contract {
         end: u64,
         ref_link: String,
         quorum: u32,
-        credits: u16,
+        seats: u16,
         #[allow(unused_mut)] mut candidates: Vec<AccountId>,
     ) -> u32 {
         self.assert_admin();
@@ -87,17 +91,18 @@ impl Contract {
             end,
             quorum,
             ref_link,
-            credits,
+            seats,
             candidates,
             result: vec![0; l],
             voters: LookupSet::new(StorageKey::ProposalVoters(self.prop_counter)),
+            voters_num: 0,
         };
 
         self.proposals.insert(&self.prop_counter, &p);
         self.prop_counter
     }
 
-    /// election vote using quadratic mechanism
+    /// election vote using plural vote mechanism
     #[payable]
     pub fn vote(&mut self, prop_id: u32, vote: Vote) -> Promise {
         let p = self._proposal(prop_id);
@@ -115,7 +120,7 @@ impl Contract {
             env::prepaid_gas() >= VOTE_GAS,
             format!("not enough gas, min: {:?}", VOTE_GAS)
         );
-        validate_vote(&vote, p.credits, &p.candidates);
+        validate_vote(&vote, p.seats, &p.candidates);
 
         // TODO
         // call SBT registry to verify  SBT
@@ -171,12 +176,12 @@ mod tests {
         AccountId::new_unchecked("bob.near".to_string())
     }
 
-    fn admin() -> AccountId {
-        AccountId::new_unchecked("admin.near".to_string())
+    fn candidate(idx: u32) -> AccountId {
+        AccountId::new_unchecked(format!("candidate{}.near", idx))
     }
 
-    fn authority() -> AccountId {
-        AccountId::new_unchecked("authority.near".to_string())
+    fn admin() -> AccountId {
+        AccountId::new_unchecked("admin.near".to_string())
     }
 
     fn sbt_registry() -> AccountId {
@@ -195,7 +200,7 @@ mod tests {
             .is_view(false)
             .build();
         testing_env!(ctx.clone());
-        let ctr = Contract::new(authority(), sbt_registry(), iah_issuer(), CLASS_ID);
+        let ctr = Contract::new(admin(), sbt_registry(), iah_issuer(), CLASS_ID);
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
         return (ctx, ctr);
@@ -203,7 +208,7 @@ mod tests {
 
     #[test]
     fn assert_admin() {
-        let (_, ctr) = setup(&authority());
+        let (_, ctr) = setup(&admin());
         ctr.assert_admin();
     }
 
@@ -217,7 +222,7 @@ mod tests {
     #[test]
     #[should_panic(expected = "proposal start must be in the future")]
     fn create_proposal_wrong_start_time() {
-        let (_, mut ctr) = setup(&authority());
+        let (_, mut ctr) = setup(&admin());
 
         ctr.creat_proposal(
             crate::HouseType::HouseOfMerit,
@@ -226,14 +231,14 @@ mod tests {
             String::from("ref_link.io"),
             2,
             2,
-            vec![alice()],
+            vec![candidate(1)],
         );
     }
 
     #[test]
     #[should_panic(expected = "proposal start must be before end")]
     fn create_proposal_end_before_start() {
-        let (_, mut ctr) = setup(&authority());
+        let (_, mut ctr) = setup(&admin());
 
         ctr.creat_proposal(
             crate::HouseType::HouseOfMerit,
@@ -242,14 +247,14 @@ mod tests {
             String::from("ref_link.io"),
             2,
             2,
-            vec![alice()],
+            vec![candidate(1)],
         );
     }
 
     #[test]
     #[should_panic(expected = "ref_link length must be between 6 and 120 bytes")]
     fn create_proposal_wrong_ref_link_length() {
-        let (_, mut ctr) = setup(&authority());
+        let (_, mut ctr) = setup(&admin());
 
         ctr.creat_proposal(
             crate::HouseType::HouseOfMerit,
@@ -258,14 +263,14 @@ mod tests {
             String::from("short"),
             2,
             2,
-            vec![alice()],
+            vec![candidate(1)],
         );
     }
 
     #[test]
     #[should_panic(expected = "duplicated candidates")]
     fn create_proposal_duplicated_candidates() {
-        let (_, mut ctr) = setup(&authority());
+        let (_, mut ctr) = setup(&admin());
 
         ctr.creat_proposal(
             crate::HouseType::HouseOfMerit,
@@ -274,24 +279,36 @@ mod tests {
             String::from("ref_link.io"),
             2,
             2,
-            vec![alice(), alice()],
+            vec![candidate(1), candidate(1)],
         );
     }
 
-    #[test]
-    fn create_proposal() {
-        let (_, mut ctr) = setup(&authority());
-
-        assert!(ctr.prop_counter == 0);
-        let prop_id = ctr.creat_proposal(
+    fn mk_proposal(ctr: &mut Contract) -> u32 {
+        ctr.creat_proposal(
             crate::HouseType::HouseOfMerit,
             START + 1,
             START + 10,
             String::from("ref_link.io"),
             2,
             2,
-            vec![alice()],
-        );
+            vec![candidate(1), candidate(2), candidate(3)],
+        )
+    }
+
+    fn voting_context(ctx: &mut VMContext) {
+        ctx.attached_deposit = VOTE_COST;
+        ctx.block_timestamp = (START + 2) * SECOND;
+        ctx.prepaid_gas = VOTE_GAS;
+        ctx.predecessor_account_id = alice();
+        testing_env!(ctx.clone());
+    }
+
+    #[test]
+    fn create_proposal() {
+        let (_, mut ctr) = setup(&admin());
+
+        assert!(ctr.prop_counter == 0);
+        let prop_id = mk_proposal(&mut ctr);
         assert!(ctr.prop_counter == 1);
         assert!(ctr.proposals.contains_key(&prop_id));
     }
@@ -299,161 +316,97 @@ mod tests {
     #[test]
     #[should_panic(expected = "can only vote between proposal start and end time")]
     fn vote_wrong_time() {
-        let (_, mut ctr) = setup(&authority());
+        let (_, mut ctr) = setup(&admin());
 
-        assert!(ctr.prop_counter == 0);
-        let prop_id = ctr.creat_proposal(
-            crate::HouseType::HouseOfMerit,
-            START + 1,
-            START + 10,
-            String::from("ref_link.io"),
-            2,
-            2,
-            vec![alice()],
-        );
-        let vote: Vote = vec![(alice(), 1)];
+        let prop_id = mk_proposal(&mut ctr);
+        let vote: Vote = vec![candidate(1)];
         ctr.vote(prop_id, vote);
     }
 
     #[test]
     #[should_panic(
-        expected = "requires 150000000000000000000 yocto deposit for storage fees for every new vote"
+        expected = "requires 2000000000000000000000 yocto deposit for storage fees for every new vote"
     )]
     fn vote_wrong_deposit() {
-        let (mut ctx, mut ctr) = setup(&authority());
+        let (mut ctx, mut ctr) = setup(&admin());
 
-        assert!(ctr.prop_counter == 0);
-        let prop_id = ctr.creat_proposal(
-            crate::HouseType::HouseOfMerit,
-            START + 1,
-            START + 10,
-            String::from("ref_link.io"),
-            2,
-            2,
-            vec![alice()],
-        );
+        let prop_id = mk_proposal(&mut ctr);
+
         ctx.attached_deposit = VOTE_COST - 1;
         ctx.block_timestamp = (START + 2) * SECOND;
         testing_env!(ctx.clone());
-        let vote: Vote = vec![(alice(), 1)];
-        ctr.vote(prop_id, vote);
+        ctr.vote(prop_id, vec![candidate(1)]);
     }
 
     #[test]
     #[should_panic(expected = "caller already voted")]
     fn vote_caller_already_voted() {
-        let (mut ctx, mut ctr) = setup(&authority());
+        let (mut ctx, mut ctr) = setup(&admin());
 
-        assert!(ctr.prop_counter == 0);
-        let prop_id = ctr.creat_proposal(
-            crate::HouseType::HouseOfMerit,
-            START + 1,
-            START + 10,
-            String::from("ref_link.io"),
-            2,
-            2,
-            vec![alice()],
-        );
+        let prop_id = mk_proposal(&mut ctr);
+
         //set bob as voter and attempt double vote
         ctr._proposal(prop_id).voters.insert(&bob());
         ctx.predecessor_account_id = bob();
         ctx.attached_deposit = VOTE_COST;
         ctx.block_timestamp = (START + 2) * SECOND;
         testing_env!(ctx.clone());
-        let vote: Vote = vec![(alice(), 1)];
-        ctr.vote(prop_id, vote.clone());
-        ctr._proposal(prop_id).voters.insert(&bob());
+        ctr.vote(prop_id, vec![candidate(1)]);
     }
 
     #[test]
     #[should_panic(expected = "not enough gas, min: Gas(70000000000000)")]
     fn vote_wrong_gas() {
-        let (mut ctx, mut ctr) = setup(&authority());
+        let (mut ctx, mut ctr) = setup(&admin());
 
-        assert!(ctr.prop_counter == 0);
-        let prop_id = ctr.creat_proposal(
-            crate::HouseType::HouseOfMerit,
-            START + 1,
-            START + 10,
-            String::from("ref_link.io"),
-            2,
-            2,
-            vec![alice()],
-        );
+        let prop_id = mk_proposal(&mut ctr);
         ctx.attached_deposit = VOTE_COST;
         ctx.block_timestamp = (START + 2) * SECOND;
         ctx.prepaid_gas = Gas(10 * Gas::ONE_TERA.0);
         testing_env!(ctx.clone());
-        let vote: Vote = vec![(alice(), 1)];
-        ctr.vote(prop_id, vote);
+        ctr.vote(prop_id, vec![candidate(1)]);
     }
 
     #[test]
     #[should_panic(expected = "double vote for the same candidate")]
     fn vote_double_vote_same_candidate() {
-        let (mut ctx, mut ctr) = setup(&authority());
+        let (mut ctx, mut ctr) = setup(&admin());
 
-        assert!(ctr.prop_counter == 0);
-        let prop_id = ctr.creat_proposal(
-            crate::HouseType::HouseOfMerit,
-            START + 1,
-            START + 10,
-            String::from("ref_link.io"),
-            2,
-            2,
-            vec![alice()],
-        );
+        let prop_id = mk_proposal(&mut ctr);
         ctx.attached_deposit = VOTE_COST;
         ctx.block_timestamp = (START + 2) * SECOND;
         ctx.prepaid_gas = VOTE_GAS;
         testing_env!(ctx.clone());
-        let vote: Vote = vec![(alice(), 1), (alice(), 1)];
-        ctr.vote(prop_id, vote);
+        ctr.vote(prop_id, vec![candidate(1), candidate(1)]);
     }
 
     #[test]
     #[should_panic(expected = "vote for unknown candidate")]
     fn vote_unknown_candidate() {
-        let (mut ctx, mut ctr) = setup(&authority());
+        let (mut ctx, mut ctr) = setup(&admin());
 
-        assert!(ctr.prop_counter == 0);
-        let prop_id = ctr.creat_proposal(
-            crate::HouseType::HouseOfMerit,
-            START + 1,
-            START + 10,
-            String::from("ref_link.io"),
-            2,
-            2,
-            vec![alice()],
-        );
-        ctx.attached_deposit = VOTE_COST;
-        ctx.block_timestamp = (START + 2) * SECOND;
-        ctx.prepaid_gas = VOTE_GAS;
-        testing_env!(ctx.clone());
-        let vote: Vote = vec![(bob(), 1)];
-        ctr.vote(prop_id, vote);
+        let prop_id = mk_proposal(&mut ctr);
+        voting_context(&mut ctx);
+        ctr.vote(prop_id, vec![bob()]);
     }
 
     #[test]
-    #[should_panic(expected = "vote with too many credits")]
+    #[should_panic(expected = "max vote is 2 seats")]
     fn vote_too_many_credits() {
-        let (mut ctx, mut ctr) = setup(&authority());
+        let (mut ctx, mut ctr) = setup(&admin());
 
-        assert!(ctr.prop_counter == 0);
-        let prop_id = ctr.creat_proposal(
-            crate::HouseType::HouseOfMerit,
-            START + 1,
-            START + 10,
-            String::from("ref_link.io"),
-            2,
-            2,
-            vec![alice()],
-        );
-        ctx.attached_deposit = VOTE_COST;
-        ctx.block_timestamp = (START + 2) * SECOND;
-        ctx.prepaid_gas = VOTE_GAS;
-        testing_env!(ctx.clone());
-        let vote: Vote = vec![(alice(), 5)];
-        ctr.vote(prop_id, vote);
+        let prop_id = mk_proposal(&mut ctr);
+        voting_context(&mut ctx);
+        ctr.vote(prop_id, vec![candidate(1), candidate(2), candidate(3)]);
+    }
+
+    #[test]
+    fn vote_empty_vote() {
+        let (mut ctx, mut ctr) = setup(&admin());
+
+        let prop_id = mk_proposal(&mut ctr);
+        voting_context(&mut ctx);
+        ctr.vote(prop_id, vec![]);
+        // note: we can only check vote result and state change through an integration test.
     }
 }
