@@ -129,6 +129,7 @@ impl Contract {
                 Some(self.iah_issuer.clone()),
                 Some(self.iah_class_id.clone()),
                 Some(1),
+                Some(true),
             )
             .then(
                 ext_self::ext(env::current_account_id())
@@ -150,7 +151,7 @@ impl Contract {
         vote: Vote,
     ) {
         if val.is_empty() {
-            env::panic_str("Voter is not a verified human");
+            env::panic_str("Voter is not a verified human, or the token has expired");
         }
         let mut p = self._proposal(prop_id);
         p.vote_on_verified(&user, vote);

@@ -48,15 +48,32 @@ async fn init(
         .await?;
     assert!(res.is_success());
 
-    // mint IAH sbt to alice
+    // get current block time
+    let block_info = worker.view_block().await?;
+    let current_timestamp = block_info.timestamp() / SECOND;
+    let start_time = current_timestamp + 10;
+    let expires_at: u64 = current_timestamp + 1000000;
+
+    // mint IAH sbt to alice and john
     let token_metadata = TokenMetadata {
         class: 1,
         issued_at: Some(0),
-        expires_at: Some(100000),
+        expires_at: Some(expires_at),
         reference: None,
         reference_hash: None,
     };
-    let token_spec = vec![(alice_acc.id(), vec![token_metadata])];
+
+    let token_metadata_short_expire_at = TokenMetadata {
+        class: 1,
+        issued_at: Some(0),
+        expires_at: Some(current_timestamp),
+        reference: None,
+        reference_hash: None,
+    };
+    let token_spec = vec![
+        (alice_acc.id(), vec![token_metadata]),
+        (john_acc.id(), vec![token_metadata_short_expire_at]),
+    ];
 
     let res = iah_issuer
         .call(registry_contract.id(), "sbt_mint")
@@ -67,15 +84,10 @@ async fn init(
         .await?;
     assert!(res.is_success());
 
-    // get current block time
-    let block_info = worker.view_block().await?;
-    let current_timestamp = (block_info.timestamp() / SECOND) as u32;
-    let start_time = current_timestamp + 10;
-
     // create a proposal
     let proposal_id: u32 = authority_acc
     .call(ndc_elections_contract.id(), "create_proposal")
-    .args_json(json!({"typ": HouseType::HouseOfMerit, "start": start_time, "end": u64::MAX, "ref_link": "test.io", "quorum": 10, "credits": 5, "seats": 1, "candidates": [john_acc.id()],}))
+    .args_json(json!({"typ": HouseType::HouseOfMerit, "start": start_time, "end": u64::MAX, "ref_link": "test.io", "quorum": 10, "credits": 5, "seats": 1, "candidates": [john_acc.id(), alice_acc.id()],}))
     .max_gas()
     .transact()
     .await?
@@ -97,8 +109,8 @@ async fn vote_by_human() -> anyhow::Result<()> {
 
     // fast forward to the voting period
     worker.fast_forward(100).await?;
-    // create a vote
 
+    // create a vote
     let res = alice_acc
         .call(ndc_elections_contract.id(), "vote")
         .args_json(json!({"prop_id": proposal_id, "vote": [john_acc.id()],}))
@@ -118,11 +130,32 @@ async fn vote_by_non_human() -> anyhow::Result<()> {
 
     // fast forward to the voting period
     worker.fast_forward(100).await?;
-    // create a vote
 
+    // create a vote
     let res = bob_acc
         .call(ndc_elections_contract.id(), "vote")
         .args_json(json!({"prop_id": proposal_id, "vote": [john_acc.id()],}))
+        .deposit(VOTE_COST)
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_failure());
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn vote_expired_iah_token() -> anyhow::Result<()> {
+    let worker = workspaces::sandbox().await?;
+    let (ndc_elections_contract, alice_acc, _, john_acc, proposal_id) = init(&worker).await?;
+
+    // fast forward to the voting period
+    worker.fast_forward(100).await?;
+
+    // create a vote
+    let res = john_acc
+        .call(ndc_elections_contract.id(), "vote")
+        .args_json(json!({"prop_id": proposal_id, "vote": [alice_acc.id()],}))
         .deposit(VOTE_COST)
         .max_gas()
         .transact()
