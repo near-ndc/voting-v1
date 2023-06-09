@@ -131,7 +131,7 @@ impl Contract {
             format!("not enough gas, min: {:?}", GAS_NOMINATE)
         );
 
-        // call SBT registry to verify IAH SBT and cast the nomination is callback based on the return from sbt_tokens_by_owner
+        // call SBT registry to verify IAH SBT and cast the nomination in callback based on the return from sbt_tokens_by_owner
         ext_sbtreg::ext(self.sbt_registry.clone())
             .sbt_tokens_by_owner(
                 nominator.clone(),

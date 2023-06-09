@@ -51,13 +51,13 @@ async fn init(
     // get current block time
     let block_info = worker.view_block().await?;
     let current_timestamp = block_info.timestamp() / SECOND;
-    let expires_at = current_timestamp + 100000000000;
+    // let expires_at = current_timestamp + 1000000;
 
     // mint IAH sbt to alice
     let token_metadata = TokenMetadata {
         class: 1,
         issued_at: Some(0),
-        expires_at: Some(expires_at),
+        expires_at: None,
         reference: None,
         reference_hash: None,
     };
@@ -97,7 +97,7 @@ async fn init(
         .json()?;
 
     return Ok((
-        ndc_nominations_contract.to_owned(),
+        ndc_nominations_contract,
         alice_acc,
         bob_acc,
         john_acc,
@@ -123,15 +123,13 @@ async fn human_nominates_human() -> anyhow::Result<()> {
     // fast forward to the campaign period
     worker.fast_forward(100).await?;
     // nominate
-    let res:String  = alice_acc
+    let res = alice_acc
         .call(ndc_elections_contract.id(), "nominate")
         .args_json(json!({"campaign": campaign_id, "nominee": bob_acc.id(),"comment": "test", "external_resource": "test"}))
         .max_gas()
         .transact()
-        .await?
-        .json()?;
-    print!("{}", res);
-    // assert!(res.is_success());
+        .await?;
+    assert!(res.is_success());
 
     // make sure the nomination for bob has been registered
     let res: u64 = alice_acc
@@ -162,6 +160,8 @@ async fn non_human_nominates_human() -> anyhow::Result<()> {
         .transact()
         .await?;
     assert!(res.is_failure());
+
+    println!("Passed ✅ non_human_nominates_human");
     Ok(())
 }
 
@@ -180,5 +180,7 @@ async fn non_human_nominates_human_expired_token() -> anyhow::Result<()> {
         .transact()
         .await?;
     assert!(res.is_failure());
+
+    println!("Passed ✅ non_human_nominates_human_expired_token");
     Ok(())
 }
