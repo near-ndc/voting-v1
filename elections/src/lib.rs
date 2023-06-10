@@ -151,6 +151,7 @@ impl Contract {
             env::panic_str("Voter is not a verified human, or the token has expired");
         }
         let mut p = self._proposal(prop_id);
+        require!(!p.voters.insert(&user), "caller already voted");
         p.vote_on_verified(&user, vote);
     }
 
