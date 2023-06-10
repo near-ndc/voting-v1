@@ -43,6 +43,7 @@ pub struct Proposal {
 #[serde(crate = "near_sdk::serde")]
 #[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct ProposalView {
+    pub id: u32,
     pub typ: HouseType,
     pub ref_link: String,
     /// start of voting as Unix timestamp (in seconds)
@@ -59,14 +60,15 @@ pub struct ProposalView {
 }
 
 impl Proposal {
-    pub fn to_view(self) -> ProposalView {
+    pub fn to_view(self, id: u32) -> ProposalView {
         let mut result: Vec<(AccountId, u64)> = Vec::with_capacity(self.candidates.len());
         for i in 0..self.candidates.len() {
-	    let c = self.candidates[i].clone();
-	    let r = self.result[i];
-            result.push( (c, r));
+            let c = self.candidates[i].clone();
+            let r = self.result[i];
+            result.push((c, r));
         }
         ProposalView {
+            id,
             typ: self.typ,
             ref_link: self.ref_link,
             start: self.start,
@@ -125,8 +127,8 @@ pub fn validate_vote(vs: &Vote, max_credits: u16, valid_candidates: &Vec<Account
 mod tests {
     use near_sdk::collections::LookupSet;
 
-    use crate::{storage::StorageKey, HouseType, ProposalView};
     use super::*;
+    use crate::{storage::StorageKey, HouseType, ProposalView};
 
     fn mk_account(i: u16) -> AccountId {
         AccountId::new_unchecked(format!("acc{}", i))
@@ -148,6 +150,7 @@ mod tests {
         };
         assert_eq!(
             ProposalView {
+                id: 12,
                 typ: HouseType::CouncilOfAdvisors,
                 ref_link: p.ref_link.clone(),
                 start: p.start,
@@ -161,6 +164,8 @@ mod tests {
                     (mk_account(3), 321),
                     (mk_account(4), 121)
                 ]
-            },             p.to_view())
+            },
+            p.to_view(12)
+        )
     }
 }

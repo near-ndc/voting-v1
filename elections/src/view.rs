@@ -10,6 +10,6 @@ impl Contract {
     }
 
     pub fn proposal(&self, prop_id: u32) -> ProposalView {
-        self._proposal(prop_id).to_view()
+        self._proposal(prop_id).to_view(prop_id)
     }
 }

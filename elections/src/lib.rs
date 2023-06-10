@@ -52,6 +52,22 @@ impl Contract {
         }
     }
 
+    /**********
+     * QUERIES
+     **********/
+
+    pub fn proposals(&self) -> Vec<ProposalView> {
+        let mut proposals = Vec::with_capacity(self.prop_counter as usize);
+        for i in 1..=self.prop_counter {
+            proposals.push(self.proposals.get(&i).unwrap().to_view(i));
+        }
+        proposals
+    }
+
+    /**********
+     * TRANSACTIONS
+     **********/
+
     /// creates new empty proposal
     /// returns the new proposal ID
     /// NOTE: storage is paid from the account state
@@ -315,10 +331,20 @@ mod tests {
     fn create_proposal() {
         let (_, mut ctr) = setup(&admin());
 
-        assert!(ctr.prop_counter == 0);
+        assert_eq!(ctr.prop_counter, 0);
         let prop_id = mk_proposal(&mut ctr);
-        assert!(ctr.prop_counter == 1);
+        assert_eq!(ctr.prop_counter, 1);
         assert!(ctr.proposals.contains_key(&prop_id));
+
+        let prop_id = mk_proposal(&mut ctr);
+        assert_eq!(prop_id, 2);
+        assert_eq!(ctr.prop_counter, 2);
+        assert!(ctr.proposals.contains_key(&prop_id));
+
+        let proposals = ctr.proposals();
+        assert_eq!(proposals.len(), 2);
+        assert_eq!(proposals[0].id, 1);
+        assert_eq!(proposals[1].id, 2);
     }
 
     #[test]

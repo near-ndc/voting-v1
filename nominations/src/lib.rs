@@ -61,7 +61,7 @@ impl Contract {
     }
 
     /**********
-     * FUNCTIONS
+     * TRANSACTIONS
      **********/
 
     pub fn add_campaign(&mut self, name: String, link: String, start_time: u64, end_time: u64) {
