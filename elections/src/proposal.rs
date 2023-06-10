@@ -9,6 +9,7 @@ use crate::constants::*;
 
 #[derive(Serialize, Deserialize, BorshDeserialize, BorshSerialize)]
 #[serde(crate = "near_sdk::serde")]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub enum HouseType {
     Other,
     HouseOfMerit,
@@ -17,6 +18,7 @@ pub enum HouseType {
 }
 
 #[derive(BorshDeserialize, BorshSerialize)]
+#[cfg_attr(test, derive(Debug))]
 pub struct Proposal {
     pub typ: HouseType,
     pub ref_link: String,
@@ -39,6 +41,7 @@ pub struct Proposal {
 
 #[derive(Serialize)]
 #[serde(crate = "near_sdk::serde")]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct ProposalView {
     pub typ: HouseType,
     pub ref_link: String,
@@ -51,13 +54,18 @@ pub struct ProposalView {
     pub voters_num: u32,
     /// max amount of credits each voter has
     pub seats: u16,
-    pub candidates: Vec<AccountId>,
-    /// sum of votes per candidate in the same as self.candidates
-    pub result: Vec<u64>,
+    /// list of candidates with sum of votes.
+    pub result: Vec<(AccountId, u64)>,
 }
 
 impl Proposal {
     pub fn to_view(self) -> ProposalView {
+        let mut result: Vec<(AccountId, u64)> = Vec::with_capacity(self.candidates.len());
+        for i in 0..self.candidates.len() {
+	    let c = self.candidates[i].clone();
+	    let r = self.result[i];
+            result.push( (c, r));
+        }
         ProposalView {
             typ: self.typ,
             ref_link: self.ref_link,
@@ -66,8 +74,7 @@ impl Proposal {
             quorum: self.quorum,
             voters_num: self.voters_num,
             seats: self.seats,
-            candidates: self.candidates,
-            result: self.result,
+            result,
         }
     }
 
@@ -111,5 +118,49 @@ pub fn validate_vote(vs: &Vote, max_credits: u16, valid_candidates: &Vec<Account
             valid_candidates.binary_search(candidate).is_ok(),
             "vote for unknown candidate"
         );
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    use near_sdk::collections::LookupSet;
+
+    use crate::{storage::StorageKey, HouseType, ProposalView};
+    use super::*;
+
+    fn mk_account(i: u16) -> AccountId {
+        AccountId::new_unchecked(format!("acc{}", i))
+    }
+
+    #[test]
+    fn to_proposal_view() {
+        let p = Proposal {
+            typ: HouseType::CouncilOfAdvisors,
+            ref_link: "near.social/abc".to_owned(),
+            start: 10,
+            end: 111222,
+            quorum: 551,
+            seats: 2,
+            candidates: vec![mk_account(2), mk_account(1), mk_account(3), mk_account(4)],
+            result: vec![10000, 5, 321, 121],
+            voters: LookupSet::new(StorageKey::ProposalVoters(1)),
+            voters_num: 10,
+        };
+        assert_eq!(
+            ProposalView {
+                typ: HouseType::CouncilOfAdvisors,
+                ref_link: p.ref_link.clone(),
+                start: p.start,
+                end: p.end,
+                quorum: p.quorum,
+                seats: p.seats,
+                voters_num: p.voters_num,
+                result: vec![
+                    (mk_account(2), 10000),
+                    (mk_account(1), 5),
+                    (mk_account(3), 321),
+                    (mk_account(4), 121)
+                ]
+            },             p.to_view())
     }
 }

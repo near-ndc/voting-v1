@@ -105,7 +105,7 @@ impl Contract {
         let p = self._proposal(prop_id);
         p.assert_active();
         let user = env::predecessor_account_id();
-        require!(!p.voters.contains(&user), "caller already voted",);
+        require!(!p.voters.contains(&user), "caller already voted");
         require!(
             env::attached_deposit() >= VOTE_COST,
             format!(
