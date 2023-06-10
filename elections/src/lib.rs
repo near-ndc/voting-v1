@@ -6,7 +6,7 @@ use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise};
 
 mod constants;
 mod ext;
-mod proposal;
+pub mod proposal;
 mod storage;
 mod view;
 

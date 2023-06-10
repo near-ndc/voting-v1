@@ -2,18 +2,20 @@ use near_units::parse_near;
 use serde_json::json;
 use workspaces::{Account, Contract, DevNetwork, Worker};
 
-use crate::{HouseType, TokenMetadata, SECOND, VOTE_COST};
+
+//extern crate elections;
+use elections::proposal::{HouseType, TokenMetadata, SECOND, VOTE_COST};
 
 async fn init(
     worker: &Worker<impl DevNetwork>,
 ) -> anyhow::Result<(Contract, Account, Account, Account, u32)> {
     // deploy contracts
     let ndc_elections_contract = worker
-        .dev_deploy(include_bytes!("../../../res/ndc_elections.wasm"))
+        .dev_deploy(include_bytes!("../../res/ndc_elections.wasm"))
         .await?;
 
     let registry_contract = worker
-        .dev_deploy(include_bytes!("../../../res/registry.wasm"))
+        .dev_deploy(include_bytes!("../../res/registry.wasm"))
         .await?;
 
     let authority_acc = worker.dev_create_account().await?;
