@@ -64,7 +64,7 @@ impl Contract {
     }
 
     /**********
-     * FUNCTIONS
+     * TRANSACTIONS
      **********/
 
     #[payable]

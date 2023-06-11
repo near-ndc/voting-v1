@@ -17,4 +17,11 @@ test:
 	@cargo test
 
 test-unit-debug:
+	@cargo test --lib  -- --show-output
+
+test-unit-debug2:
 	@RUST_BACKTRACE=1 cargo test --lib  -- --nocapture
+
+
+test-unit:
+	@cargo test --lib
