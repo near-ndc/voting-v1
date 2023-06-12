@@ -108,7 +108,7 @@ impl Contract {
                 nominee.clone(),
                 Some(self.iah_issuer.clone()),
                 Some(self.iah_class_id.clone()),
-                Some(2),
+                None,
                 Some(true),
             )
             .then(
@@ -144,7 +144,7 @@ impl Contract {
                 upvoter.clone(),
                 Some(self.iah_issuer.clone()),
                 Some(self.iah_class_id.clone()),
-                Some(2),
+                None,
                 Some(true),
             )
             .then(
@@ -205,8 +205,19 @@ impl Contract {
         nominee: AccountId,
         upvoter: AccountId,
     ) {
-        if val.is_empty() {
-            env::panic_str("Not a verified human, or the token has expired");
+        // verify human and og token holder
+        let mut iah_verified = false;
+        let mut og_verified = false;
+        for token in val[0].1.iter() {
+            if token.metadata.class == self.iah_class_id {
+                iah_verified = true;
+            }
+            if token.metadata.class == self.og_class_id {
+                og_verified = true;
+            }
+        }
+        if !iah_verified && !og_verified {
+            env::panic_str("Not a verified human/OG member, or the tokens are expired");
         }
         let num_of_upvotes = self.num_upvotes.get(&nominee).unwrap_or(0);
         self.num_upvotes.insert(&nominee, &(num_of_upvotes + 1));
@@ -220,9 +231,19 @@ impl Contract {
         nominee: AccountId,
         house_type: HouseType,
     ) {
-        if val.is_empty() {
-            // TODO: add check for the OG token
-            env::panic_str("Not a verified human, or the token has expired");
+        // verify human and og token holder
+        let mut iah_verified = false;
+        let mut og_verified = false;
+        for token in val[0].1.iter() {
+            if token.metadata.class == self.iah_class_id {
+                iah_verified = true;
+            }
+            if token.metadata.class == self.og_class_id {
+                og_verified = true;
+            }
+        }
+        if !iah_verified && !og_verified {
+            env::panic_str("Not a verified human/OG member, or the tokens are expired");
         }
         self.nominations.insert(&nominee, &house_type);
     }
