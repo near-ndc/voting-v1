@@ -22,14 +22,14 @@ pub struct Contract {
     pub iah_issuer: AccountId,
     /// IAH class ID used for Facetech verification
     pub iah_class_id: u64,
+    /// OG token class ID
+    pub og_class_id: u64,
     /// map of nominations
-    pub nominations: LookupMap<NominationKey, HouseType>,
-    /// map of upvotes -> number of received upvotes per nomination
-    pub upvotes: UnorderedSet<(NominationKey, AccountId)>,
+    pub nominations: LookupMap<AccountId, HouseType>,
+    /// set of pairs (candidate, upvoter)
+    pub upvotes: UnorderedSet<(AccountId, AccountId)>,
+    /// number of upvotes per candidate
     pub num_upvotes: LookupMap<AccountId, u64>,
-    pub campaigns: LookupMap<u32, Campaign>,
-    pub campaign_counter: u32,
-
     /// used for backend key rotation
     pub admins: LazyOption<Vec<AccountId>>,
 }
@@ -41,17 +41,17 @@ impl Contract {
         sbt_registry: AccountId,
         iah_issuer: AccountId,
         iah_class_id: u64,
+        og_class_id: u64,
         admins: Vec<AccountId>,
     ) -> Self {
         Self {
             sbt_registry,
             iah_issuer,
             iah_class_id,
+            og_class_id,
             nominations: LookupMap::new(StorageKey::Nominations),
             upvotes: UnorderedSet::new(StorageKey::Upvotes),
             num_upvotes: LookupMap::new(StorageKey::NumUpvotes),
-            campaigns: LookupMap::new(StorageKey::Campaigns),
-            campaign_counter: 0,
             admins: LazyOption::new(StorageKey::Admins, Some(&admins)),
         }
     }
@@ -69,47 +69,6 @@ impl Contract {
      * TRANSACTIONS
      **********/
 
-    #[payable]
-    pub fn add_campaign(
-        &mut self,
-        name: String,
-        link: String,
-        start_time: u64,
-        end_time: u64,
-    ) -> u32 {
-        if let Some(admins) = self.admins.get() {
-            let caller = env::predecessor_account_id();
-            require!(admins.contains(&caller), "not authoirized");
-        }
-        let storage_start = env::storage_usage();
-        require!(
-            name.len() <= MAX_CAMPAIGN_LEN && link.len() <= MAX_CAMPAIGN_LEN,
-            format!(
-                "max name and link length is {} characters",
-                MAX_CAMPAIGN_LEN
-            )
-        );
-        let c = Campaign {
-            name,
-            link,
-            start_time,
-            end_time,
-        };
-        self.campaign_counter += 1;
-        self.campaigns.insert(&self.campaign_counter, &c);
-
-        let storage_usage = env::storage_usage();
-        let required_deposit = (storage_usage - storage_start) as u128 * env::storage_byte_cost();
-        require!(
-            env::attached_deposit() >= required_deposit,
-            format!(
-                "not enough NEAR for storage deposit, required: {}",
-                required_deposit
-            )
-        );
-        self.campaign_counter
-    }
-
     /// nominate method allows to submit nominatios by verified humans
     /// + Checks if the caller is a verified human
     /// + Check if the caller is a OG member
@@ -118,25 +77,14 @@ impl Contract {
     /// + Checks if the nomination was submitted during the nomination period
     pub fn self_nominate(
         &mut self,
-        campaign: u32,
         house_type: HouseType,
         #[allow(unused_variables)] comment: String,
         #[allow(unused_variables)] external_resource: Option<String>,
     ) -> Promise {
         let nominee = env::predecessor_account_id();
-        let c = self
-            .campaigns
-            .get(&campaign)
-            .expect("campaign ID not found");
 
-        c.assert_active();
-
-        let nomination_key = NominationKey {
-            campaign,
-            nominee: nominee.clone(),
-        };
         require!(
-            !self.nominations.contains_key(&nomination_key),
+            !self.nominations.contains_key(&nominee),
             "User has already nominated themselves to a different house",
         );
 
@@ -149,46 +97,34 @@ impl Contract {
         // TODO: add check for the sbt og token
         ext_sbtreg::ext(self.sbt_registry.clone())
             .sbt_tokens_by_owner(
-                nominator.clone(),
+                nominee.clone(),
                 Some(self.iah_issuer.clone()),
                 Some(self.iah_class_id.clone()),
-                Some(1),
+                Some(2),
                 Some(true),
             )
             .then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(GAS_VOTE_CALLBACK)
-                    .on_nominate_verified(nomination_key, house_type),
+                    .on_nominate_verified(nominee, house_type),
             )
     }
 
     pub fn upvote(
         &mut self,
-        campaign: u32,
         candidate: AccountId,
         #[allow(unused_variables)] comment: String,
         #[allow(unused_variables)] external_resource: Option<String>,
     ) -> Promise {
         let upvoter = env::predecessor_account_id();
-        let c = self
-            .campaigns
-            .get(&campaign)
-            .expect("campaign ID not found");
 
-        c.assert_active();
-
-        let nomination_key = NominationKey {
-            campaign,
-            nominee: candidate.clone(),
-        };
         require!(
-            self.nominations.contains_key(&nomination_key),
+            self.nominations.contains_key(&candidate),
             "Nomination not found",
         );
 
         require!(
-            self.upvotes
-                .contains(&(nomination_key.clone(), upvoter.clone())),
+            self.upvotes.contains(&(candidate.clone(), upvoter.clone())),
             "User has already upvoted given nomination"
         );
 
@@ -199,41 +135,32 @@ impl Contract {
                 upvoter.clone(),
                 Some(self.iah_issuer.clone()),
                 Some(self.iah_class_id.clone()),
-                Some(1),
+                Some(2),
+                Some(true),
             )
             .then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(GAS_VOTE_CALLBACK)
-                    .on_upvote_verified(nomination_key, upvoter),
+                    .on_upvote_verified(candidate, upvoter),
             )
     }
 
     /// Revokes callers nominatnion and all the upvotes of that specific nomination
-    pub fn self_revoke(&mut self, campaign: u32) {
+    pub fn self_revoke(&mut self) {
         let nominee = env::predecessor_account_id();
-        let c = self
-            .campaigns
-            .get(&campaign)
-            .expect("campaign ID not found");
 
-        c.assert_active();
-
-        let nomination_key = NominationKey {
-            campaign,
-            nominee: nominee.clone(),
-        };
         require!(
-            self.nominations.contains_key(&nomination_key),
+            self.nominations.contains_key(&nominee),
             "User is not nominated, cannot revoke",
         );
 
-        self.nominations.remove(&nomination_key);
-        self.num_upvotes.remove(&nomination_key.nominee);
+        self.nominations.remove(&nominee);
+        self.num_upvotes.remove(&nominee);
 
-        let mut keys_to_remove: Vec<(NominationKey, AccountId)> = Vec::new();
+        let mut keys_to_remove: Vec<(AccountId, AccountId)> = Vec::new();
 
         for upvote in self.upvotes.iter() {
-            if upvote.0 == nomination_key.clone() {
+            if upvote.0 == nominee {
                 keys_to_remove.push(upvote);
             }
         }
@@ -242,13 +169,10 @@ impl Contract {
         }
     }
 
-    pub fn revoke_upvote(&mut self, candidate: AccountId, campaign: u32) {
+    pub fn revoke_upvote(&mut self, candidate: AccountId) {
         let caller = env::predecessor_account_id();
-        let nomination_key = NominationKey {
-            campaign,
-            nominee: candidate.clone(),
-        };
-        if self.upvotes.remove(&(nomination_key, caller)) {
+
+        if self.upvotes.remove(&(candidate.clone(), caller)) {
             let num_of_upvotes = self.num_upvotes.get(&candidate).unwrap_or(1); //we do 1 so the results will be at least 0
             self.num_upvotes.insert(&candidate, &(num_of_upvotes - 1));
         } else {
@@ -267,30 +191,29 @@ impl Contract {
     pub fn on_upvote_verified(
         &mut self,
         #[callback_unwrap] val: Vec<(AccountId, Vec<OwnedToken>)>,
-        nomination_key: NominationKey,
+        nominee: AccountId,
         upvoter: AccountId,
     ) {
         if val.is_empty() {
             env::panic_str("Not a verified human, or the token has expired");
         }
-        let num_of_upvotes = self.num_upvotes.get(&nomination_key.nominee).unwrap_or(0);
-        self.num_upvotes
-            .insert(&nomination_key.nominee, &(num_of_upvotes + 1));
-        self.upvotes.insert(&(nomination_key, upvoter));
+        let num_of_upvotes = self.num_upvotes.get(&nominee).unwrap_or(0);
+        self.num_upvotes.insert(&nominee, &(num_of_upvotes + 1));
+        self.upvotes.insert(&(nominee, upvoter));
     }
 
     #[private]
     pub fn on_nominate_verified(
         &mut self,
         #[callback_unwrap] val: Vec<(AccountId, Vec<OwnedToken>)>,
-        nomination_key: NominationKey,
+        nominee: AccountId,
         house_type: HouseType,
     ) {
         if val.is_empty() {
             // TODO: add check for the OG token
             env::panic_str("Not a verified human, or the token has expired");
         }
-        self.nominations.insert(&nomination_key, &house_type);
+        self.nominations.insert(&nominee, &house_type);
     }
 }
 

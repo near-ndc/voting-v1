@@ -12,13 +12,6 @@ pub enum StorageKey {
     NumUpvotes,
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone, PartialEq, Eq)]
-#[serde(crate = "near_sdk::serde")]
-pub struct NominationKey {
-    pub campaign: u32,
-    pub nominee: AccountId,
-}
-
 #[derive(BorshDeserialize, BorshSerialize)]
 pub struct Campaign {
     pub name: String,
