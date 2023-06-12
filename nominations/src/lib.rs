@@ -1,6 +1,6 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap, LookupSet};
-use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, PromiseResult};
+use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise};
 
 mod constants;
 mod storage;
@@ -10,6 +10,9 @@ use crate::storage::*;
 
 pub mod ext;
 pub use crate::ext::*;
+
+#[cfg(test)]
+mod integration_tests;
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -64,7 +67,14 @@ impl Contract {
      * TRANSACTIONS
      **********/
 
-    pub fn add_campaign(&mut self, name: String, link: String, start_time: u64, end_time: u64) {
+    #[payable]
+    pub fn add_campaign(
+        &mut self,
+        name: String,
+        link: String,
+        start_time: u64,
+        end_time: u64,
+    ) -> u32 {
         if let Some(admins) = self.admins.get() {
             let caller = env::predecessor_account_id();
             require!(admins.contains(&caller), "not authoirized");
@@ -72,7 +82,10 @@ impl Contract {
         let storage_start = env::storage_usage();
         require!(
             name.len() <= MAX_CAMPAIGN_LEN && link.len() <= MAX_CAMPAIGN_LEN,
-            "max name and link length is 200 characters"
+            format!(
+                "max name and link length is {} characters",
+                MAX_CAMPAIGN_LEN
+            )
         );
         let c = Campaign {
             name,
@@ -88,10 +101,11 @@ impl Contract {
         require!(
             env::attached_deposit() >= required_deposit,
             format!(
-                "not enough NEAR for storage depost, required: {}",
+                "not enough NEAR for storage deposit, required: {}",
                 required_deposit
             )
         );
+        self.campaign_counter
     }
 
     /// nominate method allows to submit nominatios by verified humans
@@ -104,7 +118,7 @@ impl Contract {
         nominee: AccountId,
         #[allow(unused_variables)] comment: String,
         #[allow(unused_variables)] external_resource: Option<String>,
-    ) {
+    ) -> Promise {
         let nominator = env::predecessor_account_id();
         let c = self
             .campaigns
@@ -117,19 +131,20 @@ impl Contract {
             format!("not enough gas, min: {:?}", GAS_NOMINATE)
         );
 
-        // call SBT registry to verify IAH SBT and cast the nomination is callback based on the return from sbt_tokens_by_owner
+        // call SBT registry to verify IAH SBT and cast the nomination in callback based on the return from sbt_tokens_by_owner
         ext_sbtreg::ext(self.sbt_registry.clone())
             .sbt_tokens_by_owner(
-                nominee.clone(),
+                nominator.clone(),
                 Some(self.iah_issuer.clone()),
                 Some(self.iah_class_id.clone()),
                 Some(1),
+                Some(true),
             )
             .then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(GAS_VOTE_CALLBACK)
                     .on_nominate_verified(campaign, nominator, nominee),
-            );
+            )
     }
 
     /*****************
@@ -139,32 +154,24 @@ impl Contract {
     #[private]
     pub fn on_nominate_verified(
         &mut self,
+        #[callback_unwrap] val: Vec<(AccountId, Vec<OwnedToken>)>,
         campaign: u32,
         nominator: AccountId,
         nominee: AccountId,
     ) {
-        match env::promise_result(0) {
-            PromiseResult::NotReady => unreachable!(),
-            PromiseResult::Successful(value) => {
-                if let Ok(result) =
-                    near_sdk::serde_json::from_slice::<Vec<(AccountId, Vec<OwnedToken>)>>(&value)
-                {
-                    // must have SBT tokens
-                    require!(result.len() > 0, "not a human");
-                    let nomination_key = NominationKey {
-                        campaign,
-                        nominator,
-                        nominee: nominee.clone(),
-                    };
-                    if !self.nominations.contains(&nomination_key) {
-                        let key = &(campaign, nominee);
-                        let num_of_nominations = self.nominations_sum.get(&key).unwrap_or(0);
-                        self.nominations_sum.insert(&key, &(num_of_nominations + 1));
-                        self.nominations.insert(&nomination_key);
-                    }
-                }
-            }
-            PromiseResult::Failed => env::panic_str("sbt_tokens_by_owner call failed"),
+        if val.is_empty() {
+            env::panic_str("Voter is not a verified human, or the token has expired");
+        }
+        let nomination_key = NominationKey {
+            campaign,
+            nominator,
+            nominee: nominee.clone(),
+        };
+        if !self.nominations.contains(&nomination_key) {
+            let key = (campaign, nominee);
+            let num_of_nominations = self.nominations_sum.get(&key).unwrap_or(0);
+            self.nominations_sum.insert(&key, &(num_of_nominations + 1));
+            self.nominations.insert(&nomination_key);
         }
     }
 }
