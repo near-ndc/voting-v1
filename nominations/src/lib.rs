@@ -32,6 +32,10 @@ pub struct Contract {
     pub num_upvotes: LookupMap<AccountId, u64>,
     /// used for backend key rotation
     pub admins: LazyOption<Vec<AccountId>>,
+    /// nomination period start time
+    pub start_time: u64,
+    /// nomination period end time
+    pub end_time: u64,
 }
 
 #[near_bindgen]
@@ -43,12 +47,16 @@ impl Contract {
         iah_class_id: u64,
         og_class_id: u64,
         admins: Vec<AccountId>,
+        start_time: u64,
+        end_time: u64,
     ) -> Self {
         Self {
             sbt_registry,
             iah_issuer,
             iah_class_id,
             og_class_id,
+            start_time,
+            end_time,
             nominations: LookupMap::new(StorageKey::Nominations),
             upvotes: UnorderedSet::new(StorageKey::Upvotes),
             num_upvotes: LookupMap::new(StorageKey::NumUpvotes),
@@ -81,8 +89,8 @@ impl Contract {
         #[allow(unused_variables)] comment: String,
         #[allow(unused_variables)] external_resource: Option<String>,
     ) -> Promise {
+        self.assert_active();
         let nominee = env::predecessor_account_id();
-
         require!(
             !self.nominations.contains_key(&nominee),
             "User has already nominated themselves to a different house",
@@ -116,6 +124,7 @@ impl Contract {
         #[allow(unused_variables)] comment: String,
         #[allow(unused_variables)] external_resource: Option<String>,
     ) -> Promise {
+        self.assert_active();
         let upvoter = env::predecessor_account_id();
 
         require!(
@@ -147,6 +156,7 @@ impl Contract {
 
     /// Revokes callers nominatnion and all the upvotes of that specific nomination
     pub fn self_revoke(&mut self) {
+        self.assert_active();
         let nominee = env::predecessor_account_id();
 
         require!(
@@ -170,6 +180,7 @@ impl Contract {
     }
 
     pub fn revoke_upvote(&mut self, candidate: AccountId) {
+        self.assert_active();
         let caller = env::predecessor_account_id();
 
         if self.upvotes.remove(&(candidate.clone(), caller)) {
@@ -214,6 +225,14 @@ impl Contract {
             env::panic_str("Not a verified human, or the token has expired");
         }
         self.nominations.insert(&nominee, &house_type);
+    }
+
+    fn assert_active(&self) {
+        let current_timestamp = env::block_timestamp();
+        require!(
+            current_timestamp >= self.start_time && current_timestamp <= self.end_time,
+            "Nominations time is not active"
+        );
     }
 }
 
