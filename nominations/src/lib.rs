@@ -1,5 +1,7 @@
+use core::num;
+
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::{LazyOption, LookupMap, UnorderedSet};
+use near_sdk::collections::{LazyOption, LookupMap, UnorderedMap, UnorderedSet};
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise};
 
 mod constants;
@@ -25,11 +27,11 @@ pub struct Contract {
     /// OG token class ID
     pub og_class_id: u64,
     /// map of nominations
-    pub nominations: LookupMap<AccountId, HouseType>,
+    pub nominations: UnorderedMap<AccountId, HouseType>,
     /// set of pairs (candidate, upvoter)
     pub upvotes: UnorderedSet<(AccountId, AccountId)>,
     /// number of upvotes per candidate
-    pub upvotes_per_candidate: LookupMap<AccountId, u64>,
+    pub upvotes_per_candidate: LookupMap<AccountId, u32>,
     /// used for backend key rotation
     pub admins: LazyOption<Vec<AccountId>>,
     /// nomination period start time
@@ -57,7 +59,7 @@ impl Contract {
             og_class_id,
             start_time,
             end_time,
-            nominations: LookupMap::new(StorageKey::Nominations),
+            nominations: UnorderedMap::new(StorageKey::Nominations),
             upvotes: UnorderedSet::new(StorageKey::Upvotes),
             upvotes_per_candidate: LookupMap::new(StorageKey::UpvotesPerCandidate),
             admins: LazyOption::new(StorageKey::Admins, Some(&admins)),
@@ -70,9 +72,15 @@ impl Contract {
 
     /// returns list of pairs:
     ///   (self-nominated account, sum of upvotes) of given house.
-    fn nominations(&self, house: HouseType) -> Vec<(AccountId, u32)> {
-        // TODO: add implementation for the query
-        env::panic_str("not implemented");
+    pub fn nominations(&self, house: HouseType) -> Vec<(AccountId, u32)> {
+        let mut results: Vec<(AccountId, u32)> = Vec::new();
+        for nomination in self.nominations.iter() {
+            if nomination.1 == house {
+                let num_of_upvotes = self.upvotes_per_candidate.get(&nomination.0).unwrap_or(0);
+                results.push((nomination.0, num_of_upvotes));
+            }
+        }
+        results
     }
 
     /**********
@@ -94,7 +102,7 @@ impl Contract {
         self.assert_active();
         let nominee = env::predecessor_account_id();
         require!(
-            !self.nominations.contains_key(&nominee),
+            self.nominations.get(&nominee).is_some(),
             "User has already nominated themselves to a different house",
         );
 
@@ -135,7 +143,7 @@ impl Contract {
         let upvoter = env::predecessor_account_id();
 
         require!(
-            self.nominations.contains_key(&candidate),
+            self.nominations.get(&candidate).is_some(),
             "Nomination not found",
         );
 
@@ -179,7 +187,7 @@ impl Contract {
         self.assert_active();
         let commenter = env::predecessor_account_id();
         require!(
-            self.nominations.contains_key(&candidate),
+            self.nominations.get(&candidate).is_some(),
             "Nomination does not exist",
         );
 
@@ -213,7 +221,7 @@ impl Contract {
         let nominee = env::predecessor_account_id();
 
         require!(
-            self.nominations.contains_key(&nominee),
+            self.nominations.get(&nominee).is_some(),
             "User is not nominated, cannot revoke",
         );
 

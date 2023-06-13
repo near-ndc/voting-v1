@@ -20,9 +20,9 @@ pub struct Campaign {
     pub end_time: u64,
 }
 
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, PartialEq)]
 #[serde(crate = "near_sdk::serde")]
-#[cfg_attr(test, derive(Debug, PartialEq))]
+#[cfg_attr(test, derive(Debug))]
 pub enum HouseType {
     Other,
     HouseOfMerit,
