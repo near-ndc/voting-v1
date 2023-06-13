@@ -1,5 +1,5 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::{LazyOption, LookupMap, UnorderedSet};
+use near_sdk::collections::{LazyOption, LookupMap, UnorderedMap, UnorderedSet};
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise};
 
 mod constants;
@@ -29,7 +29,9 @@ pub struct Contract {
     /// set of pairs (candidate, upvoter)
     pub upvotes: UnorderedSet<(AccountId, AccountId)>,
     /// number of upvotes per candidate
-    pub num_upvotes: LookupMap<AccountId, u64>,
+    pub upvotes_per_candidate: LookupMap<AccountId, u64>,
+    /// map of comments self nomination -> Vec(comment)
+    pub comments: UnorderedMap<AccountId, Vec<String>>,
     /// used for backend key rotation
     pub admins: LazyOption<Vec<AccountId>>,
     /// nomination period start time
@@ -59,7 +61,8 @@ impl Contract {
             end_time,
             nominations: LookupMap::new(StorageKey::Nominations),
             upvotes: UnorderedSet::new(StorageKey::Upvotes),
-            num_upvotes: LookupMap::new(StorageKey::NumUpvotes),
+            upvotes_per_candidate: LookupMap::new(StorageKey::UpvotesPerCandidate),
+            comments: UnorderedMap::new(StorageKey::Comments),
             admins: LazyOption::new(StorageKey::Admins, Some(&admins)),
         }
     }
@@ -68,9 +71,11 @@ impl Contract {
      * QUERIES
      **********/
 
-    /// returns the number of upvotes per nomination. If the nomination has not been upvoted returns 0
-    pub fn upvotes_per_nomination(&self, nominee: AccountId) -> u64 {
-        self.num_upvotes.get(&nominee).unwrap_or(0)
+    /// returns list of pairs:
+    ///   (self-nominated account, sum of upvotes) of given house.
+    fn nominations(&self, house: HouseType) -> Vec<(AccountId, u32)> {
+        // TODO: add implementation for the query
+        env::panic_str("not implemented");
     }
 
     /**********
@@ -85,9 +90,9 @@ impl Contract {
     /// + Checks if the nomination was submitted during the nomination period
     pub fn self_nominate(
         &mut self,
-        house_type: HouseType,
+        house: HouseType,
         #[allow(unused_variables)] comment: String,
-        #[allow(unused_variables)] external_resource: Option<String>,
+        #[allow(unused_variables)] link: Option<String>,
     ) -> Promise {
         self.assert_active();
         let nominee = env::predecessor_account_id();
@@ -98,13 +103,18 @@ impl Contract {
 
         require!(
             env::prepaid_gas() >= GAS_NOMINATE,
-            format!("not enough gas, min: {:?}", GAS_NOMINATE)
+            format!("Not enough gas, min: {:?}", GAS_NOMINATE)
         );
 
-        // call SBT registry to verify IAH SBT and cast the nomination is callback based on the return from sbt_tokens_by_owner
-        // TODO: add check for the sbt og token
+        require!(
+            env::attached_deposit() >= NOMINATE_COST,
+            format!("Not enough deposit, min: {:?}", NOMINATE_COST)
+        );
+
+        // call SBT registry to verify IAH/ OG SBT and cast the nomination in callback based on the return from sbt_tokens_by_owner
         ext_sbtreg::ext(self.sbt_registry.clone())
             .sbt_tokens_by_owner(
+                // TODO: Once the is_verified method in registry is implemented use it instead
                 nominee.clone(),
                 Some(self.iah_issuer.clone()),
                 Some(self.iah_class_id.clone()),
@@ -113,17 +123,17 @@ impl Contract {
             )
             .then(
                 Self::ext(env::current_account_id())
-                    .with_static_gas(GAS_VOTE_CALLBACK)
-                    .on_nominate_verified(nominee, house_type),
+                    .with_static_gas(GAS_NOMINATE)
+                    .on_nominate_verified(nominee, house),
             )
     }
 
-    pub fn upvote(
-        &mut self,
-        candidate: AccountId,
-        #[allow(unused_variables)] comment: String,
-        #[allow(unused_variables)] external_resource: Option<String>,
-    ) -> Promise {
+    /// upvtoe allows users to upvote a specific candidante
+    /// + Checks if the caller is a verified human
+    /// + Checks if there is a nomination for the given candidate
+    /// + Checks if the caller has already upvoted the candidate
+    /// + Checks if the nomination period is active
+    pub fn upvote(&mut self, candidate: AccountId) -> Promise {
         self.assert_active();
         let upvoter = env::predecessor_account_id();
 
@@ -133,28 +143,74 @@ impl Contract {
         );
 
         require!(
-            self.upvotes.contains(&(candidate.clone(), upvoter.clone())),
+            !self.upvotes.contains(&(candidate.clone(), upvoter.clone())),
             "User has already upvoted given nomination"
         );
 
-        // call SBT registry to verify IAH SBT and cast the nomination is callback based on the return from sbt_tokens_by_owner
-        // TODO: add check for the sbt og token
+        require!(
+            env::prepaid_gas() >= GAS_UPVOTE,
+            format!("Not enough gas, min: {:?}", GAS_UPVOTE)
+        );
+
+        require!(
+            env::attached_deposit() >= UPVOTE_COST,
+            format!("Not enough deposit, min: {:?}", UPVOTE_COST)
+        );
+
+        // call SBT registry to verify IAH/ OG SBT and cast the upvote in callback based on the return from sbt_tokens_by_owner
         ext_sbtreg::ext(self.sbt_registry.clone())
             .sbt_tokens_by_owner(
+                // TODO: Once the is_verified method in registry is implemented use it instead
                 upvoter.clone(),
                 Some(self.iah_issuer.clone()),
                 Some(self.iah_class_id.clone()),
-                None,
+                Some(1),
                 Some(true),
             )
             .then(
                 Self::ext(env::current_account_id())
-                    .with_static_gas(GAS_VOTE_CALLBACK)
+                    .with_static_gas(GAS_UPVOTE)
                     .on_upvote_verified(candidate, upvoter),
             )
     }
 
+    // comment allows users to comment on a existing nomination
+    /// + Checks if the caller is a verified human
+    /// + Checks if there is a nomination for the given candidate
+    /// + Checks if the nomination period is active
+    pub fn comment(&mut self, candidate: AccountId, comment: String) -> Promise {
+        self.assert_active();
+        let commenter = env::predecessor_account_id();
+        require!(
+            self.nominations.contains_key(&candidate),
+            "Nomination does not exist",
+        );
+
+        require!(
+            env::prepaid_gas() >= GAS_COMMENT,
+            format!("Not enough gas, min: {:?}", GAS_COMMENT)
+        );
+
+        // call SBT registry to verify IAH/ OG SBT and cast the nomination in callback based on the return from sbt_tokens_by_owner
+        ext_sbtreg::ext(self.sbt_registry.clone())
+            .sbt_tokens_by_owner(
+                // TODO: Once the is_verified method in registry is implemented use it instead
+                commenter.clone(),
+                Some(self.iah_issuer.clone()),
+                Some(self.iah_class_id.clone()),
+                Some(1),
+                Some(true),
+            )
+            .then(
+                Self::ext(env::current_account_id())
+                    .with_static_gas(GAS_NOMINATE)
+                    .on_comment_verified(),
+            )
+    }
+
     /// Revokes callers nominatnion and all the upvotes of that specific nomination
+    /// + Checks if the nomination period is active
+    /// + Checks if the user has a nomination to revoke
     pub fn self_revoke(&mut self) {
         self.assert_active();
         let nominee = env::predecessor_account_id();
@@ -165,7 +221,7 @@ impl Contract {
         );
 
         self.nominations.remove(&nominee);
-        self.num_upvotes.remove(&nominee);
+        self.upvotes_per_candidate.remove(&nominee);
 
         let mut keys_to_remove: Vec<(AccountId, AccountId)> = Vec::new();
 
@@ -179,13 +235,17 @@ impl Contract {
         }
     }
 
+    /// Revokes the upvote
+    /// + Checks if the nomination period is active
+    /// + Checks if the caller upvoted the `candidate` before
     pub fn revoke_upvote(&mut self, candidate: AccountId) {
         self.assert_active();
         let caller = env::predecessor_account_id();
 
         if self.upvotes.remove(&(candidate.clone(), caller)) {
-            let num_of_upvotes = self.num_upvotes.get(&candidate).unwrap_or(1); //we do 1 so the results will be at least 0
-            self.num_upvotes.insert(&candidate, &(num_of_upvotes - 1));
+            let num_of_upvotes = self.upvotes_per_candidate.get(&candidate).unwrap_or(1); //we do 1 so the results will be at least 0
+            self.upvotes_per_candidate
+                .insert(&candidate, &(num_of_upvotes - 1));
         } else {
             env::panic_str(
                 "There are no upvotes registered for this candidate from the caller account",
@@ -197,7 +257,7 @@ impl Contract {
      * PRIVATE
      ****************/
 
-    /// If the upvoter is a verified human registes the upvote otherwise panics
+    /// Checks If the upvoter is a verified human registers the upvote otherwise panics
     #[private]
     pub fn on_upvote_verified(
         &mut self,
@@ -205,25 +265,28 @@ impl Contract {
         nominee: AccountId,
         upvoter: AccountId,
     ) {
-        // verify human and og token holder
-        let mut iah_verified = false;
-        let mut og_verified = false;
-        for token in val[0].1.iter() {
-            if token.metadata.class == self.iah_class_id {
-                iah_verified = true;
-            }
-            if token.metadata.class == self.og_class_id {
-                og_verified = true;
-            }
+        if val.is_empty() {
+            env::panic_str("Not a verified human member, or the tokens are expired");
         }
-        if !iah_verified && !og_verified {
-            env::panic_str("Not a verified human/OG member, or the tokens are expired");
-        }
-        let num_of_upvotes = self.num_upvotes.get(&nominee).unwrap_or(0);
-        self.num_upvotes.insert(&nominee, &(num_of_upvotes + 1));
+        let num_of_upvotes = self.upvotes_per_candidate.get(&nominee).unwrap_or(0);
+        self.upvotes_per_candidate
+            .insert(&nominee, &(num_of_upvotes + 1));
         self.upvotes.insert(&(nominee, upvoter));
     }
 
+    /// Checks If the commenter is a verified human otherwise panics
+    #[private]
+    pub fn on_comment_verified(
+        &mut self,
+        #[callback_unwrap] val: Vec<(AccountId, Vec<OwnedToken>)>,
+    ) {
+        if val.is_empty() {
+            env::panic_str("Not a verified human member, or the tokens are expired");
+        }
+        // TODO: what should be done in the case we do not register the comments on-chain?
+    }
+
+    ///Checks If the caller is a verified human and OG token holder and registers the nomination otherwise panics
     #[private]
     pub fn on_nominate_verified(
         &mut self,
@@ -231,6 +294,7 @@ impl Contract {
         nominee: AccountId,
         house_type: HouseType,
     ) {
+        // TODO: Once the is_verified method in registry is implemented use it instead
         // verify human and og token holder
         let mut iah_verified = false;
         let mut og_verified = false;

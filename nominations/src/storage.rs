@@ -1,15 +1,15 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::serde::{Deserialize, Serialize};
-use near_sdk::{env, require, AccountId, BorshStorageKey};
+use near_sdk::BorshStorageKey;
 
 /// Helper structure for keys of the persistent collections.
 #[derive(BorshSerialize, BorshStorageKey)]
 pub enum StorageKey {
     Nominations,
     Upvotes,
-    Campaigns,
     Admins,
-    NumUpvotes,
+    UpvotesPerCandidate,
+    Comments,
 }
 
 #[derive(BorshDeserialize, BorshSerialize)]
@@ -29,17 +29,4 @@ pub enum HouseType {
     HouseOfMerit,
     CouncilOfAdvisors,
     TransparencyCommission,
-}
-
-impl Campaign {
-    pub fn assert_active(self) {
-        let current_timestamp = env::block_timestamp() / crate::constants::SECOND;
-        require!(
-            current_timestamp <= self.end_time && current_timestamp >= self.start_time,
-            format!(
-                "Campaign not active. start_time: {}, end_time: {}",
-                self.start_time, self.end_time
-            )
-        );
-    }
 }
