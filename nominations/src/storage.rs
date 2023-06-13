@@ -9,7 +9,6 @@ pub enum StorageKey {
     Upvotes,
     Admins,
     UpvotesPerCandidate,
-    Comments,
 }
 
 #[derive(BorshDeserialize, BorshSerialize)]

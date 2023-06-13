@@ -30,8 +30,6 @@ pub struct Contract {
     pub upvotes: UnorderedSet<(AccountId, AccountId)>,
     /// number of upvotes per candidate
     pub upvotes_per_candidate: LookupMap<AccountId, u64>,
-    /// map of comments self nomination -> Vec(comment)
-    pub comments: UnorderedMap<AccountId, Vec<String>>,
     /// used for backend key rotation
     pub admins: LazyOption<Vec<AccountId>>,
     /// nomination period start time
@@ -62,7 +60,6 @@ impl Contract {
             nominations: LookupMap::new(StorageKey::Nominations),
             upvotes: UnorderedSet::new(StorageKey::Upvotes),
             upvotes_per_candidate: LookupMap::new(StorageKey::UpvotesPerCandidate),
-            comments: UnorderedMap::new(StorageKey::Comments),
             admins: LazyOption::new(StorageKey::Admins, Some(&admins)),
         }
     }
