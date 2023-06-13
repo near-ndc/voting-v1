@@ -99,8 +99,9 @@ impl Contract {
     ) -> Promise {
         self.assert_active();
         let nominee = env::predecessor_account_id();
+
         require!(
-            self.nominations.get(&nominee).is_some(),
+            self.nominations.get(&nominee).is_none(),
             "User has already nominated themselves to a different house",
         );
 
@@ -139,6 +140,8 @@ impl Contract {
     pub fn upvote(&mut self, candidate: AccountId) -> Promise {
         self.assert_active();
         let upvoter = env::predecessor_account_id();
+
+        require!(upvoter != candidate, "Cannot upvote your own nomination");
 
         require!(
             self.nominations.get(&candidate).is_some(),
@@ -186,7 +189,7 @@ impl Contract {
         let commenter = env::predecessor_account_id();
         require!(
             self.nominations.get(&candidate).is_some(),
-            "Nomination does not exist",
+            "Nomination not found",
         );
 
         require!(
@@ -325,4 +328,373 @@ impl Contract {
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
-mod tests {}
+mod tests {
+    use std::ops::Sub;
+
+    use near_sdk::{test_utils::VMContextBuilder, testing_env, AccountId, Gas, VMContext};
+
+    use crate::{
+        storage::HouseType, Contract, GAS_COMMENT, GAS_NOMINATE, GAS_UPVOTE, NOMINATE_COST, SECOND,
+        UPVOTE_COST,
+    };
+    const START: u64 = 10;
+    const END: u64 = 100000;
+    const IAH_CLASS_ID: u64 = 1;
+    const OG_CLASS_ID: u64 = 2;
+
+    fn alice() -> AccountId {
+        AccountId::new_unchecked("alice.near".to_string())
+    }
+
+    fn bob() -> AccountId {
+        AccountId::new_unchecked("bob.near".to_string())
+    }
+
+    fn candidate(idx: u32) -> AccountId {
+        AccountId::new_unchecked(format!("candidate{}.near", idx))
+    }
+
+    fn admin() -> AccountId {
+        AccountId::new_unchecked("admin.near".to_string())
+    }
+
+    fn sbt_registry() -> AccountId {
+        AccountId::new_unchecked("sbt_registry.near".to_string())
+    }
+
+    fn iah_issuer() -> AccountId {
+        AccountId::new_unchecked("iah_issuer.near".to_string())
+    }
+
+    fn setup(predecessor: &AccountId) -> (VMContext, Contract) {
+        let mut ctx = VMContextBuilder::new()
+            .predecessor_account_id(admin())
+            // .attached_deposit(deposit_dec.into())
+            .block_timestamp(START * SECOND)
+            .is_view(false)
+            .build();
+        testing_env!(ctx.clone());
+        let ctr = Contract::new(
+            sbt_registry(),
+            iah_issuer(),
+            IAH_CLASS_ID,
+            OG_CLASS_ID,
+            vec![admin()],
+            START * SECOND,
+            END * SECOND,
+        );
+        ctx.predecessor_account_id = predecessor.clone();
+        testing_env!(ctx.clone());
+        return (ctx, ctr);
+    }
+
+    #[test]
+    fn assert_active() {
+        let (_, ctr) = setup(&admin());
+        ctr.assert_active();
+    }
+
+    #[test]
+    #[should_panic(expected = "Nominations time is not active")]
+    fn assert_active_too_early() {
+        let (mut ctx, ctr) = setup(&alice());
+        ctx.block_timestamp = (START - 5) * SECOND;
+        testing_env!(ctx.clone());
+        ctr.assert_active();
+    }
+
+    #[test]
+    #[should_panic(expected = "Nominations time is not active")]
+    fn assert_active_too_late() {
+        let (mut ctx, ctr) = setup(&alice());
+        ctx.block_timestamp = (END + 5) * SECOND;
+        testing_env!(ctx.clone());
+        ctr.assert_active();
+    }
+
+    #[test]
+    #[should_panic(expected = "User has already nominated themselves to a different house")]
+    fn self_nominate_already_nominated() {
+        let (_, mut ctr) = setup(&alice());
+        ctr.nominations
+            .insert(&alice(), &HouseType::CouncilOfAdvisors);
+        ctr.self_nominate(HouseType::HouseOfMerit, String::from("test"), None);
+    }
+
+    #[test]
+    #[should_panic(expected = "Not enough gas, min: Gas(70000000000000)")]
+    fn self_nominate_wrong_gas() {
+        let (mut ctx, mut ctr) = setup(&alice());
+        ctx.prepaid_gas = GAS_NOMINATE.sub(Gas(10));
+        testing_env!(ctx.clone());
+        ctr.self_nominate(HouseType::HouseOfMerit, String::from("test"), None);
+    }
+
+    #[test]
+    #[should_panic(expected = "Not enough deposit, min: 1000000000000000000000")]
+    fn self_nominate_wrong_deposit() {
+        let (_, mut ctr) = setup(&alice());
+        ctr.self_nominate(HouseType::HouseOfMerit, String::from("test"), None);
+    }
+
+    #[test]
+    #[should_panic(expected = "Nominations time is not active")]
+    fn self_nominate_not_active() {
+        let (mut ctx, mut ctr) = setup(&alice());
+        ctx.block_timestamp = (START - 5) * SECOND;
+        testing_env!(ctx.clone());
+        ctr.self_nominate(HouseType::HouseOfMerit, String::from("test"), None);
+    }
+
+    #[test]
+    fn self_nominate() {
+        let (mut ctx, mut ctr) = setup(&alice());
+        ctx.attached_deposit = NOMINATE_COST;
+        testing_env!(ctx.clone());
+        ctr.self_nominate(HouseType::HouseOfMerit, String::from("test"), None);
+    }
+
+    #[test]
+    #[should_panic(expected = "Cannot upvote your own nomination")]
+    fn upvote_self_upvote() {
+        let (_, mut ctr) = setup(&alice());
+        ctr.nominations
+            .insert(&alice(), &HouseType::CouncilOfAdvisors);
+        ctr.upvote(alice());
+    }
+
+    #[test]
+    #[should_panic(expected = "Nomination not found")]
+    fn upvote_nomination_not_found() {
+        let (_, mut ctr) = setup(&bob());
+        ctr.upvote(alice());
+    }
+
+    #[test]
+    #[should_panic(expected = "User has already upvoted given nomination")]
+    fn upvote_nomination_already_upvoted() {
+        let (_, mut ctr) = setup(&bob());
+        ctr.nominations
+            .insert(&alice(), &HouseType::CouncilOfAdvisors);
+        ctr.upvotes.insert(&(alice(), bob()));
+        ctr.upvote(alice());
+    }
+
+    #[test]
+    #[should_panic(expected = "Not enough gas, min: Gas(50000000000000)")]
+    fn upvote_wrong_gas() {
+        let (mut ctx, mut ctr) = setup(&bob());
+        ctr.nominations
+            .insert(&alice(), &HouseType::CouncilOfAdvisors);
+        ctx.prepaid_gas = GAS_UPVOTE.sub(Gas(10));
+        testing_env!(ctx.clone());
+        ctr.upvote(alice());
+    }
+
+    #[test]
+    #[should_panic(expected = "Not enough deposit, min: 1000000000000000000000")]
+    fn upvote_wrong_deposit() {
+        let (_, mut ctr) = setup(&bob());
+        ctr.nominations
+            .insert(&alice(), &HouseType::CouncilOfAdvisors);
+        ctr.upvote(alice());
+    }
+
+    #[test]
+    fn upvote() {
+        let (mut ctx, mut ctr) = setup(&bob());
+        ctr.nominations
+            .insert(&alice(), &HouseType::CouncilOfAdvisors);
+        ctx.attached_deposit = UPVOTE_COST;
+        testing_env!(ctx.clone());
+        ctr.upvote(alice());
+    }
+
+    #[test]
+    #[should_panic(expected = "Nomination not found")]
+    fn comment_nomination_not_found() {
+        let (_, mut ctr) = setup(&bob());
+        ctr.comment(alice(), String::from("test"));
+    }
+
+    #[test]
+    #[should_panic(expected = "Not enough gas, min: Gas(50000000000000)")]
+    fn comment_wrong_gas() {
+        let (mut ctx, mut ctr) = setup(&bob());
+        ctr.nominations
+            .insert(&alice(), &HouseType::CouncilOfAdvisors);
+        ctx.prepaid_gas = GAS_COMMENT.sub(Gas(10));
+        testing_env!(ctx.clone());
+        ctr.comment(alice(), String::from("test"));
+    }
+
+    #[test]
+    fn comment() {
+        let (_, mut ctr) = setup(&bob());
+        ctr.nominations
+            .insert(&alice(), &HouseType::CouncilOfAdvisors);
+        ctr.comment(alice(), String::from("test"));
+    }
+
+    #[test]
+    #[should_panic(expected = "User is not nominated, cannot revoke")]
+    fn self_revoke_nomination_not_found() {
+        let (_, mut ctr) = setup(&alice());
+        ctr.self_revoke();
+    }
+
+    #[test]
+    fn self_revoke_basic() {
+        let (mut ctx, mut ctr) = setup(&bob());
+        ctr.nominations
+            .insert(&alice(), &HouseType::CouncilOfAdvisors);
+        assert!(ctr.nominations.len() == 1);
+        ctx.predecessor_account_id = alice();
+        testing_env!(ctx.clone());
+        ctr.self_revoke();
+        assert!(ctr.nominations.is_empty());
+    }
+
+    #[test]
+    fn self_revoke_flow1() {
+        let (mut ctx, mut ctr) = setup(&bob());
+
+        // add two nominations
+        ctr.nominations
+            .insert(&candidate(1), &HouseType::CouncilOfAdvisors);
+        ctr.nominations
+            .insert(&candidate(2), &HouseType::CouncilOfAdvisors);
+        assert!(ctr.nominations.len() == 2);
+
+        // upvote candidate 1 two times
+        ctr.upvotes.insert(&(candidate(1), candidate(2)));
+        ctr.upvotes.insert(&(candidate(1), candidate(3)));
+        assert!(ctr.upvotes.len() == 2);
+
+        // update the num of upvotes for the candidate
+        ctr.upvotes_per_candidate.insert(&candidate(1), &2);
+        assert_eq!(ctr.upvotes_per_candidate.get(&candidate(1)).unwrap(), 2);
+
+        ctx.predecessor_account_id = candidate(1);
+        testing_env!(ctx.clone());
+
+        // revoke
+        ctr.self_revoke();
+
+        // make sure all the values were deleted
+        assert!(ctr.nominations.len() == 1);
+        assert!(ctr.upvotes.is_empty());
+        assert_eq!(ctr.upvotes_per_candidate.get(&candidate(1)), None);
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "There are no upvotes registered for this candidate from the caller account"
+    )]
+    fn revoke_upvote_no_upvote() {
+        let (_, mut ctr) = setup(&bob());
+        ctr.nominations
+            .insert(&candidate(1), &HouseType::CouncilOfAdvisors);
+        assert!(ctr.nominations.len() == 1);
+        ctr.revoke_upvote(candidate(1));
+    }
+
+    #[test]
+    fn revoke_upvote_basics() {
+        let (_, mut ctr) = setup(&bob());
+
+        // add a nomination and upvote it
+        ctr.nominations
+            .insert(&candidate(1), &HouseType::CouncilOfAdvisors);
+        ctr.upvotes.insert(&(candidate(1), bob()));
+        ctr.upvotes_per_candidate.insert(&candidate(1), &1);
+        assert!(ctr.nominations.len() == 1);
+        assert!(ctr.upvotes.len() == 1);
+        assert!(ctr.upvotes_per_candidate.get(&candidate(1)) == Some(1));
+
+        // revoke the upvote
+        ctr.revoke_upvote(candidate(1));
+
+        // check all the values are updated correctly
+        assert!(ctr.nominations.len() == 1);
+        assert!(ctr.upvotes.len() == 0);
+        assert!(ctr.upvotes_per_candidate.get(&candidate(1)) == Some(0));
+    }
+
+    #[test]
+    fn revoke_upvote_flow1() {
+        let (mut ctx, mut ctr) = setup(&bob());
+
+        // add two nominations and upvote them
+        ctr.nominations
+            .insert(&candidate(1), &HouseType::CouncilOfAdvisors);
+        ctr.nominations
+            .insert(&candidate(2), &HouseType::CouncilOfAdvisors);
+        ctr.upvotes.insert(&(candidate(1), bob()));
+        ctr.upvotes.insert(&(candidate(1), candidate(2)));
+        ctr.upvotes.insert(&(candidate(2), candidate(1)));
+        ctr.upvotes_per_candidate.insert(&candidate(1), &2);
+        ctr.upvotes_per_candidate.insert(&candidate(2), &1);
+        assert!(ctr.nominations.len() == 2);
+        assert!(ctr.upvotes.len() == 3);
+        assert!(ctr.upvotes_per_candidate.get(&candidate(1)) == Some(2));
+        assert!(ctr.upvotes_per_candidate.get(&candidate(2)) == Some(1));
+
+        // revoke the (candidate(1) <- bob) upvote
+        ctr.revoke_upvote(candidate(1));
+
+        // check all the values are updated correctly
+        assert!(ctr.nominations.len() == 2);
+        assert!(ctr.upvotes.len() == 2);
+        assert!(ctr.upvotes_per_candidate.get(&candidate(1)) == Some(1));
+        assert!(ctr.upvotes_per_candidate.get(&candidate(2)) == Some(1));
+
+        // revoke the (candidate(1) <- candidate(2)) upvote
+        ctx.predecessor_account_id = candidate(2);
+        testing_env!(ctx.clone());
+        ctr.revoke_upvote(candidate(1));
+
+        // check all the values are updated correctly
+        assert!(ctr.nominations.len() == 2);
+        assert!(ctr.upvotes.len() == 1);
+        assert!(ctr.upvotes_per_candidate.get(&candidate(1)) == Some(0));
+        assert!(ctr.upvotes_per_candidate.get(&candidate(2)) == Some(1));
+    }
+
+    #[test]
+    fn nominations() {
+        let (_, mut ctr) = setup(&bob());
+
+        let upvotes_candidate_1 = 5;
+        let upvotes_candidate_2 = 3;
+        let upvotes_candidate_3 = 1;
+
+        // add 3 nominations
+        ctr.nominations
+            .insert(&candidate(1), &HouseType::CouncilOfAdvisors);
+        ctr.nominations
+            .insert(&candidate(2), &HouseType::CouncilOfAdvisors);
+        ctr.nominations
+            .insert(&candidate(3), &HouseType::HouseOfMerit);
+        ctr.upvotes_per_candidate
+            .insert(&candidate(1), &upvotes_candidate_1);
+        ctr.upvotes_per_candidate
+            .insert(&candidate(2), &upvotes_candidate_2);
+        ctr.upvotes_per_candidate
+            .insert(&candidate(3), &upvotes_candidate_3);
+
+        // querry nominations for CouncilOfAdvisord
+        let counsil_of_advisors = ctr.nominations(HouseType::CouncilOfAdvisors);
+        assert!(counsil_of_advisors.len() == 2);
+        assert!(counsil_of_advisors[0].0 == candidate(1));
+        assert!(counsil_of_advisors[0].1 == upvotes_candidate_1);
+        assert!(counsil_of_advisors[1].0 == candidate(2));
+        assert!(counsil_of_advisors[1].1 == upvotes_candidate_2);
+
+        // querry nominations for HouseOfMerit
+        let counsil_of_advisors = ctr.nominations(HouseType::HouseOfMerit);
+        assert!(counsil_of_advisors.len() == 1);
+        assert!(counsil_of_advisors[0].0 == candidate(3));
+        assert!(counsil_of_advisors[0].1 == upvotes_candidate_3);
+    }
+}
