@@ -229,10 +229,13 @@ impl Contract {
         self.assert_active();
         let caller = env::predecessor_account_id();
 
-        require!(self.upvotes.remove(&(candidate.clone(), caller), "caller didn't upvote the candidate"); 
-            let num_of_upvotes = self.upvotes_per_candidate.get(&candidate).unwrap_or(1); //we do 1 so the results will be at least 0
-            self.upvotes_per_candidate
-                .insert(&candidate, &(num_of_upvotes - 1));
+        require!(
+            self.upvotes.remove(&(candidate.clone(), caller)),
+            "caller didn't upvote the candidate"
+        );
+        let num_of_upvotes = self.upvotes_per_candidate.get(&candidate).unwrap_or(1); //we do 1 so the results will be at least 0
+        self.upvotes_per_candidate
+            .insert(&candidate, &(num_of_upvotes - 1));
     }
 
     /*****************
@@ -551,19 +554,17 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(
-        expected = "There are no upvotes registered for this candidate from the caller account"
-    )]
-    fn revoke_upvote_no_upvote() {
+    #[should_panic(expected = "caller didn't upvote the candidate")]
+    fn remove_upvote_no_upvote() {
         let (_, mut ctr) = setup(&bob());
         ctr.nominations
             .insert(&candidate(1), &HouseType::CouncilOfAdvisors);
         assert!(ctr.nominations.len() == 1);
-        ctr.revoke_upvote(candidate(1));
+        ctr.remove_upvote(candidate(1));
     }
 
     #[test]
-    fn revoke_upvote_basics() {
+    fn remove_upvote_basics() {
         let (_, mut ctr) = setup(&bob());
 
         // add a nomination and upvote it
@@ -575,8 +576,8 @@ mod tests {
         assert!(ctr.upvotes.len() == 1);
         assert!(ctr.upvotes_per_candidate.get(&candidate(1)) == Some(1));
 
-        // revoke the upvote
-        ctr.revoke_upvote(candidate(1));
+        // remove the upvote
+        ctr.remove_upvote(candidate(1));
 
         // check all the values are updated correctly
         assert!(ctr.nominations.len() == 1);
@@ -585,7 +586,7 @@ mod tests {
     }
 
     #[test]
-    fn revoke_upvote_flow1() {
+    fn remove_upvote_flow1() {
         let (mut ctx, mut ctr) = setup(&bob());
 
         // add two nominations and upvote them
@@ -603,8 +604,8 @@ mod tests {
         assert!(ctr.upvotes_per_candidate.get(&candidate(1)) == Some(2));
         assert!(ctr.upvotes_per_candidate.get(&candidate(2)) == Some(1));
 
-        // revoke the (candidate(1) <- bob) upvote
-        ctr.revoke_upvote(candidate(1));
+        // remove the (candidate(1) <- bob) upvote
+        ctr.remove_upvote(candidate(1));
 
         // check all the values are updated correctly
         assert!(ctr.nominations.len() == 2);
@@ -612,10 +613,10 @@ mod tests {
         assert!(ctr.upvotes_per_candidate.get(&candidate(1)) == Some(1));
         assert!(ctr.upvotes_per_candidate.get(&candidate(2)) == Some(1));
 
-        // revoke the (candidate(1) <- candidate(2)) upvote
+        // remove the (candidate(1) <- candidate(2)) upvote
         ctx.predecessor_account_id = candidate(2);
         testing_env!(ctx.clone());
-        ctr.revoke_upvote(candidate(1));
+        ctr.remove_upvote(candidate(1));
 
         // check all the values are updated correctly
         assert!(ctr.nominations.len() == 2);
