@@ -229,15 +229,10 @@ impl Contract {
         self.assert_active();
         let caller = env::predecessor_account_id();
 
-        if self.upvotes.remove(&(candidate.clone(), caller)) {
+        require!(self.upvotes.remove(&(candidate.clone(), caller), "caller didn't upvote the candidate"); 
             let num_of_upvotes = self.upvotes_per_candidate.get(&candidate).unwrap_or(1); //we do 1 so the results will be at least 0
             self.upvotes_per_candidate
                 .insert(&candidate, &(num_of_upvotes - 1));
-        } else {
-            env::panic_str(
-                "There are no upvotes registered for this candidate from the caller account",
-            );
-        }
     }
 
     /*****************
