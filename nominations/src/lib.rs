@@ -253,10 +253,14 @@ impl Contract {
         if !is_human {
             env::panic_str("Not a verified human member, or the tokens are expired");
         }
+        require!(
+            self.upvotes.insert(&(nominee.clone(), upvoter)),
+            "User has already upvoted given nomination"
+        );
+
         let num_of_upvotes = self.upvotes_per_candidate.get(&nominee).unwrap_or(0);
         self.upvotes_per_candidate
             .insert(&nominee, &(num_of_upvotes + 1));
-        self.upvotes.insert(&(nominee, upvoter));
     }
 
     /// Checks If the commenter is a verified human otherwise panics
@@ -276,8 +280,15 @@ impl Contract {
         nominee: AccountId,
         house_type: HouseType,
     ) {
-        require(!sbts.is_empty() && sbts[0].1[0].metadata.class == self.og_class.1,"Not a verified OG member, or the token is expired");
-        self.nominations.insert(&nominee, &house_type);
+        require!(
+            !sbts.is_empty() && sbts[0].1[0].metadata.class == self.og_class.1,
+            "Not a verified OG member, or the token is expired",
+        );
+
+        require!(
+            self.nominations.insert(&nominee, &house_type).is_none(),
+            "User has already nominated themselves to a different house",
+        );
     }
 
     fn assert_active(&self) {
