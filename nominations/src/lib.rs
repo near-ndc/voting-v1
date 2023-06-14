@@ -20,17 +20,16 @@ pub struct Contract {
     pub sbt_registry: AccountId,
     /// IAH issuer account for proof of humanity
     pub iah_issuer: AccountId,
-    /// IAH class ID used for Facetech verification
-    pub iah_class_id: u64,
-    /// OG token class ID
-    pub og_class_id: u64,
+    /// OG token (issuer, class_id)
+    pub og_class: (AccountId, u64),
     /// map of nominations
     pub nominations: UnorderedMap<AccountId, HouseType>,
     /// set of pairs (candidate, upvoter)
+    /// TODO: this needs to be updated to a different structure to improve performance
     pub upvotes: UnorderedSet<(AccountId, AccountId)>,
     /// number of upvotes per candidate
     pub upvotes_per_candidate: LookupMap<AccountId, u32>,
-    /// used for backend key rotation
+    /// list of admins
     pub admins: LazyOption<Vec<AccountId>>,
     /// nomination period start time
     pub start_time: u64,
@@ -44,8 +43,7 @@ impl Contract {
     pub fn new(
         sbt_registry: AccountId,
         iah_issuer: AccountId,
-        iah_class_id: u64,
-        og_class_id: u64,
+        og_class: (AccountId, u64),
         admins: Vec<AccountId>,
         start_time: u64,
         end_time: u64,
@@ -53,8 +51,7 @@ impl Contract {
         Self {
             sbt_registry,
             iah_issuer,
-            iah_class_id,
-            og_class_id,
+            og_class,
             start_time,
             end_time,
             nominations: UnorderedMap::new(StorageKey::Nominations),
@@ -115,14 +112,13 @@ impl Contract {
             format!("Not enough deposit, min: {:?}", NOMINATE_COST)
         );
 
-        // call SBT registry to verify IAH/ OG SBT and cast the nomination in callback based on the return from sbt_tokens_by_owner
+        // call SBT registry to verif OG SBT and cast the nomination in callback based on the return from sbt_tokens_by_owner
         ext_sbtreg::ext(self.sbt_registry.clone())
             .sbt_tokens_by_owner(
-                // TODO: Once the is_verified method in registry is implemented use it instead
                 nominee.clone(),
-                Some(self.iah_issuer.clone()),
-                Some(self.iah_class_id.clone()),
-                None,
+                Some(self.og_class.0.clone()),
+                Some(self.og_class.1.clone()),
+                Some(1),
                 Some(true),
             )
             .then(
@@ -165,14 +161,7 @@ impl Contract {
 
         // call SBT registry to verify IAH/ OG SBT and cast the upvote in callback based on the return from sbt_tokens_by_owner
         ext_sbtreg::ext(self.sbt_registry.clone())
-            .sbt_tokens_by_owner(
-                // TODO: Once the is_verified method in registry is implemented use it instead
-                upvoter.clone(),
-                Some(self.iah_issuer.clone()),
-                Some(self.iah_class_id.clone()),
-                Some(1),
-                Some(true),
-            )
+            .is_human(upvoter.clone())
             .then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(GAS_UPVOTE)
@@ -199,14 +188,7 @@ impl Contract {
 
         // call SBT registry to verify IAH/ OG SBT and cast the nomination in callback based on the return from sbt_tokens_by_owner
         ext_sbtreg::ext(self.sbt_registry.clone())
-            .sbt_tokens_by_owner(
-                // TODO: Once the is_verified method in registry is implemented use it instead
-                commenter.clone(),
-                Some(self.iah_issuer.clone()),
-                Some(self.iah_class_id.clone()),
-                Some(1),
-                Some(true),
-            )
+            .is_human(commenter.clone())
             .then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(GAS_NOMINATE)
@@ -230,7 +212,7 @@ impl Contract {
         self.upvotes_per_candidate.remove(&nominee);
 
         let mut keys_to_remove: Vec<(AccountId, AccountId)> = Vec::new();
-
+        //TODO: once the upvotes data strucred is updaed we need to change it as well
         for upvote in self.upvotes.iter() {
             if upvote.0 == nominee {
                 keys_to_remove.push(upvote);
@@ -267,11 +249,11 @@ impl Contract {
     #[private]
     pub fn on_upvote_verified(
         &mut self,
-        #[callback_unwrap] val: Vec<(AccountId, Vec<OwnedToken>)>,
+        #[callback_unwrap] is_human: bool,
         nominee: AccountId,
         upvoter: AccountId,
     ) {
-        if val.is_empty() {
+        if !is_human {
             env::panic_str("Not a verified human member, or the tokens are expired");
         }
         let num_of_upvotes = self.upvotes_per_candidate.get(&nominee).unwrap_or(0);
@@ -282,38 +264,23 @@ impl Contract {
 
     /// Checks If the commenter is a verified human otherwise panics
     #[private]
-    pub fn on_comment_verified(
-        &mut self,
-        #[callback_unwrap] val: Vec<(AccountId, Vec<OwnedToken>)>,
-    ) {
-        if val.is_empty() {
+    pub fn on_comment_verified(&mut self, #[callback_unwrap] is_human: bool) {
+        if !is_human {
             env::panic_str("Not a verified human member, or the tokens are expired");
         }
         // TODO: what should be done in the case we do not register the comments on-chain?
     }
 
-    ///Checks If the caller is a verified human and OG token holder and registers the nomination otherwise panics
+    ///Checks If the caller is a OG token holder and registers the nomination otherwise panics
     #[private]
     pub fn on_nominate_verified(
         &mut self,
-        #[callback_unwrap] val: Vec<(AccountId, Vec<OwnedToken>)>,
+        #[callback_unwrap] sbts: Vec<(AccountId, Vec<OwnedToken>)>,
         nominee: AccountId,
         house_type: HouseType,
     ) {
-        // TODO: Once the is_verified method in registry is implemented use it instead
-        // verify human and og token holder
-        let mut iah_verified = false;
-        let mut og_verified = false;
-        for token in val[0].1.iter() {
-            if token.metadata.class == self.iah_class_id {
-                iah_verified = true;
-            }
-            if token.metadata.class == self.og_class_id {
-                og_verified = true;
-            }
-        }
-        if !iah_verified && !og_verified {
-            env::panic_str("Not a verified human/OG member, or the tokens are expired");
+        if sbts.is_empty() && !(sbts[0].1[0].metadata.class == self.og_class.1) {
+            env::panic_str("Not a verified OG member, or the token is expired");
         }
         self.nominations.insert(&nominee, &house_type);
     }
@@ -339,7 +306,6 @@ mod tests {
     };
     const START: u64 = 10;
     const END: u64 = 100000;
-    const IAH_CLASS_ID: u64 = 1;
     const OG_CLASS_ID: u64 = 2;
 
     fn alice() -> AccountId {
@@ -366,6 +332,10 @@ mod tests {
         AccountId::new_unchecked("iah_issuer.near".to_string())
     }
 
+    fn og_token_issuer() -> AccountId {
+        AccountId::new_unchecked("og_token.near".to_string())
+    }
+
     fn setup(predecessor: &AccountId) -> (VMContext, Contract) {
         let mut ctx = VMContextBuilder::new()
             .predecessor_account_id(admin())
@@ -377,8 +347,7 @@ mod tests {
         let ctr = Contract::new(
             sbt_registry(),
             iah_issuer(),
-            IAH_CLASS_ID,
-            OG_CLASS_ID,
+            (og_token_issuer(), OG_CLASS_ID),
             vec![admin()],
             START * SECOND,
             END * SECOND,
@@ -422,7 +391,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Not enough gas, min: Gas(70000000000000)")]
+    #[should_panic(expected = "Not enough gas, min: Gas(20000000000000)")]
     fn self_nominate_wrong_gas() {
         let (mut ctx, mut ctr) = setup(&alice());
         ctx.prepaid_gas = GAS_NOMINATE.sub(Gas(10));
@@ -481,7 +450,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Not enough gas, min: Gas(50000000000000)")]
+    #[should_panic(expected = "Not enough gas, min: Gas(20000000000000)")]
     fn upvote_wrong_gas() {
         let (mut ctx, mut ctr) = setup(&bob());
         ctr.nominations
@@ -518,7 +487,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Not enough gas, min: Gas(50000000000000)")]
+    #[should_panic(expected = "Not enough gas, min: Gas(20000000000000)")]
     fn comment_wrong_gas() {
         let (mut ctx, mut ctr) = setup(&bob());
         ctr.nominations

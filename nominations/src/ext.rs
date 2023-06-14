@@ -16,6 +16,8 @@ pub trait ExtSbtRegistry {
         limit: Option<u32>,
         non_expired: Option<bool>,
     ) -> Vec<(AccountId, Vec<OwnedToken>)>;
+
+    fn is_human(&self, account: AccountId) -> bool;
 }
 
 // TODO: use SBT crate once it is published
