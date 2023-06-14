@@ -138,7 +138,6 @@ impl Contract {
         let upvoter = env::predecessor_account_id();
 
         require!(upvoter != candidate, "Cannot upvote your own nomination");
-
         require!(
             self.nominations.get(&candidate).is_some(),
             "Nomination not found",
