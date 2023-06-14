@@ -222,10 +222,10 @@ impl Contract {
         }
     }
 
-    /// Revokes the upvote
+    /// Remove the upvote
     /// + Checks if the nomination period is active
     /// + Checks if the caller upvoted the `candidate` before
-    pub fn revoke_upvote(&mut self, candidate: AccountId) {
+    pub fn remove_upvote(&mut self, candidate: AccountId) {
         self.assert_active();
         let caller = env::predecessor_account_id();
 
