@@ -265,7 +265,7 @@ impl Contract {
         if !is_human {
             env::panic_str("Not a verified human member, or the tokens are expired");
         }
-        // TODO: what should be done in the case we do not register the comments on-chain?
+        // we don't record anything. This will be handled by indexer.
     }
 
     ///Checks If the caller is a OG token holder and registers the nomination otherwise panics
