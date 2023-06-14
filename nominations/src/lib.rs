@@ -276,9 +276,7 @@ impl Contract {
         nominee: AccountId,
         house_type: HouseType,
     ) {
-        if sbts.is_empty() && !(sbts[0].1[0].metadata.class == self.og_class.1) {
-            env::panic_str("Not a verified OG member, or the token is expired");
-        }
+        require(!sbts.is_empty() && sbts[0].1[0].metadata.class == self.og_class.1,"Not a verified OG member, or the token is expired");
         self.nominations.insert(&nominee, &house_type);
     }
 
