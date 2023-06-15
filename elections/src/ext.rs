@@ -1,4 +1,4 @@
-use near_sdk::serde::{Deserialize, Serialize};
+use near_sdk::serde::{Deserialize};
 use near_sdk::{ext_contract, AccountId};
 
 use crate::Vote;

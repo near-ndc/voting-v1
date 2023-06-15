@@ -14,7 +14,7 @@ pub trait ExtSbtRegistry {
         issuer: Option<AccountId>,
         from_class: Option<u64>,
         limit: Option<u32>,
-        non_expired: Option<bool>,
+        with_expired: Option<bool>,
     ) -> Vec<(AccountId, Vec<OwnedToken>)>;
 
     fn is_human(&self, account: AccountId) -> bool;
