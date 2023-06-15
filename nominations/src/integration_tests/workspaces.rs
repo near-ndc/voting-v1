@@ -2,11 +2,11 @@ use near_units::parse_near;
 use serde_json::json;
 use workspaces::{Account, Contract, DevNetwork, Worker};
 
-use crate::{TokenMetadata, SECOND};
+use crate::{storage::HouseType, TokenMetadata, SECOND};
 
 async fn init(
     worker: &Worker<impl DevNetwork>,
-) -> anyhow::Result<(Contract, Account, Account, Account, u32)> {
+) -> anyhow::Result<(Contract, Account, Account, Account, Account)> {
     // deploy contracts
     let ndc_nominations_contract = worker
         .dev_deploy(include_bytes!("../../../res/ndc_nominations.wasm"))
@@ -21,11 +21,17 @@ async fn init(
     let alice_acc = worker.dev_create_account().await?;
     let bob_acc = worker.dev_create_account().await?;
     let john_acc = worker.dev_create_account().await?;
+    let elon_acc = worker.dev_create_account().await?;
+
+    // get current block time
+    let block_info = worker.view_block().await?;
+    let current_timestamp = block_info.timestamp();
+    let end_time = current_timestamp + 60 * SECOND;
 
     // initialize contracts
     let res  = ndc_nominations_contract
         .call("new")
-        .args_json(json!({"sbt_registry": registry_contract.id(),"iah_issuer": iah_issuer.id(),"iah_class_id": 1, "admins": [authority_acc.id()]}))
+        .args_json(json!({"sbt_registry": registry_contract.id(),"iah_issuer": iah_issuer.id(),"og_class": (iah_issuer.id(),2), "admins": [authority_acc.id()], "start_time": 0, "end_time": end_time,}))
         .max_gas()
         .transact()
         .await?;
@@ -33,13 +39,13 @@ async fn init(
 
     let res = registry_contract
         .call("new")
-        .args_json(json!({"authority": authority_acc.id(),}))
+        .args_json(json!({"authority": authority_acc.id(),"iah_issuer": iah_issuer.id(), "iah_classes": [1],}))
         .max_gas()
         .transact()
         .await?;
     assert!(res.is_success());
 
-    // add sbt_gd_as_an_issuer
+    // add iah_issuer
     let res = authority_acc
         .call(registry_contract.id(), "admin_add_sbt_issuer")
         .args_json(json!({"issuer": iah_issuer.id()}))
@@ -48,31 +54,65 @@ async fn init(
         .await?;
     assert!(res.is_success());
 
-    // get current block time
-    let block_info = worker.view_block().await?;
-    let current_timestamp = block_info.timestamp() / SECOND;
-    // let expires_at = current_timestamp + 1000000;
+    // mint IAH and OG sbt to alice
+    let alice_tokens = vec![
+        TokenMetadata {
+            class: 1,
+            issued_at: Some(0),
+            expires_at: None,
+            reference: None,
+            reference_hash: None,
+        },
+        TokenMetadata {
+            class: 2,
+            issued_at: Some(0),
+            expires_at: None,
+            reference: None,
+            reference_hash: None,
+        },
+    ];
 
-    // mint IAH sbt to alice
-    let token_metadata = TokenMetadata {
-        class: 1,
-        issued_at: Some(0),
-        expires_at: None,
-        reference: None,
-        reference_hash: None,
-    };
-
-    let token_metadata2 = TokenMetadata {
+    // mint only IAH to bob
+    let bob_tokens = vec![TokenMetadata {
         class: 1,
         issued_at: Some(0),
         expires_at: Some(current_timestamp),
         reference: None,
         reference_hash: None,
-    };
+    }];
+
+    // mint only OG to john
+    let john_tokens = vec![TokenMetadata {
+        class: 2,
+        issued_at: Some(0),
+        expires_at: Some(current_timestamp),
+        reference: None,
+        reference_hash: None,
+    }];
+
+    // mint expired OG and expired IAH to elon
+    let elon_tokens = vec![
+        TokenMetadata {
+            class: 2,
+            issued_at: Some(0),
+            expires_at: Some(10),
+            reference: None,
+            reference_hash: None,
+        },
+        TokenMetadata {
+            class: 1,
+            issued_at: Some(0),
+            expires_at: Some(10),
+            reference: None,
+            reference_hash: None,
+        },
+    ];
 
     let token_spec = vec![
-        (alice_acc.id(), vec![token_metadata]),
-        (bob_acc.id(), vec![token_metadata2]),
+        (alice_acc.id(), alice_tokens),
+        (bob_acc.id(), bob_tokens),
+        (john_acc.id(), john_tokens),
+        (elon_acc.id(), elon_tokens),
     ];
 
     let res = iah_issuer
@@ -84,103 +124,258 @@ async fn init(
         .await?;
     assert!(res.is_success());
 
-    // create a proposal
-    let campaign_id: u32 = authority_acc
-        .call(ndc_nominations_contract.id(), "add_campaign")
-        .args_json(
-            json!({"name": "test_campaign", "link": "test.io", "start_time": 0, "end_time": u64::MAX,}),
-        )
-        .max_gas()
-        .deposit(parse_near!("1 N"))
-        .transact()
-        .await?
-        .json()?;
-
     return Ok((
         ndc_nominations_contract,
         alice_acc,
         bob_acc,
         john_acc,
-        campaign_id,
+        elon_acc,
     ));
 }
 
 #[tokio::test]
-async fn human_nominates_human() -> anyhow::Result<()> {
+async fn self_nominate() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
-    let (ndc_elections_contract, alice_acc, bob_acc, _, campaign_id) = init(&worker).await?;
+    let (ndc_elections_contract, alice, _, _, _) = init(&worker).await?;
 
-    // assert the nominations per bob == 0
-    let res: u64 = alice_acc
-        .call(ndc_elections_contract.id(), "nominations_per_user")
-        .args_json(json!({"campaign": campaign_id, "nominee": bob_acc.id()}))
+    // slef nominate
+    let res = alice
+        .call(ndc_elections_contract.id(), "self_nominate")
+        .args_json(json!({"house": HouseType::HouseOfMerit, "comment": "solid nomination", "link": "external_link.io"}))
         .max_gas()
+        .deposit(parse_near!("1 N"))
         .transact()
-        .await?
-        .json()?;
-    assert_eq!(res, 0);
+        .await?;
+    assert!(res.is_success());
 
-    // fast forward to the campaign period
-    worker.fast_forward(100).await?;
-    // nominate
-    let res = alice_acc
-        .call(ndc_elections_contract.id(), "nominate")
-        .args_json(json!({"campaign": campaign_id, "nominee": bob_acc.id(),"comment": "test", "external_resource": "test"}))
+    println!("Passed ✅ self_nominate");
+    Ok(())
+}
+
+#[tokio::test]
+async fn self_nominate_only_og() -> anyhow::Result<()> {
+    let worker = workspaces::sandbox().await?;
+    let (ndc_elections_contract, _, _, john, _) = init(&worker).await?;
+
+    // slef nominate
+    let res = john
+        .call(ndc_elections_contract.id(), "self_nominate")
+        .args_json(json!({"house": HouseType::HouseOfMerit, "comment": "solid nomination", "link": "external_link.io"}))
+        .max_gas()
+        .deposit(parse_near!("1 N"))
+        .transact()
+        .await?;
+    assert!(res.is_success());
+
+    println!("Passed ✅ self_nominate_only_og");
+    Ok(())
+}
+
+#[tokio::test]
+async fn self_nominate_only_iah_fail() -> anyhow::Result<()> {
+    let worker = workspaces::sandbox().await?;
+    let (ndc_elections_contract, _, bob, _, _) = init(&worker).await?;
+
+    // slef nominate
+    let res = bob
+        .call(ndc_elections_contract.id(), "self_nominate")
+        .args_json(json!({"house": HouseType::HouseOfMerit, "comment": "solid nomination", "link": "external_link.io"}))
+        .max_gas()
+        .deposit(parse_near!("1 N"))
+        .transact()
+        .await;
+    assert!(format!("{:?}", res).contains("Not a verified OG member, or the token is expired"));
+
+    println!("Passed ✅ self_nominate_only_iah_fail");
+    Ok(())
+}
+
+#[tokio::test]
+async fn self_nominate_expired_token_fail() -> anyhow::Result<()> {
+    let worker = workspaces::sandbox().await?;
+    let (ndc_elections_contract, _, _, _, elon) = init(&worker).await?;
+
+    // self nominate
+    let res = elon
+        .call(ndc_elections_contract.id(), "self_nominate")
+        .args_json(json!({"house": HouseType::HouseOfMerit, "comment": "solid nomination", "link": "external_link.io"}))
+        .max_gas()
+        .deposit(parse_near!("1 N"))
+        .transact()
+        .await;
+    assert!(format!("{:?}", res).contains("Not a verified OG member, or the token is expired"));
+
+    println!("Passed ✅ self_nominate_expired_token_fail");
+    Ok(())
+}
+
+#[tokio::test]
+async fn upvote() -> anyhow::Result<()> {
+    let worker = workspaces::sandbox().await?;
+    let (ndc_elections_contract, _, bob, john, _) = init(&worker).await?;
+
+    // self nominate
+    let res = john
+        .call(ndc_elections_contract.id(), "self_nominate")
+        .args_json(json!({"house": HouseType::HouseOfMerit, "comment": "solid nomination", "link": "external_link.io"}))
+        .max_gas()
+        .deposit(parse_near!("1 N"))
+        .transact()
+        .await?;
+    assert!(res.is_success());
+
+    // upvote johns nomination
+    let res = bob
+        .call(ndc_elections_contract.id(), "upvote")
+        .args_json(json!({"candidate": john.id(),}))
+        .max_gas()
+        .deposit(parse_near!("1 N"))
+        .transact()
+        .await?;
+    assert!(res.is_success());
+
+    println!("Passed ✅ upvote");
+    Ok(())
+}
+
+#[tokio::test]
+async fn upvote_by_non_human_fail() -> anyhow::Result<()> {
+    let worker = workspaces::sandbox().await?;
+    let (ndc_elections_contract, alice, _, john, _) = init(&worker).await?;
+
+    // self nominate
+    let res = alice
+        .call(ndc_elections_contract.id(), "self_nominate")
+        .args_json(json!({"house": HouseType::HouseOfMerit, "comment": "solid nomination", "link": "external_link.io"}))
+        .max_gas()
+        .deposit(parse_near!("1 N"))
+        .transact()
+        .await?;
+    assert!(res.is_success());
+
+    // john not iah upvotes alice nomination
+    let res = john
+        .call(ndc_elections_contract.id(), "upvote")
+        .args_json(json!({"candidate": alice.id(),}))
+        .max_gas()
+        .deposit(parse_near!("1 N"))
+        .transact()
+        .await;
+    assert!(format!("{:?}", res).contains("Not a verified human member, or the tokens are expired"));
+
+    println!("Passed ✅ upvote_by_non_human");
+    Ok(())
+}
+
+#[tokio::test]
+async fn upvote_expired_iah_fail() -> anyhow::Result<()> {
+    let worker = workspaces::sandbox().await?;
+    let (ndc_elections_contract, alice, _, _, elon) = init(&worker).await?;
+
+    // self nominate
+    let res = alice
+        .call(ndc_elections_contract.id(), "self_nominate")
+        .args_json(json!({"house": HouseType::HouseOfMerit, "comment": "solid nomination", "link": "external_link.io"}))
+        .max_gas()
+        .deposit(parse_near!("1 N"))
+        .transact()
+        .await?;
+    assert!(res.is_success());
+
+    // john not iah upvotes alice nomination
+    let res = elon
+        .call(ndc_elections_contract.id(), "upvote")
+        .args_json(json!({"candidate": alice.id(),}))
+        .max_gas()
+        .deposit(parse_near!("1 N"))
+        .transact()
+        .await;
+    assert!(format!("{:?}", res).contains("Not a verified human member, or the tokens are expired"));
+
+    println!("Passed ✅ upvote_by_non_human");
+    Ok(())
+}
+
+#[tokio::test]
+async fn comment() -> anyhow::Result<()> {
+    let worker = workspaces::sandbox().await?;
+    let (ndc_elections_contract, _, bob, john, _) = init(&worker).await?;
+
+    // self nominate
+    let res = john
+        .call(ndc_elections_contract.id(), "self_nominate")
+        .args_json(json!({"house": HouseType::HouseOfMerit, "comment": "solid nomination", "link": "external_link.io"}))
+        .max_gas()
+        .deposit(parse_near!("1 N"))
+        .transact()
+        .await?;
+    assert!(res.is_success());
+
+    // upvote johns nomination
+    let res = bob
+        .call(ndc_elections_contract.id(), "comment")
+        .args_json(json!({"candidate": john.id(), "comment": "solid candidate",}))
         .max_gas()
         .transact()
         .await?;
     assert!(res.is_success());
 
-    // make sure the nomination for bob has been registered
-    let res: u64 = alice_acc
-        .call(ndc_elections_contract.id(), "nominations_per_user")
-        .args_json(json!({"campaign": campaign_id, "nominee": bob_acc.id()}))
-        .max_gas()
-        .transact()
-        .await?
-        .json()?;
-    assert_eq!(res, 1);
-
-    println!("Passed ✅ human_nominates_human");
+    println!("Passed ✅ comment ");
     Ok(())
 }
 
 #[tokio::test]
-async fn non_human_nominates_human() -> anyhow::Result<()> {
+async fn comment_by_non_human_fail() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
-    let (ndc_elections_contract, _, bob_acc, john_acc, campaign_id) = init(&worker).await?;
+    let (ndc_elections_contract, alice, _, john, _) = init(&worker).await?;
 
-    // fast forward to the campaign period
-    worker.fast_forward(100).await?;
-    // nominate
-    let res = john_acc
-        .call(ndc_elections_contract.id(), "nominate")
-        .args_json(json!({"campaign": campaign_id, "nominee": bob_acc.id(),"comment": "test", "external_resource": "test"}))
+    // self nominate
+    let res = alice
+        .call(ndc_elections_contract.id(), "self_nominate")
+        .args_json(json!({"house": HouseType::HouseOfMerit, "comment": "solid nomination", "link": "external_link.io"}))
         .max_gas()
+        .deposit(parse_near!("1 N"))
         .transact()
         .await?;
-    assert!(res.is_failure());
+    assert!(res.is_success());
 
-    println!("Passed ✅ non_human_nominates_human");
+    // john not iah upvotes alice nomination
+    let res = john
+        .call(ndc_elections_contract.id(), "comment")
+        .args_json(json!({"candidate": alice.id(),"comment": "solid candidate"}))
+        .max_gas()
+        .transact()
+        .await;
+    assert!(format!("{:?}", res).contains("Not a verified human member, or the tokens are expired"));
+
+    println!("Passed ✅ comment_by_non_human");
     Ok(())
 }
 
 #[tokio::test]
-async fn non_human_nominates_human_expired_token() -> anyhow::Result<()> {
+async fn comment_expired_iah_fail() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
-    let (ndc_elections_contract, _, bob_acc, _, campaign_id) = init(&worker).await?;
+    let (ndc_elections_contract, alice, _, _, elon) = init(&worker).await?;
 
-    // fast forward to the campaign period
-    worker.fast_forward(100).await?;
-    // nominate
-    let res = bob_acc
-        .call(ndc_elections_contract.id(), "nominate")
-        .args_json(json!({"campaign": campaign_id, "nominee": bob_acc.id(),"comment": "test", "external_resource": "test"}))
+    // self nominate
+    let res = alice
+        .call(ndc_elections_contract.id(), "self_nominate")
+        .args_json(json!({"house": HouseType::HouseOfMerit, "comment": "solid nomination", "link": "external_link.io"}))
         .max_gas()
+        .deposit(parse_near!("1 N"))
         .transact()
         .await?;
-    assert!(res.is_failure());
+    assert!(res.is_success());
 
-    println!("Passed ✅ non_human_nominates_human_expired_token");
+    // john not iah upvotes alice nomination
+    let res = elon
+        .call(ndc_elections_contract.id(), "comment")
+        .args_json(json!({"candidate": alice.id(),"comment": "solid candidate"}))
+        .max_gas()
+        .transact()
+        .await;
+    assert!(format!("{:?}", res).contains("Not a verified human member, or the tokens are expired"));
+
+    println!("Passed ✅ comment_expired_iah_fail");
     Ok(())
 }
