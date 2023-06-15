@@ -84,6 +84,7 @@ impl Contract {
     /// + Checks if the nomination has been already submitted
     /// + Checks if the user has nominated themselves to a different house before
     /// + Checks if the nomination was submitted during the nomination period
+    #[payable]
     pub fn self_nominate(
         &mut self,
         house: HouseType,
@@ -127,6 +128,7 @@ impl Contract {
     /// + Checks if there is a nomination for the given candidate
     /// + Checks if the caller has already upvoted the candidate
     /// + Checks if the nomination period is active
+    #[payable]
     pub fn upvote(&mut self, candidate: AccountId) -> Promise {
         self.assert_active();
         let upvoter = env::predecessor_account_id();
