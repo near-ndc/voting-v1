@@ -300,7 +300,7 @@ mod tests {
     use super::*;
 
     const START: u64 = 10;
-    const MSECOND: u64 = 1_000_000;
+    const SECOND: u64 = 1_000_000;
     const END: u64 = 100000;
     const OG_CLASS_ID: u64 = 2;
 
@@ -335,7 +335,7 @@ mod tests {
     fn mk_nomination(house: HouseType, timestamp: u64) -> Nomination {
         Nomination {
             house,
-            timestamp: timestamp * MSECOND,
+            timestamp: timestamp * SECOND,
             upvotes: 0,
         }
     }
@@ -350,7 +350,7 @@ mod tests {
     /// inserts a upvote for a specified candidate
     fn insert_upvote(ctr: &mut Contract, upvoter: AccountId, candidate: AccountId) {
         ctr.upvotes
-            .insert(&(candidate.clone(), upvoter), &((START + 10) * MSECOND));
+            .insert(&(candidate.clone(), upvoter), &((START + 10) * SECOND));
         let mut nomination = ctr
             .nominations
             .get(&candidate)
@@ -363,7 +363,7 @@ mod tests {
         let mut ctx = VMContextBuilder::new()
             .predecessor_account_id(admin())
             // .attached_deposit(deposit_dec.into())
-            .block_timestamp((START + 1) * MSECOND)
+            .block_timestamp((START + 1) * SECOND)
             .is_view(false)
             .build();
         testing_env!(ctx.clone());
@@ -372,8 +372,8 @@ mod tests {
             iah_issuer(),
             (og_token_issuer(), OG_CLASS_ID),
             vec![admin()],
-            START * MSECOND,
-            END * MSECOND,
+            START * SECOND,
+            END * SECOND,
         );
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
@@ -390,7 +390,7 @@ mod tests {
     #[should_panic(expected = "Nominations time is not active")]
     fn assert_active_too_early() {
         let (mut ctx, ctr) = setup(&alice());
-        ctx.block_timestamp = (START - 5) * MSECOND;
+        ctx.block_timestamp = (START - 5) * SECOND;
         testing_env!(ctx.clone());
         ctr.assert_active();
     }
@@ -399,7 +399,7 @@ mod tests {
     #[should_panic(expected = "Nominations time is not active")]
     fn assert_active_too_late() {
         let (mut ctx, ctr) = setup(&alice());
-        ctx.block_timestamp = (END + 5) * MSECOND;
+        ctx.block_timestamp = (END + 5) * SECOND;
         testing_env!(ctx.clone());
         ctr.assert_active();
     }
@@ -432,7 +432,7 @@ mod tests {
     #[should_panic(expected = "Nominations time is not active")]
     fn self_nominate_not_active() {
         let (mut ctx, mut ctr) = setup(&alice());
-        ctx.block_timestamp = (START - 5) * MSECOND;
+        ctx.block_timestamp = (START - 5) * SECOND;
         testing_env!(ctx.clone());
         ctr.self_nominate(HouseType::HouseOfMerit, String::from("test"), None);
     }
