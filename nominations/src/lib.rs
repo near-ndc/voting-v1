@@ -139,13 +139,6 @@ impl Contract {
             "Nomination not found",
         );
         require!(
-            self.upvotes
-                .get(&(candidate.clone(), upvoter.clone()))
-                .is_some(),
-            "User has already upvoted given nomination"
-        );
-
-        require!(
             env::prepaid_gas() >= GAS_UPVOTE,
             format!("Not enough gas, min: {:?}", GAS_UPVOTE)
         );
@@ -216,13 +209,13 @@ impl Contract {
             .nominations
             .get(&candidate)
             .expect("not a valid candidate");
-        n.upvotes -= 1;
-        self.nominations.insert(&candidate, &n);
 
-        match self.upvotes.remove(&(candidate, caller)) {
+        match self.upvotes.remove(&(candidate.clone(), caller)) {
             None => panic_str("upvote doesn't exist"),
             Some(t) => require!(n.timestamp <= t, "upvote not valid, candidate revoked"),
         }
+        n.upvotes -= 1;
+        self.nominations.insert(&candidate, &n);
     }
 
     /*****************
@@ -244,14 +237,14 @@ impl Contract {
         let mut n = self
             .nominations
             .get(&candidate)
-            .expect("not a valid candidate");
-        n.upvotes -= 1;
+            .expect("Not a valid candidate");
+        n.upvotes += 1;
         self.nominations.insert(&candidate, &n);
         if let Some(t) = self
             .upvotes
             .insert(&(candidate, upvoter), &env::block_timestamp_ms())
         {
-            require!(t < n.timestamp, "nomination already upvoted");
+            require!(t < n.timestamp, "Nomination already upvoted");
         }
     }
 
@@ -307,6 +300,7 @@ mod tests {
     use super::*;
 
     const START: u64 = 10;
+    const MSECOND: u64 = 1_000_000;
     const END: u64 = 100000;
     const OG_CLASS_ID: u64 = 2;
 
@@ -347,18 +341,29 @@ mod tests {
     }
 
     /// creates and inserts default nomination
-    fn insert_def_nomination(ctr: &mut Contract) {
-        ctr.nominations.insert(
-            &alice(),
-            &mk_nomination(HouseType::CouncilOfAdvisors, START),
-        );
+    fn insert_nomination(ctr: &mut Contract, candidate: AccountId, house: Option<HouseType>) {
+        let house = house.unwrap_or(HouseType::CouncilOfAdvisors);
+        ctr.nominations
+            .insert(&candidate, &mk_nomination(house, START));
+    }
+
+    /// inserts a upvote for a specified candidate
+    fn insert_upvote(ctr: &mut Contract, upvoter: AccountId, candidate: AccountId) {
+        ctr.upvotes
+            .insert(&(candidate.clone(), upvoter), &((START + 10) * MSECOND));
+        let mut nomination = ctr
+            .nominations
+            .get(&candidate)
+            .expect("Nomination not found");
+        nomination.upvotes += 1;
+        ctr.nominations.insert(&candidate, &nomination);
     }
 
     fn setup(predecessor: &AccountId) -> (VMContext, Contract) {
         let mut ctx = VMContextBuilder::new()
             .predecessor_account_id(admin())
             // .attached_deposit(deposit_dec.into())
-            .block_timestamp(START * SECOND)
+            .block_timestamp((START + 1) * MSECOND)
             .is_view(false)
             .build();
         testing_env!(ctx.clone());
@@ -367,8 +372,8 @@ mod tests {
             iah_issuer(),
             (og_token_issuer(), OG_CLASS_ID),
             vec![admin()],
-            START * SECOND,
-            END * SECOND,
+            START * MSECOND,
+            END * MSECOND,
         );
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
@@ -385,7 +390,7 @@ mod tests {
     #[should_panic(expected = "Nominations time is not active")]
     fn assert_active_too_early() {
         let (mut ctx, ctr) = setup(&alice());
-        ctx.block_timestamp = (START - 5) * SECOND;
+        ctx.block_timestamp = (START - 5) * MSECOND;
         testing_env!(ctx.clone());
         ctr.assert_active();
     }
@@ -394,16 +399,16 @@ mod tests {
     #[should_panic(expected = "Nominations time is not active")]
     fn assert_active_too_late() {
         let (mut ctx, ctr) = setup(&alice());
-        ctx.block_timestamp = (END + 5) * SECOND;
+        ctx.block_timestamp = (END + 5) * MSECOND;
         testing_env!(ctx.clone());
         ctr.assert_active();
     }
 
     #[test]
-    #[should_panic(expected = "User has already nominated themselves to a different house")]
+    #[should_panic(expected = "User has already an active self-nomination")]
     fn self_nominate_already_nominated() {
         let (_, mut ctr) = setup(&alice());
-        insert_def_nomination(&mut ctr);
+        insert_nomination(&mut ctr, alice(), None);
         ctr.self_nominate(HouseType::HouseOfMerit, String::from("test"), None);
     }
 
@@ -427,7 +432,7 @@ mod tests {
     #[should_panic(expected = "Nominations time is not active")]
     fn self_nominate_not_active() {
         let (mut ctx, mut ctr) = setup(&alice());
-        ctx.block_timestamp = (START - 5) * SECOND;
+        ctx.block_timestamp = (START - 5) * MSECOND;
         testing_env!(ctx.clone());
         ctr.self_nominate(HouseType::HouseOfMerit, String::from("test"), None);
     }
@@ -444,7 +449,7 @@ mod tests {
     #[should_panic(expected = "Cannot upvote your own nomination")]
     fn upvote_self_upvote() {
         let (_, mut ctr) = setup(&alice());
-        insert_def_nomination(&mut ctr);
+        insert_nomination(&mut ctr, alice(), None);
         ctr.upvote(alice());
     }
 
@@ -456,29 +461,22 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "User has already upvoted given nomination")]
-    fn upvote_nomination_already_upvoted() {
-        let (_, mut ctr) = setup(&bob());
-        insert_def_nomination(&mut ctr);
-        ctr.upvotes.insert(&(alice(), bob()), &START);
-        ctr.upvote(alice());
-    }
-
-    #[test]
+    #[should_panic(expected = "Nomination not found")]
     fn upvote_after_revoke() {
-        let (_, mut ctr) = setup(&bob());
-        insert_def_nomination(&mut ctr);
-        ctr.upvotes.insert(&(alice(), bob()), &START);
+        let (mut ctx, mut ctr) = setup(&alice());
+        insert_nomination(&mut ctr, alice(), None);
+        ctr.self_revoke();
+
+        ctx.predecessor_account_id = bob();
+        testing_env!(ctx.clone());
         ctr.upvote(alice());
-        let n = ctr.nominations.get(&alice()).unwrap();
-        assert_eq!(n.upvotes, 1);
     }
 
     #[test]
     #[should_panic(expected = "Not enough gas, min: Gas(20000000000000)")]
     fn upvote_wrong_gas() {
         let (mut ctx, mut ctr) = setup(&bob());
-        insert_def_nomination(&mut ctr);
+        insert_nomination(&mut ctr, alice(), None);
         ctx.prepaid_gas = GAS_UPVOTE.sub(Gas(10));
         testing_env!(ctx.clone());
         ctr.upvote(alice());
@@ -488,7 +486,7 @@ mod tests {
     #[should_panic(expected = "Not enough deposit, min: 1000000000000000000000")]
     fn upvote_wrong_deposit() {
         let (_, mut ctr) = setup(&bob());
-        insert_def_nomination(&mut ctr);
+        insert_nomination(&mut ctr, alice(), None);
         ctr.upvote(alice());
     }
 
@@ -498,17 +496,8 @@ mod tests {
         ctx.attached_deposit = UPVOTE_COST;
         testing_env!(ctx.clone());
 
-        insert_def_nomination(&mut ctr);
+        insert_nomination(&mut ctr, alice(), None);
         ctr.upvote(alice());
-        let n = ctr.nominations.get(&alice()).unwrap();
-        assert_eq!(n.upvotes, 1);
-
-        // make another upvote
-        ctx.predecessor_account_id = candidate(1);
-        testing_env!(ctx.clone());
-        ctr.upvote(alice());
-        let n = ctr.nominations.get(&alice()).unwrap();
-        assert_eq!(n.upvotes, 2);
     }
 
     #[test]
@@ -524,14 +513,14 @@ mod tests {
         let (mut ctx, mut ctr) = setup(&bob());
         ctx.prepaid_gas = GAS_COMMENT.sub(Gas(10));
         testing_env!(ctx.clone());
-        insert_def_nomination(&mut ctr);
+        insert_nomination(&mut ctr, alice(), None);
         ctr.comment(alice(), String::from("test"));
     }
 
     #[test]
     fn comment() {
         let (_, mut ctr) = setup(&bob());
-        insert_def_nomination(&mut ctr);
+        insert_nomination(&mut ctr, alice(), None);
         ctr.comment(alice(), String::from("test"));
     }
 
@@ -543,9 +532,9 @@ mod tests {
     }
 
     #[test]
-    fn self_revoke_basic() {
+    fn self_revoke() {
         let (mut ctx, mut ctr) = setup(&bob());
-        insert_def_nomination(&mut ctr);
+        insert_nomination(&mut ctr, alice(), None);
         assert!(ctr.nominations.len() == 1);
         ctx.predecessor_account_id = alice();
         testing_env!(ctx.clone());
@@ -554,93 +543,62 @@ mod tests {
     }
 
     #[test]
-    fn self_revoke_flow1() {
-        let (mut ctx, mut ctr) = setup(&bob());
-
-        // TODO: For the proper flow test we need to use the "private" functions, rather
-        // than hacking the state.
-    }
-
-    #[test]
-    #[should_panic(expected = "caller didn't upvote the candidate")]
+    #[should_panic(expected = "upvote doesn't exist")]
     fn remove_upvote_no_upvote() {
         let (_, mut ctr) = setup(&bob());
-        insert_def_nomination(&mut ctr);
+        insert_nomination(&mut ctr, alice(), None);
         ctr.remove_upvote(alice());
     }
 
     #[test]
-    fn remove_upvote_basics() {
+    fn remove_upvote() {
         let (_, mut ctr) = setup(&bob());
 
-        // TODO use contract functions to manipulate the state
-        /*
         // add a nomination and upvote it
-        ctr.nominations
-            .insert(&candidate(1), &HouseType::CouncilOfAdvisors);
-        ctr.upvotes.insert(&(candidate(1), bob()));
-        ctr.upvotes_per_candidate.insert(&candidate(1), &1);
+        insert_nomination(&mut ctr, candidate(1), None);
+        insert_upvote(&mut ctr, bob(), candidate(1));
         assert!(ctr.nominations.len() == 1);
-        assert!(ctr.upvotes.len() == 1);
-        assert!(ctr.upvotes_per_candidate.get(&candidate(1)) == Some(1));
+        assert!(ctr.nominations.get(&candidate(1)).unwrap().upvotes == 1);
+        assert!(ctr.upvotes.contains_key(&(candidate(1), bob())));
 
         // remove the upvote
         ctr.remove_upvote(candidate(1));
 
         // check all the values are updated correctly
         assert!(ctr.nominations.len() == 1);
-        assert!(ctr.upvotes.len() == 0);
-        assert!(ctr.upvotes_per_candidate.get(&candidate(1)) == Some(0));
-         */
-    }
-
-    #[test]
-    fn remove_upvote_flow1() {
-        let (mut ctx, mut ctr) = setup(&bob());
-
-        // This flow shoud also use the function rather than hacking the state
-        /*
-            // add two nominations and upvote them
-            ctr.nominations
-                .insert(&candidate(1), &HouseType::CouncilOfAdvisors);
-            ctr.nominations
-                .insert(&candidate(2), &HouseType::CouncilOfAdvisors);
-            ctr.upvotes.insert(&(candidate(1), bob()));
-            ctr.upvotes.insert(&(candidate(1), candidate(2)));
-            ctr.upvotes.insert(&(candidate(2), candidate(1)));
-            ctr.upvotes_per_candidate.insert(&candidate(1), &2);
-            ctr.upvotes_per_candidate.insert(&candidate(2), &1);
-            assert!(ctr.nominations.len() == 2);
-            assert!(ctr.upvotes.len() == 3);
-            assert!(ctr.upvotes_per_candidate.get(&candidate(1)) == Some(2));
-            assert!(ctr.upvotes_per_candidate.get(&candidate(2)) == Some(1));
-
-            // remove the (candidate(1) <- bob) upvote
-            ctr.remove_upvote(candidate(1));
-
-            // check all the values are updated correctly
-            assert!(ctr.nominations.len() == 2);
-            assert!(ctr.upvotes.len() == 2);
-            assert!(ctr.upvotes_per_candidate.get(&candidate(1)) == Some(1));
-            assert!(ctr.upvotes_per_candidate.get(&candidate(2)) == Some(1));
-
-            // remove the (candidate(1) <- candidate(2)) upvote
-            ctx.predecessor_account_id = candidate(2);
-            testing_env!(ctx.clone());
-            ctr.remove_upvote(candidate(1));
-
-            // check all the values are updated correctly
-            assert!(ctr.nominations.len() == 2);
-            assert!(ctr.upvotes.len() == 1);
-            assert!(ctr.upvotes_per_candidate.get(&candidate(1)) == Some(0));
-            assert!(ctr.upvotes_per_candidate.get(&candidate(2)) == Some(1));
-        */
+        assert!(ctr.nominations.get(&candidate(1)).unwrap().upvotes == 0);
+        assert!(!ctr.upvotes.contains_key(&(candidate(1), bob())));
     }
 
     #[test]
     fn nominations() {
-        // let (_, mut ctr) = setup(&bob());
+        let (_, mut ctr) = setup(&bob());
+        let upvotes_candidate_1 = 3;
+        let upvotes_candidate_2 = 1;
+        let upvotes_candidate_3 = 0;
 
-        // TODO: this flow should use functions to create nominations.
+        // add 3 nominations
+        insert_nomination(&mut ctr, candidate(1), Some(HouseType::CouncilOfAdvisors));
+        insert_nomination(&mut ctr, candidate(2), Some(HouseType::CouncilOfAdvisors));
+        insert_nomination(&mut ctr, candidate(3), Some(HouseType::HouseOfMerit));
+        // upvote candidate
+        insert_upvote(&mut ctr, candidate(2), candidate(1));
+        insert_upvote(&mut ctr, candidate(3), candidate(1));
+        insert_upvote(&mut ctr, candidate(4), candidate(1));
+        insert_upvote(&mut ctr, candidate(4), candidate(2));
+
+        // querry nominations for CouncilOfAdvisord
+        let counsil_of_advisors = ctr.nominations(HouseType::CouncilOfAdvisors);
+        assert!(counsil_of_advisors.len() == 2);
+        assert!(counsil_of_advisors[0].0 == candidate(1));
+        assert!(counsil_of_advisors[0].1 == upvotes_candidate_1);
+        assert!(counsil_of_advisors[1].0 == candidate(2));
+        assert!(counsil_of_advisors[1].1 == upvotes_candidate_2);
+
+        // querry nominations for HouseOfMerit
+        let counsil_of_advisors = ctr.nominations(HouseType::HouseOfMerit);
+        assert!(counsil_of_advisors.len() == 1);
+        assert!(counsil_of_advisors[0].0 == candidate(3));
+        assert!(counsil_of_advisors[0].1 == upvotes_candidate_3);
     }
 }

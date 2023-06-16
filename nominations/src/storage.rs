@@ -8,7 +8,6 @@ pub enum StorageKey {
     Nominations,
     Upvotes,
     Admins,
-    UpvotesPerCandidate,
 }
 
 #[derive(BorshDeserialize, BorshSerialize)]
@@ -19,15 +18,6 @@ pub struct Nomination {
     /// sum of received upvotes
     pub upvotes: u32,
 }
-
-// #[derive(BorshDeserialize, BorshSerialize)]
-// pub struct Campaign {
-//     pub name: String,
-//     pub link: String,
-//     /// start and end time for the nominations
-//     pub start_time: u64,
-//     pub end_time: u64,
-// }
 
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, PartialEq)]
 #[serde(crate = "near_sdk::serde")]

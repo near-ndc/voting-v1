@@ -2,7 +2,6 @@ use near_units::parse_near;
 use serde_json::json;
 use workspaces::{Account, Contract, DevNetwork, Worker};
 
-
 //extern crate elections;
 use elections::proposal::{HouseType, TokenMetadata, SECOND, VOTE_COST};
 
