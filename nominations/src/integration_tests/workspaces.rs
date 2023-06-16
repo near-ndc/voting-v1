@@ -239,6 +239,45 @@ async fn upvote() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
+async fn double_upvote_fail() -> anyhow::Result<()> {
+    let worker = workspaces::sandbox().await?;
+    let (ndc_elections_contract, _, bob, john, _) = init(&worker).await?;
+
+    // self nominate
+    let res = john
+        .call(ndc_elections_contract.id(), "self_nominate")
+        .args_json(json!({"house": HouseType::HouseOfMerit, "comment": "solid nomination", "link": "external_link.io"}))
+        .max_gas()
+        .deposit(parse_near!("1 N"))
+        .transact()
+        .await?;
+    assert!(res.is_success());
+
+    // upvote johns nomination
+    let res = bob
+        .call(ndc_elections_contract.id(), "upvote")
+        .args_json(json!({"candidate": john.id(),}))
+        .max_gas()
+        .deposit(parse_near!("1 N"))
+        .transact()
+        .await?;
+    assert!(res.is_success());
+
+    // double upvote
+    let res = bob
+        .call(ndc_elections_contract.id(), "upvote")
+        .args_json(json!({"candidate": john.id(),}))
+        .max_gas()
+        .deposit(parse_near!("1 N"))
+        .transact()
+        .await;
+    assert!(format!("{:?}", res).contains("Nomination already upvoted"));
+
+    println!("Passed ✅ double_upvote_fail");
+    Ok(())
+}
+
+#[tokio::test]
 async fn upvote_by_non_human_fail() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
     let (ndc_elections_contract, alice, _, john, _) = init(&worker).await?;
@@ -377,5 +416,63 @@ async fn comment_expired_iah_fail() -> anyhow::Result<()> {
     assert!(format!("{:?}", res).contains("Not a verified human member, or the tokens are expired"));
 
     println!("Passed ✅ comment_expired_iah_fail");
+    Ok(())
+}
+
+#[tokio::test]
+async fn flow1() -> anyhow::Result<()> {
+    let worker = workspaces::sandbox().await?;
+    let (ndc_elections_contract, _, bob, john, _) = init(&worker).await?;
+
+    // self nominate
+    let res = john
+        .call(ndc_elections_contract.id(), "self_nominate")
+        .args_json(json!({"house": HouseType::HouseOfMerit, "comment": "solid nomination", "link": "external_link.io"}))
+        .max_gas()
+        .deposit(parse_near!("1 N"))
+        .transact()
+        .await?;
+    assert!(res.is_success());
+
+    // upvote johns nomination
+    let res = bob
+        .call(ndc_elections_contract.id(), "upvote")
+        .args_json(json!({"candidate": john.id(),}))
+        .max_gas()
+        .deposit(parse_near!("1 N"))
+        .transact()
+        .await?;
+    assert!(res.is_success());
+
+    // self revoke
+    let res = john
+        .call(ndc_elections_contract.id(), "self_revoke")
+        .args_json(json!({}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success());
+
+    // self nominate to a different house
+    let res = john
+     .call(ndc_elections_contract.id(), "self_nominate")
+     .args_json(json!({"house": HouseType::CouncilOfAdvisors, "comment": "solid nomination", "link": "external_link.io"}))
+     .max_gas()
+     .deposit(parse_near!("1 N"))
+     .transact()
+     .await?;
+    assert!(res.is_success());
+
+    // upvote johns new nomination
+    let res = bob
+        .call(ndc_elections_contract.id(), "upvote")
+        .args_json(json!({"candidate": john.id(),}))
+        .max_gas()
+        .deposit(parse_near!("1 N"))
+        .transact()
+        .await?;
+    assert!(res.is_success());
+
+    println!("Passed ✅ flow1");
     Ok(())
 }
