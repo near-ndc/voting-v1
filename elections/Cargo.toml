@@ -5,6 +5,7 @@ authors = ["NDC GWG (https://near.social/#/mob.near/widget/ProfilePage?accountId
 edition = "2021"
 
 [lib]
+# rlib is needed for integration tests
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]

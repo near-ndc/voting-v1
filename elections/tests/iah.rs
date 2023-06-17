@@ -3,7 +3,10 @@ use serde_json::json;
 use workspaces::{Account, Contract, DevNetwork, Worker};
 
 //extern crate elections;
-use elections::{proposal::{HouseType, SECOND, VOTE_COST}, TokenMetadata};
+use elections::{
+    proposal::{HouseType, SECOND, VOTE_COST},
+    TokenMetadata,
+};
 
 async fn init(
     worker: &Worker<impl DevNetwork>,
@@ -14,6 +17,7 @@ async fn init(
         .await?;
 
     let registry_contract = worker
+        // registry is a contract form https://github.com/near-ndc/i-am-human
         .dev_deploy(include_bytes!("../../res/registry.wasm"))
         .await?;
 
