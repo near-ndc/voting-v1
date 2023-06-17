@@ -28,9 +28,11 @@ async fn init(
     let john_acc = worker.dev_create_account().await?;
 
     // initialize contracts
-    let res  = ndc_elections_contract
+    //
+
+    let res = ndc_elections_contract
         .call("new")
-        .args_json(json!({"authority": authority_acc.id(),"sbt_registry": registry_contract.id(),"iah_issuer": iah_issuer.id(),"iah_class_id": 1,}))
+        .args_json(json!({"authority": authority_acc.id(),"sbt_registry": registry_contract.id()}))
         .max_gas()
         .transact()
         .await?;
@@ -38,7 +40,8 @@ async fn init(
 
     let res = registry_contract
         .call("new")
-        .args_json(json!({"authority": authority_acc.id(),}))
+        .args_json(json!(
+            {"authority": authority_acc.id(),"iah_issuer": iah_issuer.id(),"iah_classes": vec![1]}))
         .max_gas()
         .transact()
         .await?;

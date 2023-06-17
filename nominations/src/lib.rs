@@ -147,8 +147,7 @@ impl Contract {
             format!("Not enough deposit, min: {:?}", UPVOTE_COST)
         );
 
-        // call SBT registry to verify IAH/ OG SBT and cast the upvote in callback based on the
-        // return from sbt_tokens_by_owner
+        // call SBT registry to verify IAH and cast the upvote in callback
         ext_sbtreg::ext(self.sbt_registry.clone())
             .is_human(upvoter.clone())
             .then(
@@ -162,7 +161,11 @@ impl Contract {
     /// + Checks if the caller is a verified human
     /// + Checks if there is a nomination for the given candidate
     /// + Checks if the nomination period is active
-    pub fn comment(&mut self, candidate: AccountId, comment: String) -> Promise {
+    pub fn comment(
+        &mut self,
+        candidate: AccountId,
+        #[allow(unused_variables)] comment: String,
+    ) -> Promise {
         self.assert_active();
         let commenter = env::predecessor_account_id();
         require!(
@@ -174,7 +177,7 @@ impl Contract {
             format!("Not enough gas, min: {:?}", GAS_COMMENT)
         );
 
-        // call SBT registry to verify IAH/ OG SBT and cast the nomination in callback based on the return from sbt_tokens_by_owner
+        // call SBT registry to verify IAH and validate comment in the callback
         ext_sbtreg::ext(self.sbt_registry.clone())
             .is_human(commenter.clone())
             .then(

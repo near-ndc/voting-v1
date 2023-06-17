@@ -22,31 +22,19 @@ pub struct Contract {
     prop_counter: u32,
     pub proposals: LookupMap<u32, Proposal>,
 
-    /// address which can pause the contract and make proposal.
-    /// Should be a multisig / DAO;
+    /// address which can pause the contract and make proposal. Should be a multisig / DAO;
     pub authority: AccountId,
     pub sbt_registry: AccountId,
-    /// issuer account for proof of humanity
-    pub iah_issuer: AccountId,
-    /// SBT class ID used for Facetech verification
-    pub iah_class_id: u64,
 }
 
 #[near_bindgen]
 impl Contract {
     #[init]
-    pub fn new(
-        authority: AccountId,
-        sbt_registry: AccountId,
-        iah_issuer: AccountId,
-        iah_class_id: u64,
-    ) -> Self {
+    pub fn new(authority: AccountId, sbt_registry: AccountId) -> Self {
         Self {
             pause: false,
             authority,
             sbt_registry,
-            iah_issuer,
-            iah_class_id,
             proposals: LookupMap::new(StorageKey::Proposals),
             prop_counter: 0,
         }
@@ -125,13 +113,7 @@ impl Contract {
 
         // call SBT registry to verify  SBT
         ext_sbtreg::ext(self.sbt_registry.clone())
-            .sbt_tokens_by_owner(
-                user.clone(),
-                Some(self.iah_issuer.clone()),
-                Some(self.iah_class_id.clone()),
-                Some(1),
-                Some(true),
-            )
+            .is_human(user.clone())
             .then(
                 ext_self::ext(env::current_account_id())
                     .with_static_gas(VOTE_GAS_CALLBACK)
@@ -178,7 +160,6 @@ mod tests {
 
     use crate::{Contract, Vote, SECOND, VOTE_COST, VOTE_GAS};
     const START: u64 = 10;
-    const CLASS_ID: u64 = 1;
 
     fn alice() -> AccountId {
         AccountId::new_unchecked("alice.near".to_string())
@@ -200,10 +181,6 @@ mod tests {
         AccountId::new_unchecked("sbt_registry.near".to_string())
     }
 
-    fn iah_issuer() -> AccountId {
-        AccountId::new_unchecked("iah_issuer.near".to_string())
-    }
-
     fn setup(predecessor: &AccountId) -> (VMContext, Contract) {
         let mut ctx = VMContextBuilder::new()
             .predecessor_account_id(admin())
@@ -212,7 +189,7 @@ mod tests {
             .is_view(false)
             .build();
         testing_env!(ctx.clone());
-        let ctr = Contract::new(admin(), sbt_registry(), iah_issuer(), CLASS_ID);
+        let ctr = Contract::new(admin(), sbt_registry());
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
         return (ctx, ctr);
