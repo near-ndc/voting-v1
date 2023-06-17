@@ -3,14 +3,14 @@ use serde_json::json;
 use workspaces::{Account, Contract, DevNetwork, Worker};
 
 //extern crate elections;
-use elections::proposal::{HouseType, TokenMetadata, SECOND, VOTE_COST};
+use elections::{proposal::{HouseType, SECOND, VOTE_COST}, TokenMetadata};
 
 async fn init(
     worker: &Worker<impl DevNetwork>,
 ) -> anyhow::Result<(Contract, Account, Account, Account, u32)> {
     // deploy contracts
     let ndc_elections_contract = worker
-        .dev_deploy(include_bytes!("../../res/ndc_elections.wasm"))
+        .dev_deploy(include_bytes!("../../res/elections.wasm"))
         .await?;
 
     let registry_contract = worker

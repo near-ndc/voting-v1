@@ -5,7 +5,7 @@ use near_sdk::collections::LookupSet;
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{env, require, AccountId};
 
-use crate::constants::*;
+pub use crate::constants::*;
 
 #[derive(Serialize, Deserialize, BorshDeserialize, BorshSerialize)]
 #[serde(crate = "near_sdk::serde")]
