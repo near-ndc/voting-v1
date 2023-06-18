@@ -1,6 +1,10 @@
 use near_sdk::serde::{Serialize, Deserialize};
 use near_sdk::{ext_contract, AccountId};
 
+// imports needed for conditional derive (required for tests)
+#[allow(unused_imports)]
+use near_sdk::serde::Serialize;
+
 use crate::Vote;
 
 #[ext_contract(ext_self)]
@@ -10,14 +14,7 @@ pub trait ExtSelf {
 
 #[ext_contract(ext_sbtreg)]
 pub trait ExtSbtRegistry {
-    fn sbt_tokens_by_owner(
-        &self,
-        account: AccountId,
-        issuer: Option<AccountId>,
-        from_class: Option<u64>,
-        limit: Option<u32>,
-        with_expired: Option<bool>,
-    ) -> Vec<(AccountId, Vec<OwnedToken>)>;
+    fn is_human(&self, account: AccountId) -> bool;
 }
 
 // TODO: use SBT crate once it is published
@@ -31,7 +28,9 @@ pub struct OwnedToken {
 }
 
 /// TokenMetadata defines attributes for each SBT token.
-#[derive(Deserialize, Serialize, Debug)]
+
+#[derive(Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Serialize, Debug))]
 #[serde(crate = "near_sdk::serde")]
 pub struct TokenMetadata {
     pub class: u64,

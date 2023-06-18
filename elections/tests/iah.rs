@@ -17,6 +17,7 @@ async fn init(
         .await?;
 
     let registry_contract = worker
+        // registry is a contract form https://github.com/near-ndc/i-am-human
         .dev_deploy(include_bytes!("../../res/registry.wasm"))
         .await?;
 
