@@ -3,7 +3,10 @@ use serde_json::json;
 use workspaces::{Account, Contract, DevNetwork, Worker};
 
 //extern crate elections;
-use elections::{proposal::{HouseType, SECOND, VOTE_COST}, TokenMetadata};
+use elections::{
+    proposal::{HouseType, VOTE_COST},
+    TokenMetadata, MILI_SECOND,
+};
 
 async fn init(
     worker: &Worker<impl DevNetwork>,
@@ -24,9 +27,14 @@ async fn init(
     let john_acc = worker.dev_create_account().await?;
 
     // initialize contracts
-    let res  = ndc_elections_contract
+    let res = ndc_elections_contract
         .call("new")
-        .args_json(json!({"authority": authority_acc.id(),"sbt_registry": registry_contract.id(),"iah_issuer": iah_issuer.id(),"iah_class_id": 1,}))
+        .args_json(json!({
+            "authority": authority_acc.id(),
+            "sbt_registry": registry_contract.id(),
+            "iah_issuer": iah_issuer.id(),
+            "iah_class_id": 1,
+        }))
         .max_gas()
         .transact()
         .await?;
@@ -34,7 +42,11 @@ async fn init(
 
     let res = registry_contract
         .call("new")
-        .args_json(json!({"authority": authority_acc.id(),}))
+        .args_json(json!({
+            "authority": authority_acc.id(),
+            "iah_issuer": iah_issuer.id(),
+            "iah_classes": (1,),
+        }))
         .max_gas()
         .transact()
         .await?;
@@ -51,9 +63,9 @@ async fn init(
 
     // get current block time
     let block_info = worker.view_block().await?;
-    let current_timestamp = block_info.timestamp() / SECOND;
-    let start_time = current_timestamp + 10;
-    let expires_at: u64 = current_timestamp + 1000000;
+    let current_timestamp = block_info.timestamp() / MILI_SECOND;
+    let start_time = current_timestamp + 1_000 * 10;
+    let expires_at: u64 = current_timestamp + 1_000 * 1000;
 
     // mint IAH sbt to alice and john
     let token_metadata = TokenMetadata {
@@ -88,7 +100,7 @@ async fn init(
     // create a proposal
     let proposal_id: u32 = authority_acc
     .call(ndc_elections_contract.id(), "create_proposal")
-    .args_json(json!({"typ": HouseType::HouseOfMerit, "start": start_time, "end": u64::MAX, "ref_link": "test.io", "quorum": 10, "credits": 5, "seats": 1, "candidates": [john_acc.id(), alice_acc.id()],}))
+    .args_json(json!({"typ": HouseType::HouseOfMerit, "start": start_time / 1000, "end": u64::MAX, "ref_link": "test.io", "quorum": 10, "credits": 5, "seats": 1, "candidates": [john_acc.id(), alice_acc.id()],}))
     .max_gas()
     .transact()
     .await?
@@ -110,7 +122,6 @@ async fn vote_by_human() -> anyhow::Result<()> {
 
     // fast forward to the voting period
     worker.fast_forward(100).await?;
-
     // create a vote
     let res = alice_acc
         .call(ndc_elections_contract.id(), "vote")

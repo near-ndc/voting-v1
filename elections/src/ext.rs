@@ -16,7 +16,7 @@ pub trait ExtSbtRegistry {
         issuer: Option<AccountId>,
         from_class: Option<u64>,
         limit: Option<u32>,
-        non_expired: Option<bool>,
+        with_expired: Option<bool>,
     ) -> Vec<(AccountId, Vec<OwnedToken>)>;
 }
 
@@ -31,7 +31,7 @@ pub struct OwnedToken {
 }
 
 /// TokenMetadata defines attributes for each SBT token.
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Debug)]
 #[serde(crate = "near_sdk::serde")]
 pub struct TokenMetadata {
     pub class: u64,

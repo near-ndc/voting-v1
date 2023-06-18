@@ -93,7 +93,7 @@ impl Proposal {
     /// calls will overwrite previous votes.
     pub fn vote_on_verified(&mut self, user: &AccountId, vote: Vote) {
         self.assert_active();
-        require!(!self.voters.contains(&user), "user already voted");
+        require!(self.voters.insert(&user), "user already voted");
         self.voters_num += 1;
         for candidate in vote {
             let idx = self.candidates.binary_search(&candidate).unwrap() as usize;

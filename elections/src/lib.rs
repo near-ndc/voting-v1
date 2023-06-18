@@ -122,15 +122,14 @@ impl Contract {
             format!("not enough gas, min: {:?}", VOTE_GAS)
         );
         validate_vote(&vote, p.seats, &p.candidates);
-
-        // call SBT registry to verify  SBT
+        // call SBT registry to verify SBT
         ext_sbtreg::ext(self.sbt_registry.clone())
             .sbt_tokens_by_owner(
                 user.clone(),
                 Some(self.iah_issuer.clone()),
                 Some(self.iah_class_id.clone()),
                 Some(1),
-                Some(true),
+                Some(false),
             )
             .then(
                 ext_self::ext(env::current_account_id())
@@ -155,7 +154,6 @@ impl Contract {
             env::panic_str("Voter is not a verified human, or the token has expired");
         }
         let mut p = self._proposal(prop_id);
-        require!(!p.voters.insert(&user), "caller already voted");
         p.vote_on_verified(&user, vote);
     }
 
@@ -176,7 +174,7 @@ impl Contract {
 mod tests {
     use near_sdk::{test_utils::VMContextBuilder, testing_env, AccountId, Gas, VMContext};
 
-    use crate::{Contract, Vote, SECOND, VOTE_COST, VOTE_GAS};
+    use crate::{Contract, Vote, VOTE_COST, VOTE_GAS, SECOND, MILI_SECOND};
     const START: u64 = 10;
     const CLASS_ID: u64 = 1;
 
