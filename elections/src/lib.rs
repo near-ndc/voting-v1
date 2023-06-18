@@ -127,12 +127,12 @@ impl Contract {
     #[private]
     pub fn on_vote_verified(
         &mut self,
-        #[callback_unwrap] val: Vec<(AccountId, Vec<OwnedToken>)>,
+        #[callback_unwrap] val: bool,
         prop_id: u32,
         user: AccountId,
         vote: Vote,
     ) {
-        if val.is_empty() {
+        if !val {
             env::panic_str("Voter is not a verified human, or the token has expired");
         }
         let mut p = self._proposal(prop_id);
@@ -156,7 +156,7 @@ impl Contract {
 mod tests {
     use near_sdk::{test_utils::VMContextBuilder, testing_env, AccountId, Gas, VMContext};
 
-    use crate::{Contract, Vote, VOTE_COST, VOTE_GAS, SECOND, MILI_SECOND};
+    use crate::{Contract, Vote, VOTE_COST, VOTE_GAS, SECOND};
     const START: u64 = 10;
 
     fn alice() -> AccountId {

@@ -1,4 +1,4 @@
-use near_sdk::serde::{Serialize, Deserialize};
+use near_sdk::serde::Deserialize;
 use near_sdk::{ext_contract, AccountId};
 
 // imports needed for conditional derive (required for tests)
