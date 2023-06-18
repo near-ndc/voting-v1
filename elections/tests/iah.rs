@@ -64,9 +64,10 @@ async fn init(
 
     // get current block time
     let block_info = worker.view_block().await?;
-    let current_timestamp = block_info.timestamp() / MILI_SECOND;
-    let start_time = current_timestamp + 1_000 * 10;
-    let expires_at: u64 = current_timestamp + 1_000 * 1000;
+    let current_timestamp = block_info.timestamp() / MILI_SECOND; // timestamp in milliseconds
+    let start_time_ms = current_timestamp + 1_000 * 10; // 10 seconds in milliseconds
+    let expires_at: u64 = current_timestamp + 1_000 * 1000; // 1000 seconds in milliseconds
+    let start_time = start_time_ms / 1000; // 10 seconds
 
     // mint IAH sbt to alice and john
     let token_metadata = TokenMetadata {
@@ -101,7 +102,7 @@ async fn init(
     // create a proposal
     let proposal_id: u32 = authority_acc
     .call(ndc_elections_contract.id(), "create_proposal")
-    .args_json(json!({"typ": HouseType::HouseOfMerit, "start": start_time / 1000, "end": u64::MAX, "ref_link": "test.io", "quorum": 10, "credits": 5, "seats": 1, "candidates": [john_acc.id(), alice_acc.id()],}))
+    .args_json(json!({"typ": HouseType::HouseOfMerit, "start": start_time, "end": u64::MAX, "ref_link": "test.io", "quorum": 10, "credits": 5, "seats": 1, "candidates": [john_acc.id(), alice_acc.id()],}))
     .max_gas()
     .transact()
     .await?
