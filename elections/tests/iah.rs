@@ -131,7 +131,6 @@ async fn vote_by_human() -> anyhow::Result<()> {
         .max_gas()
         .transact()
         .await?;
-    println!("{:?}", res);
     assert!(res.is_success());
 
     Ok(())
