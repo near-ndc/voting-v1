@@ -72,6 +72,25 @@ impl Contract {
     }
 
     /**********
+     * ADMIN FUNCTIONS
+     **********/
+
+    pub fn admin_set_og_class(&mut self, og_issuer: AccountId, og_class: u64) {
+        self.assert_admin(env::predecessor_account_id());
+        self.og_class = (og_issuer, og_class);
+    }
+
+    pub fn admin_set_registry(&mut self, registry: AccountId) {
+        self.assert_admin(env::predecessor_account_id());
+        self.sbt_registry = registry;
+    }
+
+    fn assert_admin(&self, user: AccountId) {
+        let admins = self.admins.get().unwrap();
+        require!(admins.contains(&user), "Not an admin!");
+    }
+
+    /**********
      * TRANSACTIONS
      **********/
 
