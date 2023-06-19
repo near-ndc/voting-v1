@@ -132,9 +132,10 @@ impl Contract {
         user: AccountId,
         vote: Vote,
     ) {
-        if !val {
-            env::panic_str("Voter is not a verified human, or the token has expired");
-        }
+        require!(
+            val,
+            "Voter is not a verified human, or the token has expired"
+        );
         let mut p = self._proposal(prop_id);
         p.vote_on_verified(&user, vote);
     }
@@ -156,7 +157,7 @@ impl Contract {
 mod tests {
     use near_sdk::{test_utils::VMContextBuilder, testing_env, AccountId, Gas, VMContext};
 
-    use crate::{Contract, Vote, VOTE_COST, VOTE_GAS, SECOND};
+    use crate::{Contract, Vote, SECOND, VOTE_COST, VOTE_GAS};
     const START: u64 = 10;
 
     fn alice() -> AccountId {

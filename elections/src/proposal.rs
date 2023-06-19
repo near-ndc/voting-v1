@@ -11,7 +11,6 @@ pub use crate::constants::*;
 #[serde(crate = "near_sdk::serde")]
 #[cfg_attr(test, derive(Debug, PartialEq))]
 pub enum HouseType {
-    Other,
     HouseOfMerit,
     CouncilOfAdvisors,
     TransparencyCommission,
