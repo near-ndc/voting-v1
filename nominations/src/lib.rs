@@ -4,16 +4,13 @@ use near_sdk::env::panic_str;
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise};
 
 mod constants;
-mod storage;
+pub mod storage;
 
 pub use crate::constants::*;
 use crate::storage::*;
 
 pub mod ext;
 pub use crate::ext::*;
-
-#[cfg(test)]
-mod integration_tests;
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
