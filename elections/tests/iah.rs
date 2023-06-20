@@ -152,8 +152,10 @@ async fn vote_by_non_human() -> anyhow::Result<()> {
         .deposit(VOTE_COST)
         .max_gas()
         .transact()
-        .await?;
-    assert!(res.is_failure());
+        .await;
+    assert!(
+        format!("{:?}", res).contains("Voter is not a verified human, or the token has expired")
+    );
 
     Ok(())
 }
@@ -173,8 +175,10 @@ async fn vote_expired_iah_token() -> anyhow::Result<()> {
         .deposit(VOTE_COST)
         .max_gas()
         .transact()
-        .await?;
-    assert!(res.is_failure());
+        .await;
+    assert!(
+        format!("{:?}", res).contains("Voter is not a verified human, or the token has expired")
+    );
 
     Ok(())
 }

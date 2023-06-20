@@ -28,6 +28,7 @@ pub struct Proposal {
     /// min amount of voters to legitimize the voting.
     pub quorum: u32,
     /// max amount of credits each voter has
+    /// TODO: I suggest that we change `seats` to `credits`
     pub seats: u16,
     /// list of valid candidates. Must be ordered.
     pub candidates: Vec<AccountId>,
@@ -87,11 +88,12 @@ impl Proposal {
         )
     }
 
-    /// once vote proof has been verify, we call this function to register a vote.
+    /// once vote proof has been verified, we call this function to register a vote.
     /// User can vote multiple times, as long as the vote is active. Subsequent
     /// calls will overwrite previous votes.
     pub fn vote_on_verified(&mut self, user: &AccountId, vote: Vote) {
         self.assert_active();
+        // TODO: I think this is not allowing the user to vote multiple times and overwtite the votes
         require!(self.voters.insert(&user), "user already voted");
         self.voters_num += 1;
         for candidate in vote {
@@ -107,6 +109,7 @@ pub type Vote = Vec<AccountId>;
 pub fn validate_vote(vs: &Vote, max_credits: u16, valid_candidates: &Vec<AccountId>) {
     require!(
         vs.len() <= max_credits as usize,
+        // TODO: I think seats should be changed to credits both here and in the smart contract structs
         format!("max vote is {} seats", max_credits)
     );
     let mut vote_for = HashSet::new();
