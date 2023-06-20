@@ -85,6 +85,12 @@ impl Contract {
         self.sbt_registry = registry;
     }
 
+    pub fn admin_set_nominations_time(&mut self, start_time: u64, end_time: u64) {
+        self.assert_admin(env::predecessor_account_id());
+        self.start_time = start_time;
+        self.end_time = end_time;
+    }
+
     fn assert_admin(&self, user: AccountId) {
         let admins = self.admins.get().unwrap();
         require!(admins.contains(&user), "Not an admin!");
