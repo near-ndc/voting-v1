@@ -15,6 +15,7 @@ pub use crate::ext::*;
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
+    /// registry address
     pub sbt_registry: AccountId,
     /// IAH issuer account for proof of humanity
     pub iah_issuer: AccountId,
@@ -60,7 +61,7 @@ impl Contract {
      **********/
 
     /// returns list of pairs:
-    ///   (self-nominated account, sum of upvotes) of given house.
+    /// (self-nominated account, sum of upvotes) for a given house.
     pub fn nominations(&self, house: HouseType) -> Vec<(AccountId, u32)> {
         let mut results: Vec<(AccountId, u32)> = Vec::new();
         for n in self.nominations.iter() {
@@ -75,12 +76,11 @@ impl Contract {
      * TRANSACTIONS
      **********/
 
-    /// nominate method allows to submit nominatios by verified humans
-    /// + Checks if the caller is a verified human
-    /// + Check if the caller is a OG member
-    /// + Checks if the nomination has been already submitted
-    /// + Checks if the user has nominated themselves to a different house before
-    /// + Checks if the nomination was submitted during the nomination period
+    /// nominate method allows to submit self-nominatios by OG members
+    /// + checks if the caller is a OG member
+    /// + checks if the nomination has been already submitted
+    /// + checks if the user has nominated themselves to a different house before
+    /// + checks if the nomination period is active
     #[payable]
     pub fn self_nominate(
         &mut self,
@@ -120,11 +120,10 @@ impl Contract {
             )
     }
 
-    /// upvtoe allows users to upvote a specific candidante
-    /// + Checks if the caller is a verified human
-    /// + Checks if there is a nomination for the given candidate
-    /// + Checks if the caller has already upvoted the candidate
-    /// + Checks if the nomination period is active
+    /// upvote method allows users to upvote a specific candidante
+    /// + checks if the caller is a verified human
+    /// + checks if there is a nomination for the given candidate
+    /// + checks if the nomination period is active
     #[payable]
     pub fn upvote(&mut self, candidate: AccountId) -> Promise {
         self.assert_active();
@@ -154,10 +153,10 @@ impl Contract {
             )
     }
 
-    /// comment allows users to comment on a existing nomination
-    /// + Checks if the caller is a verified human
-    /// + Checks if there is a nomination for the given candidate
-    /// + Checks if the nomination period is active
+    /// comment enables users to comment on a existing nomination
+    /// + checks if the caller is a verified human
+    /// + checks if there is a nomination for the given candidate
+    /// + checks if the nomination period is active
     pub fn comment(
         &mut self,
         candidate: AccountId,
@@ -174,7 +173,7 @@ impl Contract {
             format!("Not enough gas, min: {:?}", GAS_COMMENT)
         );
 
-        // call SBT registry to verify IAH and validate comment in the callback
+        // call SBT registry to verify IAH
         ext_sbtreg::ext(self.sbt_registry.clone())
             .is_human(commenter.clone())
             .then(
@@ -184,9 +183,9 @@ impl Contract {
             )
     }
 
-    /// Revokes callers nominatnion and all the upvotes of that specific nomination
-    /// + Checks if the nomination period is active
-    /// + Checks if the user has a nomination to revoke
+    /// revokes callers nominatnion
+    /// + checks if the nomination period is active
+    /// + checks if the user has a nomination to revoke
     pub fn self_revoke(&mut self) {
         self.assert_active();
         let nominee = env::predecessor_account_id();
@@ -199,9 +198,9 @@ impl Contract {
         self.nominations.remove(&nominee);
     }
 
-    /// Remove the upvote
-    /// + Checks if the nomination period is active
-    /// + Checks if the caller upvoted the `candidate` before
+    /// removes the upvote
+    /// + checks if the nomination period is active
+    /// + checks if the caller upvoted the `candidate` before
     pub fn remove_upvote(&mut self, candidate: AccountId) {
         self.assert_active();
         let caller = env::predecessor_account_id();
@@ -222,7 +221,10 @@ impl Contract {
      * PRIVATE
      ****************/
 
-    /// Checks If the upvoter is a verified human registers the upvote otherwise panics
+    /// callback for upvote
+    /// + checks if the upvoter is a verified human
+    /// + checks if the caller has already upvoted the candidate
+    /// if both of the checks passed registers the upvote otherwise panics
     #[private]
     pub fn on_upvote_verified(
         &mut self,
@@ -248,7 +250,8 @@ impl Contract {
         }
     }
 
-    /// Checks If the commenter is a verified human otherwise panics
+    /// callback for comment
+    /// + checks if the commenter is a verified human otherwise panics
     #[private]
     pub fn on_comment_verified(&mut self, #[callback_unwrap] is_human: bool) {
         require!(
@@ -258,7 +261,10 @@ impl Contract {
         // we don't record anything. Comments are handled by indexer.
     }
 
-    ///Checks If the caller is a OG token holder and registers the nomination otherwise panics
+    /// callback for self_nominate
+    /// + checks if the caller is a OG token holder
+    /// + checks if user has already submitted a nomination
+    /// if checks pass registers the nomination otherwise panics
     #[private]
     pub fn on_nominate_verified(
         &mut self,

@@ -10,6 +10,7 @@ pub enum StorageKey {
     Admins,
 }
 
+/// nomination struct
 #[derive(BorshDeserialize, BorshSerialize)]
 pub struct Nomination {
     pub house: HouseType,
@@ -19,6 +20,7 @@ pub struct Nomination {
     pub upvotes: u32,
 }
 
+/// house type struct
 #[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, PartialEq)]
 #[serde(crate = "near_sdk::serde")]
 #[cfg_attr(test, derive(Debug))]
