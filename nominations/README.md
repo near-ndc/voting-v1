@@ -26,9 +26,7 @@ Smart contract for nominations.
 ## Deployed Contracts
 ### Testnet:
 
-**nominations-v1**: `nominations-v1.gwg.testnet`
-
-#### initialized with values: 
+**nominations-v1**: `nominations-v1.gwg.testnet`, initialized with values: 
  - **sbt_registry**: `registry-unstable.i-am-human.testnet`,
  - **iah_issuer**: `i-am-human-staging.testnet`,
  - **og_class**: `1`,
