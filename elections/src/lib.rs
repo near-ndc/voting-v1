@@ -22,7 +22,7 @@ pub struct Contract {
     prop_counter: u32,
     pub proposals: LookupMap<u32, Proposal>,
 
-    /// address which can pause the contract and make proposal. Should be a multisig / DAO;
+    /// address which can pause the contract and make a new proposal. Should be a multisig / DAO;
     pub authority: AccountId,
     pub sbt_registry: AccountId,
 }
@@ -44,7 +44,7 @@ impl Contract {
      * TRANSACTIONS
      **********/
 
-    /// creates new empty proposal
+    /// creates a new empty proposal
     /// returns the new proposal ID
     /// NOTE: storage is paid from the account state
     pub fn create_proposal(
@@ -183,7 +183,6 @@ mod tests {
     fn setup(predecessor: &AccountId) -> (VMContext, Contract) {
         let mut ctx = VMContextBuilder::new()
             .predecessor_account_id(admin())
-            // .attached_deposit(deposit_dec.into())
             .block_timestamp(START * SECOND)
             .is_view(false)
             .build();

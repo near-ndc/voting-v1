@@ -4,7 +4,7 @@
 
 - Only I Am Human verified accounts can vote.
 - Each account can vote at most one time. Votes are not revocable, and can't be changed.
-- Only an authority (set during contract initialization) can create proposals. Each proposal specifies:
+- Only the authority (set during contract initialization) can create proposals. Each proposal specifies:
 
   - `typ`: must be HouseType variant
   - `start`: voting start time as UNIX time (in seconds)
@@ -32,7 +32,7 @@ REGISTRY=registry-1.i-am-human.testnet
 
 # create proposal
 
-near call $CTR creat_proposal '{"start": 1686221747, "end": 1686653747, "ref_link": "example.com", "quorum": 10, "candidates": ["candidate1.testnet", "candidate2.testnet", "candidate3.testnet", "candidate4.testnet"], "typ": "HouseOfMerit", "seats": 3}' --accountId $CTR
+near call $CTR create_proposal '{"start": 1686221747, "end": 1686653747, "ref_link": "example.com", "quorum": 10, "candidates": ["candidate1.testnet", "candidate2.testnet", "candidate3.testnet", "candidate4.testnet"], "typ": "HouseOfMerit", "seats": 3}' --accountId $CTR
 
 # fetch all proposal
 
