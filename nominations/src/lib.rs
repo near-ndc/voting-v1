@@ -31,6 +31,8 @@ pub struct Contract {
     pub start_time: u64,
     /// nomination period end time
     pub end_time: u64,
+
+    pub next_comment_id: u64,
 }
 
 #[near_bindgen]
@@ -53,6 +55,7 @@ impl Contract {
             nominations: UnorderedMap::new(StorageKey::Nominations),
             upvotes: LookupMap::new(StorageKey::Upvotes),
             admins: LazyOption::new(StorageKey::Admins, Some(&admins)),
+            next_comment_id: 0,
         }
     }
 
@@ -183,6 +186,13 @@ impl Contract {
             )
     }
 
+    /// Instruments in the indexer to remove a comment.
+    /// Caller must be an author of the comment (must be checked by the indexer).
+    pub fn remove_comment(&mut self, comment: u64) {
+        require!(comment < self.next_comment_id, "invalid comment ID");
+        // we don't record commetns, so additional authorization must happen in the indexer.
+    }
+
     /// revokes callers nominatnion
     /// + checks if the nomination period is active
     /// + checks if the user has a nomination to revoke
@@ -250,15 +260,18 @@ impl Contract {
         }
     }
 
-    /// callback for comment
+    /// callback for comment. Returns comment ID (used to track comment removal).
     /// + checks if the commenter is a verified human otherwise panics
     #[private]
-    pub fn on_comment_verified(&mut self, #[callback_unwrap] is_human: bool) {
+    pub fn on_comment_verified(&mut self, #[callback_unwrap] is_human: bool) -> u64 {
         require!(
             is_human,
             "Not a verified human member, or the tokens are expired"
         );
-        // we don't record anything. Comments are handled by indexer.
+        let id = self.next_comment_id;
+        self.next_comment_id += 1;
+        id
+        // we don't record comment - they are handled by the indexer.
     }
 
     /// callback for self_nominate
