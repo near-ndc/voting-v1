@@ -1,11 +1,7 @@
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{ext_contract, AccountId};
 
-#[ext_contract(ext_self)]
-pub trait ExtSelf {
-    fn on_nominate_verified(&mut self, campaign: u32, nominator: AccountId, nominee: AccountId);
-}
-
+/// sbt_tokens_by owner interface for cross-contract calls
 #[ext_contract(ext_sbtreg)]
 pub trait ExtSbtRegistry {
     fn sbt_tokens_by_owner(
