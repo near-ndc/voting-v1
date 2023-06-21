@@ -27,7 +27,7 @@ pub struct Proposal {
     pub end: u64,
     /// min amount of voters to legitimize the voting.
     pub quorum: u32,
-    /// max amount of credits each voter has
+    /// max amount of seats a voter can allocate candidates for.
     pub seats: u16,
     /// list of valid candidates. Must be ordered.
     pub candidates: Vec<AccountId>,
@@ -87,9 +87,7 @@ impl Proposal {
         )
     }
 
-    /// once vote proof has been verify, we call this function to register a vote.
-    /// User can vote multiple times, as long as the vote is active. Subsequent
-    /// calls will overwrite previous votes.
+    /// once vote proof has been verified, we call this function to register a vote.
     pub fn vote_on_verified(&mut self, user: &AccountId, vote: Vote) {
         self.assert_active();
         require!(self.voters.insert(&user), "user already voted");
