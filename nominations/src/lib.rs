@@ -31,7 +31,7 @@ pub struct Contract {
     pub start_time: u64,
     /// nomination period end time
     pub end_time: u64,
-
+    /// next comment id
     pub next_comment_id: u64,
 }
 
@@ -186,10 +186,10 @@ impl Contract {
             )
     }
 
-    /// Instruments in the indexer to remove a comment.
-    /// Caller must be an author of the comment (must be checked by the indexer).
+    /// instruments in the indexer to remove a comment.
+    /// caller must be an author of the comment (must be checked by the indexer).
     pub fn remove_comment(&mut self, comment: u64) {
-        require!(comment < self.next_comment_id, "invalid comment ID");
+        require!(comment < self.next_comment_id, "Invalid comment ID");
         // we don't record commetns, so additional authorization must happen in the indexer.
     }
 
@@ -619,5 +619,20 @@ mod tests {
         assert!(counsil_of_advisors.len() == 1);
         assert!(counsil_of_advisors[0].0 == candidate(3));
         assert!(counsil_of_advisors[0].1 == upvotes_candidate_3);
+    }
+
+    #[test]
+    #[should_panic(expected = "Invalid comment ID")]
+    fn remove_comment_wrong_comment_id() {
+        let (_, mut ctr) = setup(&bob());
+        ctr.remove_comment(1);
+    }
+
+    #[test]
+    fn remove_comment() {
+        let (_, mut ctr) = setup(&bob());
+        ctr.next_comment_id += 1;
+        ctr.remove_comment(0);
+        // we cannot check the removal of the comment (this is handled by the indexer).
     }
 }

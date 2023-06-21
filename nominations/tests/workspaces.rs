@@ -475,3 +475,53 @@ async fn flow1() -> anyhow::Result<()> {
     println!("Passed ✅ flow1");
     Ok(())
 }
+
+#[tokio::test]
+async fn remove_upvote_upvote_again() -> anyhow::Result<()> {
+    let worker = workspaces::sandbox().await?;
+    let (ndc_elections_contract, _, bob, john, _) = init(&worker).await?;
+
+    // self nominate
+    let res = john
+        .call(ndc_elections_contract.id(), "self_nominate")
+        .args_json(json!({"house": HouseType::HouseOfMerit, "comment": "solid nomination", "link": "external_link.io"}))
+        .max_gas()
+        .deposit(parse_near!("1 N"))
+        .transact()
+        .await?;
+    assert!(res.is_success());
+
+    // upvote johns nomination
+    let res = bob
+        .call(ndc_elections_contract.id(), "upvote")
+        .args_json(json!({"candidate": john.id(),}))
+        .max_gas()
+        .deposit(parse_near!("1 N"))
+        .transact()
+        .await?;
+    assert!(res.is_success());
+
+    // remove upvote
+    let res = bob
+        .call(ndc_elections_contract.id(), "remove_upvote")
+        .args_json(json!({"candidate": john.id(),}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success());
+
+    // upvote again
+
+    // upvote johns nomination
+    let res = bob
+        .call(ndc_elections_contract.id(), "upvote")
+        .args_json(json!({"candidate": john.id(),}))
+        .max_gas()
+        .deposit(parse_near!("1 N"))
+        .transact()
+        .await?;
+    assert!(res.is_success());
+
+    println!("Passed ✅ remove_upvote_upvote_again");
+    Ok(())
+}
