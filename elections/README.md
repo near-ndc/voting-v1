@@ -13,6 +13,15 @@
   - `quorum`: minimum amount of legit accounts to vote to legitimize the elections.
   - `seats`: max number of candidates to elect, also max number of credits each user has when casting a vote.
 
+## Flow
+
+- GWG deploys the elections smart contract and sets authority for creating new proposals.
+- GWG authority creates new proposals before the election starts, with eligible candidates based on the `nominations` result. All proposals are created before the elections start.
+  - NOTE: we may consider querying the candidates directly from the nominations contract.
+- Once the proposals are created and the elections start (`now >= proposal.start`), all human verified near accounts can vote according to the NDC Elections [v1 Framework](../README.md#elections).
+- Anyone can query the proposal and the ongoing result at any time.
+- Voting is active until the `proposal.end` time.
+
 ## Usage
 
 Below we show few CLI snippets:
@@ -24,6 +33,14 @@ REGISTRY=registry-1.i-am-human.testnet
 # create proposal
 
 near call $CTR creat_proposal '{"start": 1686221747, "end": 1686653747, "ref_link": "example.com", "quorum": 10, "candidates": ["candidate1.testnet", "candidate2.testnet", "candidate3.testnet", "candidate4.testnet"], "typ": "HouseOfMerit", "seats": 3}' --accountId $CTR
+
+# fetch all proposal
+
+near view $CTR proposals ''
+
+# query proposal by ID
+
+near view $CTR proposals '{"prop_id": 2}'
 
 # vote
 

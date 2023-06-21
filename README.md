@@ -34,7 +34,7 @@ NDC can only make Voting Body proposals. This repository provides smart contract
 Elections for NDC v1 Houses.
 Candidates can only be submitted by the Voting Committee, following the process approved by the community.
 
-- recast vote: optional - need to be confirmed
+- recast vote: not possible. Each voter can only vote once in each round (proposal).
 - tie break:
   - only matters if there is a tie at the very tail
   - options: extend or reduce seats, tie break session - elections only for people at tie.
