@@ -97,8 +97,6 @@ impl Contract {
         let p = self._proposal(prop_id);
         p.assert_active();
         let user = env::predecessor_account_id();
-        // TODO: Since we are now allowing users to revoke their votes but we do allow overting
-        // the existing votes we should remove the check here
         require!(!p.voters.contains(&user), "caller already voted");
         require!(
             env::attached_deposit() >= VOTE_COST,
