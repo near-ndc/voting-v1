@@ -25,7 +25,6 @@ pub struct Nomination {
 #[serde(crate = "near_sdk::serde")]
 #[cfg_attr(test, derive(Debug))]
 pub enum HouseType {
-    Other,
     HouseOfMerit,
     CouncilOfAdvisors,
     TransparencyCommission,
