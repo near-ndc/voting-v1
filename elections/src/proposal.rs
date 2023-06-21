@@ -27,7 +27,7 @@ pub struct Proposal {
     pub end: u64,
     /// min amount of voters to legitimize the voting.
     pub quorum: u32,
-    /// max amount of credits each voter has (called seats)
+    /// max amount of seats a voter can allocate candidates for.
     pub seats: u16,
     /// list of valid candidates. Must be ordered.
     pub candidates: Vec<AccountId>,
@@ -105,7 +105,6 @@ pub type Vote = Vec<AccountId>;
 pub fn validate_vote(vs: &Vote, max_credits: u16, valid_candidates: &Vec<AccountId>) {
     require!(
         vs.len() <= max_credits as usize,
-        // TODO: I think seats should be changed to credits both here and in the smart contract structs
         format!("max vote is {} seats", max_credits)
     );
     let mut vote_for = HashSet::new();
