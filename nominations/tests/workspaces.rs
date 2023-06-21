@@ -183,7 +183,7 @@ async fn self_nominate_only_iah_fail() -> anyhow::Result<()> {
         .deposit(parse_near!("1 N"))
         .transact()
         .await;
-    assert!(format!("{:?}", res).contains("Not a verified OG member, or the token is expired"));
+    assert!(format!("{:?}", res).contains("not a verified OG member, or the token is expired"));
 
     println!("Passed ✅ self_nominate_only_iah_fail");
     Ok(())
@@ -202,7 +202,7 @@ async fn self_nominate_expired_token_fail() -> anyhow::Result<()> {
         .deposit(parse_near!("1 N"))
         .transact()
         .await;
-    assert!(format!("{:?}", res).contains("Not a verified OG member, or the token is expired"));
+    assert!(format!("{:?}", res).contains("not a verified OG member, or the token is expired"));
 
     println!("Passed ✅ self_nominate_expired_token_fail");
     Ok(())
@@ -270,7 +270,7 @@ async fn double_upvote_fail() -> anyhow::Result<()> {
         .deposit(parse_near!("1 N"))
         .transact()
         .await;
-    assert!(format!("{:?}", res).contains("Nomination already upvoted"));
+    assert!(format!("{:?}", res).contains("nomination already upvoted"));
 
     println!("Passed ✅ double_upvote_fail");
     Ok(())
@@ -299,7 +299,7 @@ async fn upvote_by_non_human_fail() -> anyhow::Result<()> {
         .deposit(parse_near!("1 N"))
         .transact()
         .await;
-    assert!(format!("{:?}", res).contains("Not a verified human member, or the tokens are expired"));
+    assert!(format!("{:?}", res).contains("not a verified human member, or the tokens are expired"));
 
     println!("Passed ✅ upvote_by_non_human");
     Ok(())
@@ -328,7 +328,7 @@ async fn upvote_expired_iah_fail() -> anyhow::Result<()> {
         .deposit(parse_near!("1 N"))
         .transact()
         .await;
-    assert!(format!("{:?}", res).contains("Not a verified human member, or the tokens are expired"));
+    assert!(format!("{:?}", res).contains("not a verified human member, or the tokens are expired"));
 
     println!("Passed ✅ upvote_by_non_human");
     Ok(())
@@ -384,7 +384,7 @@ async fn comment_by_non_human_fail() -> anyhow::Result<()> {
         .max_gas()
         .transact()
         .await;
-    assert!(format!("{:?}", res).contains("Not a verified human member, or the tokens are expired"));
+    assert!(format!("{:?}", res).contains("not a verified human member, or the tokens are expired"));
 
     println!("Passed ✅ comment_by_non_human");
     Ok(())
@@ -412,7 +412,7 @@ async fn comment_expired_iah_fail() -> anyhow::Result<()> {
         .max_gas()
         .transact()
         .await;
-    assert!(format!("{:?}", res).contains("Not a verified human member, or the tokens are expired"));
+    assert!(format!("{:?}", res).contains("not a verified human member, or the tokens are expired"));
 
     println!("Passed ✅ comment_expired_iah_fail");
     Ok(())

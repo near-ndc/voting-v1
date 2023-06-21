@@ -63,7 +63,7 @@ impl Contract {
      * QUERIES
      **********/
 
-    /// returns list of pairs:
+    /// Returns list of pairs:
     /// (self-nominated account, sum of upvotes) for a given house.
     pub fn nominations(&self, house: HouseType) -> Vec<(AccountId, u32)> {
         let mut results: Vec<(AccountId, u32)> = Vec::new();
@@ -79,7 +79,7 @@ impl Contract {
      * TRANSACTIONS
      **********/
 
-    /// nominate method allows to submit self-nominatios by OG members
+    /// Nominate method allows to submit self-nominatios by OG members
     /// + checks if the caller is a OG member
     /// + checks if the nomination has been already submitted
     /// + checks if the user has nominated themselves to a different house before
@@ -96,18 +96,18 @@ impl Contract {
 
         require!(
             self.nominations.get(&nominee).is_none(),
-            "User has already an active self-nomination",
+            "user has already an active self-nomination",
         );
         require!(
             env::prepaid_gas() >= GAS_NOMINATE,
-            format!("Not enough gas, min: {:?}", GAS_NOMINATE)
+            format!("not enough gas, min: {:?}", GAS_NOMINATE)
         );
         require!(
             env::attached_deposit() >= NOMINATE_COST,
-            format!("Not enough deposit, min: {:?}", NOMINATE_COST)
+            format!("not enough deposit, min: {:?}", NOMINATE_COST)
         );
 
-        // call SBT registry to verif OG SBT and cast the nomination in callback based on the return from sbt_tokens_by_owner
+        // Call SBT registry to verif OG SBT and cast the nomination in callback based on the return from sbt_tokens_by_owner
         ext_sbtreg::ext(self.sbt_registry.clone())
             .sbt_tokens_by_owner(
                 nominee.clone(),
@@ -123,7 +123,7 @@ impl Contract {
             )
     }
 
-    /// upvote method allows users to upvote a specific candidante
+    /// Upvote method allows users to upvote a specific candidante
     /// + checks if the caller is a verified human
     /// + checks if there is a nomination for the given candidate
     /// + checks if the nomination period is active
@@ -132,21 +132,21 @@ impl Contract {
         self.assert_active();
         let upvoter = env::predecessor_account_id();
 
-        require!(upvoter != candidate, "Cannot upvote your own nomination");
+        require!(upvoter != candidate, "cannot upvote your own nomination");
         require!(
             self.nominations.get(&candidate).is_some(),
-            "Nomination not found",
+            "nomination not found",
         );
         require!(
             env::prepaid_gas() >= GAS_UPVOTE,
-            format!("Not enough gas, min: {:?}", GAS_UPVOTE)
+            format!("not enough gas, min: {:?}", GAS_UPVOTE)
         );
         require!(
             env::attached_deposit() >= UPVOTE_COST,
-            format!("Not enough deposit, min: {:?}", UPVOTE_COST)
+            format!("not enough deposit, min: {:?}", UPVOTE_COST)
         );
 
-        // call SBT registry to verify IAH and cast the upvote in callback
+        // Call SBT registry to verify IAH and cast the upvote in callback
         ext_sbtreg::ext(self.sbt_registry.clone())
             .is_human(upvoter.clone())
             .then(
@@ -156,7 +156,7 @@ impl Contract {
             )
     }
 
-    /// comment enables users to comment on a existing nomination
+    /// Comment enables users to comment on a existing nomination
     /// + checks if the caller is a verified human
     /// + checks if there is a nomination for the given candidate
     /// + checks if the nomination period is active
@@ -169,11 +169,11 @@ impl Contract {
         let commenter = env::predecessor_account_id();
         require!(
             self.nominations.get(&candidate).is_some(),
-            "Nomination not found",
+            "nomination not found",
         );
         require!(
             env::prepaid_gas() >= GAS_COMMENT,
-            format!("Not enough gas, min: {:?}", GAS_COMMENT)
+            format!("not enough gas, min: {:?}", GAS_COMMENT)
         );
 
         // call SBT registry to verify IAH
@@ -186,14 +186,14 @@ impl Contract {
             )
     }
 
-    /// instruments in the indexer to remove a comment.
-    /// caller must be an author of the comment (must be checked by the indexer).
+    /// Instruments in the indexer to remove a comment.
+    /// Caller must be an author of the comment (must be checked by the indexer).
     pub fn remove_comment(&mut self, comment: u64) {
-        require!(comment < self.next_comment_id, "Invalid comment ID");
+        require!(comment < self.next_comment_id, "invalid comment ID");
         // we don't record commetns, so additional authorization must happen in the indexer.
     }
 
-    /// revokes callers nominatnion
+    /// Revokes callers nominatnion
     /// + checks if the nomination period is active
     /// + checks if the user has a nomination to revoke
     pub fn self_revoke(&mut self) {
@@ -202,13 +202,13 @@ impl Contract {
 
         require!(
             self.nominations.get(&nominee).is_some(),
-            "User is not nominated, cannot revoke",
+            "user is not nominated, cannot revoke",
         );
 
         self.nominations.remove(&nominee);
     }
 
-    /// removes the upvote
+    /// Removes the upvote
     /// + checks if the nomination period is active
     /// + checks if the caller upvoted the `candidate` before
     pub fn remove_upvote(&mut self, candidate: AccountId) {
@@ -231,7 +231,7 @@ impl Contract {
      * PRIVATE
      ****************/
 
-    /// callback for upvote
+    /// Callback for upvote
     /// + checks if the upvoter is a verified human
     /// + checks if the caller has already upvoted the candidate
     /// if both of the checks passed registers the upvote otherwise panics
@@ -244,29 +244,29 @@ impl Contract {
     ) {
         require!(
             is_human,
-            "Not a verified human member, or the tokens are expired"
+            "not a verified human member, or the tokens are expired"
         );
         let mut n = self
             .nominations
             .get(&candidate)
-            .expect("Not a valid candidate");
+            .expect("not a valid candidate");
         n.upvotes += 1;
         self.nominations.insert(&candidate, &n);
         if let Some(t) = self
             .upvotes
             .insert(&(candidate, upvoter), &env::block_timestamp_ms())
         {
-            require!(t < n.timestamp, "Nomination already upvoted");
+            require!(t < n.timestamp, "nomination already upvoted");
         }
     }
 
-    /// callback for comment. Returns comment ID (used to track comment removal).
+    /// Callback for comment. Returns comment ID (used to track comment removal).
     /// + checks if the commenter is a verified human otherwise panics
     #[private]
     pub fn on_comment_verified(&mut self, #[callback_unwrap] is_human: bool) -> u64 {
         require!(
             is_human,
-            "Not a verified human member, or the tokens are expired"
+            "not a verified human member, or the tokens are expired"
         );
         let id = self.next_comment_id;
         self.next_comment_id += 1;
@@ -274,10 +274,10 @@ impl Contract {
         // we don't record comment - they are handled by the indexer.
     }
 
-    /// callback for self_nominate
+    /// Callback for self_nominate
     /// + checks if the caller is a OG token holder
     /// + checks if user has already submitted a nomination
-    /// if checks pass registers the nomination otherwise panics
+    /// If checks pass registers the nomination otherwise panics
     #[private]
     pub fn on_nominate_verified(
         &mut self,
@@ -287,7 +287,7 @@ impl Contract {
     ) {
         require!(
             !sbts.is_empty() && sbts[0].1[0].metadata.class == self.og_class.1,
-            "Not a verified OG member, or the token is expired",
+            "not a verified OG member, or the token is expired",
         );
 
         let n = Nomination {
@@ -297,7 +297,7 @@ impl Contract {
         };
         require!(
             self.nominations.insert(&nominee, &n).is_none(),
-            "User has already nominated themselves",
+            "user has already nominated themselves",
         );
     }
 
@@ -305,7 +305,7 @@ impl Contract {
         let current_timestamp = env::block_timestamp();
         require!(
             self.start_time < current_timestamp && current_timestamp <= self.end_time,
-            "Nominations time is not active"
+            "nominations time is not active"
         );
     }
 }
@@ -406,7 +406,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Nominations time is not active")]
+    #[should_panic(expected = "nominations time is not active")]
     fn assert_active_too_early() {
         let (mut ctx, ctr) = setup(&alice());
         ctx.block_timestamp = (START - 5) * SECOND;
@@ -415,7 +415,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Nominations time is not active")]
+    #[should_panic(expected = "nominations time is not active")]
     fn assert_active_too_late() {
         let (mut ctx, ctr) = setup(&alice());
         ctx.block_timestamp = (END + 5) * SECOND;
@@ -424,7 +424,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "User has already an active self-nomination")]
+    #[should_panic(expected = "user has already an active self-nomination")]
     fn self_nominate_already_nominated() {
         let (_, mut ctr) = setup(&alice());
         insert_nomination(&mut ctr, alice(), None);
@@ -432,7 +432,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Not enough gas, min: Gas(20000000000000)")]
+    #[should_panic(expected = "not enough gas, min: Gas(20000000000000)")]
     fn self_nominate_wrong_gas() {
         let (mut ctx, mut ctr) = setup(&alice());
         ctx.prepaid_gas = GAS_NOMINATE.sub(Gas(10));
@@ -441,14 +441,14 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Not enough deposit, min: 1000000000000000000000")]
+    #[should_panic(expected = "not enough deposit, min: 1000000000000000000000")]
     fn self_nominate_wrong_deposit() {
         let (_, mut ctr) = setup(&alice());
         ctr.self_nominate(HouseType::HouseOfMerit, String::from("test"), None);
     }
 
     #[test]
-    #[should_panic(expected = "Nominations time is not active")]
+    #[should_panic(expected = "nominations time is not active")]
     fn self_nominate_not_active() {
         let (mut ctx, mut ctr) = setup(&alice());
         ctx.block_timestamp = (START - 5) * SECOND;
@@ -465,7 +465,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Cannot upvote your own nomination")]
+    #[should_panic(expected = "cannot upvote your own nomination")]
     fn upvote_self_upvote() {
         let (_, mut ctr) = setup(&alice());
         insert_nomination(&mut ctr, alice(), None);
@@ -473,14 +473,14 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Nomination not found")]
+    #[should_panic(expected = "nomination not found")]
     fn upvote_nomination_not_found() {
         let (_, mut ctr) = setup(&bob());
         ctr.upvote(alice());
     }
 
     #[test]
-    #[should_panic(expected = "Nomination not found")]
+    #[should_panic(expected = "nomination not found")]
     fn upvote_after_revoke() {
         let (mut ctx, mut ctr) = setup(&alice());
         insert_nomination(&mut ctr, alice(), None);
@@ -492,7 +492,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Not enough gas, min: Gas(20000000000000)")]
+    #[should_panic(expected = "not enough gas, min: Gas(20000000000000)")]
     fn upvote_wrong_gas() {
         let (mut ctx, mut ctr) = setup(&bob());
         insert_nomination(&mut ctr, alice(), None);
@@ -502,7 +502,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Not enough deposit, min: 1000000000000000000000")]
+    #[should_panic(expected = "not enough deposit, min: 1000000000000000000000")]
     fn upvote_wrong_deposit() {
         let (_, mut ctr) = setup(&bob());
         insert_nomination(&mut ctr, alice(), None);
@@ -520,14 +520,14 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Nomination not found")]
+    #[should_panic(expected = "nomination not found")]
     fn comment_nomination_not_found() {
         let (_, mut ctr) = setup(&bob());
         ctr.comment(alice(), String::from("test"));
     }
 
     #[test]
-    #[should_panic(expected = "Not enough gas, min: Gas(20000000000000)")]
+    #[should_panic(expected = "not enough gas, min: Gas(20000000000000)")]
     fn comment_wrong_gas() {
         let (mut ctx, mut ctr) = setup(&bob());
         ctx.prepaid_gas = GAS_COMMENT.sub(Gas(10));
@@ -544,7 +544,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "User is not nominated, cannot revoke")]
+    #[should_panic(expected = "user is not nominated, cannot revoke")]
     fn self_revoke_nomination_not_found() {
         let (_, mut ctr) = setup(&alice());
         ctr.self_revoke();
@@ -622,7 +622,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "Invalid comment ID")]
+    #[should_panic(expected = "invalid comment ID")]
     fn remove_comment_wrong_comment_id() {
         let (_, mut ctr) = setup(&bob());
         ctr.remove_comment(1);
