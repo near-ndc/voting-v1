@@ -1,7 +1,10 @@
-use ndc_nominations::{storage::HouseType, TokenMetadata, SECOND};
+use ndc_nominations::{storage::HouseType, TokenMetadata, MSECOND};
 use near_units::parse_near;
 use serde_json::json;
 use workspaces::{Account, Contract, DevNetwork, Worker};
+
+// multiplayer from sec to millisecond
+const SEC_TO_MS: u64 = 1_000;
 
 async fn init(
     worker: &Worker<impl DevNetwork>,
@@ -24,17 +27,17 @@ async fn init(
 
     // get current block time
     let block_info = worker.view_block().await?;
-    let current_timestamp = block_info.timestamp();
-    let end_time = current_timestamp + 60 * SECOND;
+    let current_timestamp_ms = block_info.timestamp() / MSECOND;
+    let end_time = current_timestamp_ms + (60 * SEC_TO_MS);
 
     // initialize contracts
     let res  = ndc_nominations_contract
         .call("new")
-        .args_json(json!({"sbt_registry": registry_contract.id(),"iah_issuer": iah_issuer.id(),"og_class": (iah_issuer.id(),2), "admins": [authority_acc.id()], "start_time": 0, "end_time": end_time,}))
+        .args_json(json!({"sbt_registry": registry_contract.id(),"iah_issuer": iah_issuer.id(),"og_sbt": (iah_issuer.id(),2), "admins": [authority_acc.id()], "start_time": 0, "end_time": end_time}))
         .max_gas()
         .transact()
         .await?;
-    assert!(res.is_success());
+    assert!(res.is_success(), "{:?}", res);
 
     let res = registry_contract
         .call("new")
@@ -51,7 +54,7 @@ async fn init(
         .max_gas()
         .transact()
         .await?;
-    assert!(res.is_success());
+    assert!(res.is_success(), "{:?}", res);
 
     // mint IAH and OG sbt to alice
     let alice_tokens = vec![
@@ -75,7 +78,7 @@ async fn init(
     let bob_tokens = vec![TokenMetadata {
         class: 1,
         issued_at: Some(0),
-        expires_at: Some(current_timestamp),
+        expires_at: Some(end_time),
         reference: None,
         reference_hash: None,
     }];
@@ -84,7 +87,7 @@ async fn init(
     let john_tokens = vec![TokenMetadata {
         class: 2,
         issued_at: Some(0),
-        expires_at: Some(current_timestamp),
+        expires_at: Some(end_time),
         reference: None,
         reference_hash: None,
     }];
@@ -166,7 +169,6 @@ async fn self_nominate_only_og() -> anyhow::Result<()> {
         .await?;
     assert!(res.is_success());
 
-    println!("Passed ✅ self_nominate_only_og");
     Ok(())
 }
 

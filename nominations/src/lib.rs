@@ -20,16 +20,16 @@ pub struct Contract {
     /// IAH issuer account for proof of humanity
     pub iah_issuer: AccountId,
     /// OG token (issuer, class_id)
-    pub og_class: (AccountId, u64),
+    pub og_sbt: (AccountId, u64),
     /// map of nominations
     pub nominations: UnorderedMap<AccountId, Nomination>,
     /// map (candidate, upvoter) -> timestamp
     pub upvotes: LookupMap<(AccountId, AccountId), u64>,
     /// list of admins
     pub admins: LazyOption<Vec<AccountId>>,
-    /// nomination period start time
+    /// nomination period start time in ms
     pub start_time: u64,
-    /// nomination period end time
+    /// nomination period end time in ms
     pub end_time: u64,
     /// next comment id
     pub next_comment_id: u64,
@@ -37,19 +37,24 @@ pub struct Contract {
 
 #[near_bindgen]
 impl Contract {
+    /// start_time and end_time must be a valid unix time in millisecond.
     #[init]
     pub fn new(
         sbt_registry: AccountId,
         iah_issuer: AccountId,
-        og_class: (AccountId, u64),
+        og_sbt: (AccountId, u64),
         admins: Vec<AccountId>,
         start_time: u64,
         end_time: u64,
     ) -> Self {
+        require!(start_time < end_time, "start must be before end time");
+        // 1600000000000 is Sun Sep 13 2020 in milliseconds, so we are making a safe check here
+        // if miliseconds are provided.
+        //require!(1600000000000 < start_time, "time must be in ms");
         Self {
             sbt_registry,
             iah_issuer,
-            og_class,
+            og_sbt,
             start_time,
             end_time,
             nominations: UnorderedMap::new(StorageKey::Nominations),
@@ -111,8 +116,8 @@ impl Contract {
         ext_sbtreg::ext(self.sbt_registry.clone())
             .sbt_tokens_by_owner(
                 nominee.clone(),
-                Some(self.og_class.0.clone()),
-                Some(self.og_class.1.clone()),
+                Some(self.og_sbt.0.clone()),
+                Some(self.og_sbt.1.clone()),
                 Some(1),
                 Some(false),
             )
@@ -286,7 +291,7 @@ impl Contract {
         house_type: HouseType,
     ) {
         require!(
-            !sbts.is_empty() && sbts[0].1[0].metadata.class == self.og_class.1,
+            !sbts.is_empty() && sbts[0].1[0].metadata.class == self.og_sbt.1,
             "not a verified OG member, or the token is expired",
         );
 
@@ -302,10 +307,10 @@ impl Contract {
     }
 
     fn assert_active(&self) {
-        let current_timestamp = env::block_timestamp();
+        let current_timestamp = env::block_timestamp_ms();
         require!(
             self.start_time < current_timestamp && current_timestamp <= self.end_time,
-            "nominations time is not active"
+            "nominations are not active"
         );
     }
 }
@@ -318,9 +323,10 @@ mod tests {
 
     use super::*;
 
-    const START: u64 = 10;
-    const SECOND: u64 = 1_000_000;
-    const END: u64 = 100000;
+    // time in seconds
+    const START: u64 = 1700000000;
+    const END: u64 = 1800000000;
+    const SEC_TO_MS: u64 = 1_000;
     const OG_CLASS_ID: u64 = 2;
 
     fn alice() -> AccountId {
@@ -354,7 +360,7 @@ mod tests {
     fn mk_nomination(house: HouseType, timestamp: u64) -> Nomination {
         Nomination {
             house,
-            timestamp: timestamp * SECOND,
+            timestamp: timestamp * SEC_TO_MS,
             upvotes: 0,
         }
     }
@@ -369,7 +375,7 @@ mod tests {
     /// inserts a upvote for a specified candidate
     fn insert_upvote(ctr: &mut Contract, upvoter: AccountId, candidate: AccountId) {
         ctr.upvotes
-            .insert(&(candidate.clone(), upvoter), &((START + 10) * SECOND));
+            .insert(&(candidate.clone(), upvoter), &((START + 10) * SEC_TO_MS));
         let mut nomination = ctr
             .nominations
             .get(&candidate)
@@ -382,7 +388,7 @@ mod tests {
         let mut ctx = VMContextBuilder::new()
             .predecessor_account_id(admin())
             // .attached_deposit(deposit_dec.into())
-            .block_timestamp((START + 1) * SECOND)
+            .block_timestamp((START - 1) * SECOND)
             .is_view(false)
             .build();
         testing_env!(ctx.clone());
@@ -391,9 +397,10 @@ mod tests {
             iah_issuer(),
             (og_token_issuer(), OG_CLASS_ID),
             vec![admin()],
-            START * SECOND,
-            END * SECOND,
+            START * SEC_TO_MS,
+            END * SEC_TO_MS,
         );
+        ctx.block_timestamp = (START + 1) * SECOND;
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
         return (ctx, ctr);
@@ -406,7 +413,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "nominations time is not active")]
+    #[should_panic(expected = "nominations are not active")]
     fn assert_active_too_early() {
         let (mut ctx, ctr) = setup(&alice());
         ctx.block_timestamp = (START - 5) * SECOND;
@@ -415,7 +422,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "nominations time is not active")]
+    #[should_panic(expected = "nominations are not active")]
     fn assert_active_too_late() {
         let (mut ctx, ctr) = setup(&alice());
         ctx.block_timestamp = (END + 5) * SECOND;
@@ -448,7 +455,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "nominations time is not active")]
+    #[should_panic(expected = "nominations are not active")]
     fn self_nominate_not_active() {
         let (mut ctx, mut ctr) = setup(&alice());
         ctx.block_timestamp = (START - 5) * SECOND;

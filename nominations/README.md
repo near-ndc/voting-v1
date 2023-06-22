@@ -21,17 +21,18 @@ Comment and upvote queries should be go through an indexer.
 
 ## Deployed Contracts
 
-### Testnet:
-
-**nominations-v1**: `nominations-v1.gwg.testnet`, initialized with values:
-
-- **sbt_registry**: `registry-unstable.i-am-human.testnet`,
-- **iah_issuer**: `i-am-human-staging.testnet`,
-- **og_class**: `1`,
-- **og_issuer**: `community-v1.i-am-human.testnet`,
-- **start_time**: `0`,
-- **end_time**: `1844674407370955300`
-
 ### Mainnet:
 
-Comming Soon
+Coming Soon
+
+### Testnet:
+
+- **nominations-v1**: `nominations-v1.gwg.testnet`, initialized with values:
+  ```JSON
+  sbt_registry: registry-unstable.i-am-human.testnet,
+  iah_issuer: i-am-human-staging.testnet,
+  og_class: 1,
+  og_issuer: community-v1.i-am-human.testnet,
+  start_time: 0,
+  end_time: 1844674407370955300`
+  ```
