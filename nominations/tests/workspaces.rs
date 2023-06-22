@@ -37,7 +37,7 @@ async fn init(
         .max_gas()
         .transact()
         .await?;
-    assert!(res.is_success());
+    assert!(res.is_success(), "{:?}", res);
 
     let res = registry_contract
         .call("new")
@@ -54,7 +54,7 @@ async fn init(
         .max_gas()
         .transact()
         .await?;
-    assert!(res.is_success());
+    assert!(res.is_success(), "{:?}", res);
 
     // mint IAH and OG sbt to alice
     let alice_tokens = vec![
