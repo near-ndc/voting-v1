@@ -28,11 +28,7 @@ async fn init(
     // get current block time
     let block_info = worker.view_block().await?;
     let current_timestamp_ms = block_info.timestamp() / MSECOND;
-    println!(">>>>>>>>>>>>>>>>> {}", current_timestamp_ms);
-    let start_time = current_timestamp_ms;
     let end_time = current_timestamp_ms + (60 * SEC_TO_MS);
-
-    //    block_info.epoch_id();
 
     // initialize contracts
     let res  = ndc_nominations_contract
@@ -78,11 +74,11 @@ async fn init(
         },
     ];
 
-    // mint only IAH to bob, token expires at the start time.
+    // mint only IAH to bob
     let bob_tokens = vec![TokenMetadata {
         class: 1,
         issued_at: Some(0),
-        expires_at: Some(start_time),
+        expires_at: Some(end_time),
         reference: None,
         reference_hash: None,
     }];
@@ -91,7 +87,7 @@ async fn init(
     let john_tokens = vec![TokenMetadata {
         class: 2,
         issued_at: Some(0),
-        expires_at: Some(current_timestamp_ms),
+        expires_at: Some(end_time),
         reference: None,
         reference_hash: None,
     }];
@@ -173,7 +169,6 @@ async fn self_nominate_only_og() -> anyhow::Result<()> {
         .await?;
     assert!(res.is_success());
 
-    println!("Passed ✅ self_nominate_only_og");
     Ok(())
 }
 
