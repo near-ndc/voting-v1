@@ -11,3 +11,4 @@ Cargo.lock
 
 res
 private-*
+.dir-locals.el
