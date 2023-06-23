@@ -23,7 +23,7 @@ pub struct Contract {
     pub og_sbt: (AccountId, u64),
     /// map of nominations
     pub nominations: UnorderedMap<AccountId, Nomination>,
-    /// map (candidate, upvoter) -> timestamp
+    /// map (candidate, upvoter) -> timestamp_ms
     pub upvotes: LookupMap<(AccountId, AccountId), u64>,
     /// list of admins
     pub admins: LazyOption<Vec<AccountId>>,
@@ -48,9 +48,6 @@ impl Contract {
         end_time: u64,
     ) -> Self {
         require!(start_time < end_time, "start must be before end time");
-        // 1600000000000 is Sun Sep 13 2020 in milliseconds, so we are making a safe check here
-        // if miliseconds are provided.
-        //require!(1600000000000 < start_time, "time must be in ms");
         Self {
             sbt_registry,
             iah_issuer,
