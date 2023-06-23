@@ -1,5 +1,3 @@
-use std::fmt::Debug;
-
 use near_units::parse_near;
 use serde_json::json;
 use workspaces::{Account, Contract, DevNetwork, Worker};

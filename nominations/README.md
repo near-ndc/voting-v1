@@ -28,7 +28,7 @@ Coming Soon
 ### Testnet:
 
 - **nominations-v1**: `nominations-v1.gwg.testnet`, initialized with values:
-  ```JSON
+  ```yaml
   sbt_registry: registry-unstable.i-am-human.testnet,
   iah_issuer: i-am-human-staging.testnet,
   og_class: 1,
