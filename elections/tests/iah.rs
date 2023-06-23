@@ -1,12 +1,18 @@
+use std::fmt::Debug;
+
 use near_units::parse_near;
 use serde_json::json;
 use workspaces::{Account, Contract, DevNetwork, Worker};
 
+/// 1ms in nano seconds
 //extern crate elections;
 use elections::{
     proposal::{HouseType, VOTE_COST},
-    TokenMetadata, MILI_SECOND,
+    TokenMetadata,
 };
+
+/// 1ms in seconds
+const MSECOND: u64 = 1_000_000;
 
 async fn init(
     worker: &Worker<impl DevNetwork>,
@@ -33,8 +39,6 @@ async fn init(
         .args_json(json!({
             "authority": authority_acc.id(),
             "sbt_registry": registry_contract.id(),
-            "iah_issuer": iah_issuer.id(),
-            "iah_class_id": 1,
         }))
         .max_gas()
         .transact()
@@ -63,11 +67,10 @@ async fn init(
     assert!(res.is_success());
 
     // get current block time
-    let block_info = worker.view_block().await?;
-    let current_timestamp = block_info.timestamp() / MILI_SECOND; // timestamp in milliseconds
-    let start_time_ms = current_timestamp + 1_000 * 10; // 10 seconds in milliseconds
-    let expires_at: u64 = current_timestamp + 1_000 * 1000; // 1000 seconds in milliseconds
-    let start_time = start_time_ms / 1000; // 10 seconds
+    let block = worker.view_block().await?;
+    let now = block.timestamp() / MSECOND; // timestamp in seconds
+    let start_time = now + 10 * 1000; // below we are executing 2 transactions, first has 3 receipts, so the proposal is roughtly now + 10seconds
+    let expires_at: u64 = now + 100 * 1_000;
 
     // mint IAH sbt to alice and john
     let token_metadata = TokenMetadata {
@@ -81,7 +84,7 @@ async fn init(
     let token_metadata_short_expire_at = TokenMetadata {
         class: 1,
         issued_at: Some(0),
-        expires_at: Some(current_timestamp),
+        expires_at: Some(now),
         reference: None,
         reference_hash: None,
     };
@@ -97,7 +100,7 @@ async fn init(
         .max_gas()
         .transact()
         .await?;
-    assert!(res.is_success());
+    assert!(res.is_success(), "{:?}", res);
 
     // create a proposal
     let proposal_id: u32 = authority_acc
@@ -123,7 +126,8 @@ async fn vote_by_human() -> anyhow::Result<()> {
     let (ndc_elections_contract, alice_acc, _, john_acc, proposal_id) = init(&worker).await?;
 
     // fast forward to the voting period
-    worker.fast_forward(100).await?;
+    worker.fast_forward(10).await?;
+
     // create a vote
     let res = alice_acc
         .call(ndc_elections_contract.id(), "vote")
@@ -132,7 +136,7 @@ async fn vote_by_human() -> anyhow::Result<()> {
         .max_gas()
         .transact()
         .await?;
-    assert!(res.is_success());
+    assert!(res.is_success(), "{:?}", res);
 
     Ok(())
 }
@@ -143,7 +147,7 @@ async fn vote_by_non_human() -> anyhow::Result<()> {
     let (ndc_elections_contract, _, bob_acc, john_acc, proposal_id) = init(&worker).await?;
 
     // fast forward to the voting period
-    worker.fast_forward(100).await?;
+    worker.fast_forward(10).await?;
 
     // create a vote
     let res = bob_acc
@@ -152,7 +156,8 @@ async fn vote_by_non_human() -> anyhow::Result<()> {
         .deposit(VOTE_COST)
         .max_gas()
         .transact()
-        .await;
+        .await?;
+    assert!(res.is_failure(), "resp should be a failure {:?}", res);
     assert!(
         format!("{:?}", res).contains("Voter is not a verified human, or the token has expired")
     );
@@ -166,7 +171,7 @@ async fn vote_expired_iah_token() -> anyhow::Result<()> {
     let (ndc_elections_contract, alice_acc, _, john_acc, proposal_id) = init(&worker).await?;
 
     // fast forward to the voting period
-    worker.fast_forward(100).await?;
+    worker.fast_forward(10).await?;
 
     // create a vote
     let res = john_acc
@@ -175,7 +180,8 @@ async fn vote_expired_iah_token() -> anyhow::Result<()> {
         .deposit(VOTE_COST)
         .max_gas()
         .transact()
-        .await;
+        .await?;
+    assert!(res.is_failure(), "resp should be a failure {:?}", res);
     assert!(
         format!("{:?}", res).contains("Voter is not a verified human, or the token has expired")
     );

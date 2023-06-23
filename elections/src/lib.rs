@@ -44,7 +44,7 @@ impl Contract {
      * TRANSACTIONS
      **********/
 
-    /// creates a new empty proposal
+    /// creates a new empty proposal. `start` and `end` is a timestamp in milliseconds.
     /// returns the new proposal ID
     /// NOTE: storage is paid from the account state
     pub fn create_proposal(
@@ -58,8 +58,11 @@ impl Contract {
         #[allow(unused_mut)] mut candidates: Vec<AccountId>,
     ) -> u32 {
         self.assert_admin();
-        let min_start = env::block_timestamp() / SECOND;
-        require!(min_start < start, "proposal start must be in the future");
+        let min_start = env::block_timestamp_ms();
+        require!(
+            min_start < start,
+            format!("proposal start must be in the future")
+        );
         require!(start < end, "proposal start must be before end");
         require!(
             MIN_REF_LINK_LEN <= ref_link.len() && ref_link.len() <= MAX_REF_LINK_LEN,
@@ -154,10 +157,14 @@ impl Contract {
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
-mod tests {
-    use near_sdk::{test_utils::VMContextBuilder, testing_env, AccountId, Gas, VMContext};
+mod unit_tests {
+    use near_sdk::{test_utils::VMContextBuilder, testing_env, Gas, VMContext};
 
-    use crate::{Contract, Vote, SECOND, VOTE_COST, VOTE_GAS};
+    use crate::*;
+
+    /// 1ms in nano seconds
+    const MSECOND: u64 = 1_000_000;
+
     const START: u64 = 10;
 
     fn alice() -> AccountId {
@@ -183,7 +190,7 @@ mod tests {
     fn setup(predecessor: &AccountId) -> (VMContext, Contract) {
         let mut ctx = VMContextBuilder::new()
             .predecessor_account_id(admin())
-            .block_timestamp(START * SECOND)
+            .block_timestamp(START * MSECOND)
             .is_view(false)
             .build();
         testing_env!(ctx.clone());
@@ -210,7 +217,6 @@ mod tests {
     #[should_panic(expected = "proposal start must be in the future")]
     fn create_proposal_wrong_start_time() {
         let (_, mut ctr) = setup(&admin());
-
         ctr.create_proposal(
             crate::HouseType::HouseOfMerit,
             START - 1,
@@ -284,7 +290,7 @@ mod tests {
 
     fn voting_context(ctx: &mut VMContext) {
         ctx.attached_deposit = VOTE_COST;
-        ctx.block_timestamp = (START + 2) * SECOND;
+        ctx.block_timestamp = (START + 2) * MSECOND;
         ctx.prepaid_gas = VOTE_GAS;
         ctx.predecessor_account_id = alice();
         testing_env!(ctx.clone());
@@ -330,7 +336,7 @@ mod tests {
         let prop_id = mk_proposal(&mut ctr);
 
         ctx.attached_deposit = VOTE_COST - 1;
-        ctx.block_timestamp = (START + 2) * SECOND;
+        ctx.block_timestamp = (START + 2) * MSECOND;
         testing_env!(ctx.clone());
         ctr.vote(prop_id, vec![candidate(1)]);
     }
@@ -346,7 +352,7 @@ mod tests {
         ctr._proposal(prop_id).voters.insert(&bob());
         ctx.predecessor_account_id = bob();
         ctx.attached_deposit = VOTE_COST;
-        ctx.block_timestamp = (START + 2) * SECOND;
+        ctx.block_timestamp = (START + 2) * MSECOND;
         testing_env!(ctx.clone());
         ctr.vote(prop_id, vec![candidate(1)]);
     }
@@ -358,7 +364,7 @@ mod tests {
 
         let prop_id = mk_proposal(&mut ctr);
         ctx.attached_deposit = VOTE_COST;
-        ctx.block_timestamp = (START + 2) * SECOND;
+        ctx.block_timestamp = (START + 2) * MSECOND;
         ctx.prepaid_gas = Gas(10 * Gas::ONE_TERA.0);
         testing_env!(ctx.clone());
         ctr.vote(prop_id, vec![candidate(1)]);
@@ -371,7 +377,7 @@ mod tests {
 
         let prop_id = mk_proposal(&mut ctr);
         ctx.attached_deposit = VOTE_COST;
-        ctx.block_timestamp = (START + 2) * SECOND;
+        ctx.block_timestamp = (START + 2) * MSECOND;
         ctx.prepaid_gas = VOTE_GAS;
         testing_env!(ctx.clone());
         ctr.vote(prop_id, vec![candidate(1), candidate(1)]);

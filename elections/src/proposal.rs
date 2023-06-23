@@ -21,9 +21,9 @@ pub enum HouseType {
 pub struct Proposal {
     pub typ: HouseType,
     pub ref_link: String,
-    /// start of voting as Unix timestamp (in seconds)
+    /// start of voting as Unix timestamp (in milliseconds)
     pub start: u64,
-    /// end of voting as Unix timestamp (in seconds)
+    /// end of voting as Unix timestamp (in milliseconds)
     pub end: u64,
     /// min amount of voters to legitimize the voting.
     pub quorum: u32,
@@ -45,9 +45,9 @@ pub struct ProposalView {
     pub id: u32,
     pub typ: HouseType,
     pub ref_link: String,
-    /// start of voting as Unix timestamp (in seconds)
+    /// start of voting as Unix timestamp (in milliseconds)
     pub start: u64,
-    /// end of voting as Unix timestamp (in seconds)
+    /// end of voting as Unix timestamp (in milliseconds)
     pub end: u64,
     /// min amount of voters to legitimize the voting.
     pub quorum: u32,
@@ -80,10 +80,10 @@ impl Proposal {
     }
 
     pub fn assert_active(&self) {
-        let now = env::block_timestamp() / SECOND;
+        let now = env::block_timestamp_ms();
         require!(
             self.start <= now && now <= self.end,
-            "can only vote between proposal start and end time"
+            format!("can only vote between proposal start and end time")
         )
     }
 
