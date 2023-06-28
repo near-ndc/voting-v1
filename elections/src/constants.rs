@@ -12,3 +12,5 @@ pub const VOTE_GAS_CALLBACK: Gas = Gas(5 * Gas::ONE_TERA.0);
 
 pub const MIN_REF_LINK_LEN: usize = 6;
 pub const MAX_REF_LINK_LEN: usize = 120;
+
+pub const REGISTER_VOTE: &str = "register_vote";

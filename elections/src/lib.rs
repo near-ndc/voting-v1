@@ -2,7 +2,9 @@ use std::collections::HashSet;
 
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, LookupSet};
+use near_sdk::json_types::Base64VecU8;
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise};
+use serde_json::json;
 
 mod constants;
 mod ext;
@@ -113,31 +115,27 @@ impl Contract {
             format!("not enough gas, min: {:?}", VOTE_GAS)
         );
         validate_vote(&vote, p.seats, &p.candidates);
+        // TODO: any suggestions on how to improve this?
+        // serialize the args
+        let args: serde_json::Value = json!({"prop_id": prop_id, "user": user, "vote": vote});
+        let vec = serde_json::to_vec(&args).unwrap();
+        let base_64_args: Base64VecU8 = vec.into();
+
         // call SBT registry to verify SBT
-        ext_sbtreg::ext(self.sbt_registry.clone())
-            .is_human(user.clone())
-            .then(
-                ext_self::ext(env::current_account_id())
-                    .with_static_gas(VOTE_GAS_CALLBACK)
-                    .on_vote_verified(prop_id, user, vote),
-            )
+        ext_sbtreg::ext(self.sbt_registry.clone()).is_human_call(
+            user.clone(),
+            env::current_account_id(),
+            REGISTER_VOTE.into(),
+            base_64_args,
+        )
     }
 
-    /*****************
-     * PRIVATE
-     ****************/
-
-    #[private]
-    pub fn on_vote_verified(
-        &mut self,
-        #[callback_unwrap] tokens: Vec<(AccountId, Vec<TokenId>)>,
-        prop_id: u32,
-        user: AccountId,
-        vote: Vote,
-    ) {
+    /// Registers the vote the vote. Can only be called by the registry.
+    /// The method is being called from registry.is_human_call if the voter is a verifed human
+    pub fn register_vote(&mut self, prop_id: u32, user: AccountId, vote: Vote) {
         require!(
-            !tokens.is_empty(),
-            "Voter is not a verified human, or the token has expired"
+            env::predecessor_account_id() == self.sbt_registry,
+            "only registry can invoke this method"
         );
         let mut p = self._proposal(prop_id);
         p.vote_on_verified(&user, vote);
