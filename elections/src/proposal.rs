@@ -6,6 +6,7 @@ use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{env, require, AccountId};
 
 pub use crate::constants::*;
+use crate::{TokenId, VoteError};
 
 #[derive(Serialize, Deserialize, BorshDeserialize, BorshSerialize)]
 #[serde(crate = "near_sdk::serde")]
@@ -34,7 +35,9 @@ pub struct Proposal {
     /// running result (ongoing sum of votes per candidate), in the same order as `candidates`.
     /// result[i] = sum of votes for candidates[i]
     pub result: Vec<u64>,
-    pub voters: LookupSet<AccountId>,
+
+    // set of tokenIDs, which were used for voting, as a proof of personhood
+    pub voters: LookupSet<TokenId>,
     pub voters_num: u32,
 }
 
@@ -88,14 +91,19 @@ impl Proposal {
     }
 
     /// once vote proof has been verified, we call this function to register a vote.
-    pub fn vote_on_verified(&mut self, user: &AccountId, vote: Vote) {
+    pub fn vote_on_verified(&mut self, sbts: &Vec<TokenId>, vote: Vote) -> Result<(), VoteError> {
         self.assert_active();
-        require!(self.voters.insert(&user), "user already voted");
+        for t in sbts {
+            if !self.voters.insert(&t) {
+                return Err(VoteError::DoubleVote(*t));
+            }
+        }
         self.voters_num += 1;
         for candidate in vote {
             let idx = self.candidates.binary_search(&candidate).unwrap() as usize;
             self.result[idx] += 1;
         }
+        Ok(())
     }
 }
 
