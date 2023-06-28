@@ -130,13 +130,13 @@ impl Contract {
     #[private]
     pub fn on_vote_verified(
         &mut self,
-        #[callback_unwrap] proof: Vec<(AccountId, Vec<TokenId>)>,
+        #[callback_unwrap] tokens: Vec<(AccountId, Vec<TokenId>)>,
         prop_id: u32,
         user: AccountId,
         vote: Vote,
     ) {
         require!(
-            !proof.is_empty(),
+            !tokens.is_empty(),
             "Voter is not a verified human, or the token has expired"
         );
         let mut p = self._proposal(prop_id);
