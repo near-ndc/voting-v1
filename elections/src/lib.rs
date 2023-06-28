@@ -113,8 +113,16 @@ impl Contract {
             format!("not enough gas, min: {:?}", VOTE_GAS)
         );
         let mut p = self._proposal(prop_id);
+        p.assert_active();
         validate_vote(&vote, p.seats, &p.candidates);
-        p.vote_on_verified(&user, vote);
+
+        // register a vote.
+        require!(p.voters.insert(&user), "user already voted");
+        p.voters_num += 1;
+        for candidate in vote {
+            let idx = p.candidates.binary_search(&candidate).unwrap() as usize;
+            p.result[idx] += 1;
+        }
     }
 
     /*****************

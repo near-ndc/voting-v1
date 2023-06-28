@@ -86,17 +86,6 @@ impl Proposal {
             format!("can only vote between proposal start and end time")
         )
     }
-
-    /// once vote proof has been verified, we call this function to register a vote.
-    pub fn vote_on_verified(&mut self, user: &AccountId, vote: Vote) {
-        self.assert_active();
-        require!(self.voters.insert(&user), "user already voted");
-        self.voters_num += 1;
-        for candidate in vote {
-            let idx = self.candidates.binary_search(&candidate).unwrap() as usize;
-            self.result[idx] += 1;
-        }
-    }
 }
 
 pub type Vote = Vec<AccountId>;
