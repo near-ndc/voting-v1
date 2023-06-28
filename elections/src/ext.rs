@@ -15,7 +15,6 @@ pub trait ExtSelf {
 
 #[ext_contract(ext_sbtreg)]
 pub trait ExtSbtRegistry {
-    fn is_human(&self, account: AccountId) -> Vec<(AccountId, Vec<TokenId>)>;
     fn is_human_call(
         &mut self,
         account: AccountId,

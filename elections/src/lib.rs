@@ -2,9 +2,7 @@ use std::collections::HashSet;
 
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, LookupSet};
-use near_sdk::json_types::Base64VecU8;
-use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise};
-use serde_json::json;
+use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault};
 
 mod constants;
 mod ext;
@@ -98,11 +96,11 @@ impl Contract {
 
     /// election vote using plural vote mechanism
     #[payable]
-    pub fn vote(&mut self, prop_id: u32, vote: Vote) -> Promise {
-        let p = self._proposal(prop_id);
-        p.assert_active();
-        let user = env::predecessor_account_id();
-        require!(!p.voters.contains(&user), "caller already voted");
+    pub fn vote(&mut self, user: AccountId, prop_id: u32, vote: Vote) {
+        require!(
+            env::predecessor_account_id() == self.sbt_registry,
+            "only registry can invoke this method"
+        );
         require!(
             env::attached_deposit() >= VOTE_COST,
             format!(
@@ -114,30 +112,8 @@ impl Contract {
             env::prepaid_gas() >= VOTE_GAS,
             format!("not enough gas, min: {:?}", VOTE_GAS)
         );
-        validate_vote(&vote, p.seats, &p.candidates);
-        // TODO: any suggestions on how to improve this?
-        // serialize the args
-        let args: serde_json::Value = json!({"prop_id": prop_id, "user": user, "vote": vote});
-        let vec = serde_json::to_vec(&args).unwrap();
-        let base_64_args: Base64VecU8 = vec.into();
-
-        // call SBT registry to verify SBT
-        ext_sbtreg::ext(self.sbt_registry.clone()).is_human_call(
-            user.clone(),
-            env::current_account_id(),
-            REGISTER_VOTE.into(),
-            base_64_args,
-        )
-    }
-
-    /// Registers the vote the vote. Can only be called by the registry.
-    /// The method is being called from registry.is_human_call if the voter is a verifed human
-    pub fn register_vote(&mut self, prop_id: u32, user: AccountId, vote: Vote) {
-        require!(
-            env::predecessor_account_id() == self.sbt_registry,
-            "only registry can invoke this method"
-        );
         let mut p = self._proposal(prop_id);
+        validate_vote(&vote, p.seats, &p.candidates);
         p.vote_on_verified(&user, vote);
     }
 
@@ -290,7 +266,7 @@ mod unit_tests {
         ctx.attached_deposit = VOTE_COST;
         ctx.block_timestamp = (START + 2) * MSECOND;
         ctx.prepaid_gas = VOTE_GAS;
-        ctx.predecessor_account_id = alice();
+        ctx.predecessor_account_id = sbt_registry();
         testing_env!(ctx.clone());
     }
 
@@ -317,11 +293,14 @@ mod unit_tests {
     #[test]
     #[should_panic(expected = "can only vote between proposal start and end time")]
     fn vote_wrong_time() {
-        let (_, mut ctr) = setup(&admin());
+        let (mut ctx, mut ctr) = setup(&admin());
 
         let prop_id = mk_proposal(&mut ctr);
-        let vote: Vote = vec![candidate(1)];
-        ctr.vote(prop_id, vote);
+        voting_context(&mut ctx);
+
+        ctx.block_timestamp = START * MSECOND;
+        testing_env!(ctx.clone());
+        ctr.vote(alice(), prop_id, vec![candidate(1)]);
     }
 
     #[test]
@@ -335,12 +314,13 @@ mod unit_tests {
 
         ctx.attached_deposit = VOTE_COST - 1;
         ctx.block_timestamp = (START + 2) * MSECOND;
+        ctx.predecessor_account_id = sbt_registry();
         testing_env!(ctx.clone());
-        ctr.vote(prop_id, vec![candidate(1)]);
+        ctr.vote(alice(), prop_id, vec![candidate(1)]);
     }
 
     #[test]
-    #[should_panic(expected = "caller already voted")]
+    #[should_panic(expected = "user already voted")]
     fn vote_caller_already_voted() {
         let (mut ctx, mut ctr) = setup(&admin());
 
@@ -348,11 +328,11 @@ mod unit_tests {
 
         //set bob as voter and attempt double vote
         ctr._proposal(prop_id).voters.insert(&bob());
-        ctx.predecessor_account_id = bob();
+        ctx.predecessor_account_id = sbt_registry();
         ctx.attached_deposit = VOTE_COST;
         ctx.block_timestamp = (START + 2) * MSECOND;
         testing_env!(ctx.clone());
-        ctr.vote(prop_id, vec![candidate(1)]);
+        ctr.vote(bob(), prop_id, vec![candidate(1)]);
     }
 
     #[test]
@@ -364,8 +344,9 @@ mod unit_tests {
         ctx.attached_deposit = VOTE_COST;
         ctx.block_timestamp = (START + 2) * MSECOND;
         ctx.prepaid_gas = Gas(10 * Gas::ONE_TERA.0);
+        ctx.predecessor_account_id = sbt_registry();
         testing_env!(ctx.clone());
-        ctr.vote(prop_id, vec![candidate(1)]);
+        ctr.vote(alice(), prop_id, vec![candidate(1)]);
     }
 
     #[test]
@@ -377,8 +358,9 @@ mod unit_tests {
         ctx.attached_deposit = VOTE_COST;
         ctx.block_timestamp = (START + 2) * MSECOND;
         ctx.prepaid_gas = VOTE_GAS;
+        ctx.predecessor_account_id = sbt_registry();
         testing_env!(ctx.clone());
-        ctr.vote(prop_id, vec![candidate(1), candidate(1)]);
+        ctr.vote(alice(), prop_id, vec![candidate(1), candidate(1)]);
     }
 
     #[test]
@@ -388,7 +370,7 @@ mod unit_tests {
 
         let prop_id = mk_proposal(&mut ctr);
         voting_context(&mut ctx);
-        ctr.vote(prop_id, vec![bob()]);
+        ctr.vote(alice(), prop_id, vec![bob()]);
     }
 
     #[test]
@@ -398,7 +380,11 @@ mod unit_tests {
 
         let prop_id = mk_proposal(&mut ctr);
         voting_context(&mut ctx);
-        ctr.vote(prop_id, vec![candidate(1), candidate(2), candidate(3)]);
+        ctr.vote(
+            alice(),
+            prop_id,
+            vec![candidate(1), candidate(2), candidate(3)],
+        );
     }
 
     #[test]
@@ -407,7 +393,19 @@ mod unit_tests {
 
         let prop_id = mk_proposal(&mut ctr);
         voting_context(&mut ctx);
-        ctr.vote(prop_id, vec![]);
+        ctr.vote(alice(), prop_id, vec![]);
         // note: we can only check vote result and state change through an integration test.
+    }
+
+    #[test]
+    #[should_panic(expected = "only registry can invoke this method")]
+    fn vote_called_by_non_registry() {
+        let (mut ctx, mut ctr) = setup(&admin());
+
+        let prop_id = mk_proposal(&mut ctr);
+        voting_context(&mut ctx);
+        ctx.predecessor_account_id = bob();
+        testing_env!(ctx.clone());
+        ctr.vote(alice(), prop_id, vec![]);
     }
 }
