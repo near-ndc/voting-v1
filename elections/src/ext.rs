@@ -14,7 +14,7 @@ pub trait ExtSelf {
 
 #[ext_contract(ext_sbtreg)]
 pub trait ExtSbtRegistry {
-    fn is_human(&self, account: AccountId) -> bool;
+    fn is_human(&self, account: AccountId) -> Vec<(AccountId, Vec<TokenId>)>;
 }
 
 // TODO: use SBT crate once it is published
@@ -39,3 +39,5 @@ pub struct TokenMetadata {
     pub reference: Option<String>,
     pub reference_hash: Option<String>,
 }
+
+pub type TokenId = u64;
