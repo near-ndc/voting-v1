@@ -240,12 +240,12 @@ impl Contract {
     #[private]
     pub fn on_upvote_verified(
         &mut self,
-        #[callback_unwrap] is_human: bool,
+        #[callback_unwrap] proof: Vec<(AccountId, Vec<TokenId>)>,
         candidate: AccountId,
         upvoter: AccountId,
     ) {
         require!(
-            is_human,
+            !proof.is_empty(),
             "not a verified human member, or the tokens are expired"
         );
         let mut n = self
@@ -265,9 +265,12 @@ impl Contract {
     /// Callback for comment. Returns comment ID (used to track comment removal).
     /// + checks if the commenter is a verified human otherwise panics
     #[private]
-    pub fn on_comment_verified(&mut self, #[callback_unwrap] is_human: bool) -> u64 {
+    pub fn on_comment_verified(
+        &mut self,
+        #[callback_unwrap] proof: Vec<(AccountId, Vec<TokenId>)>,
+    ) -> u64 {
         require!(
-            is_human,
+            !proof.is_empty(),
             "not a verified human member, or the tokens are expired"
         );
         let id = self.next_comment_id;
