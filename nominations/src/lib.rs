@@ -240,12 +240,12 @@ impl Contract {
     #[private]
     pub fn on_upvote_verified(
         &mut self,
-        #[callback_unwrap] proof: Vec<(AccountId, Vec<TokenId>)>,
+        #[callback_unwrap] tokens: Vec<(AccountId, Vec<TokenId>)>,
         candidate: AccountId,
         upvoter: AccountId,
     ) {
         require!(
-            !proof.is_empty(),
+            !tokens.is_empty(),
             "not a verified human member, or the tokens are expired"
         );
         let mut n = self
@@ -267,10 +267,10 @@ impl Contract {
     #[private]
     pub fn on_comment_verified(
         &mut self,
-        #[callback_unwrap] proof: Vec<(AccountId, Vec<TokenId>)>,
+        #[callback_unwrap] tokens: Vec<(AccountId, Vec<TokenId>)>,
     ) -> u64 {
         require!(
-            !proof.is_empty(),
+            !tokens.is_empty(),
             "not a verified human member, or the tokens are expired"
         );
         let id = self.next_comment_id;
