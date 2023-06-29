@@ -31,8 +31,9 @@ CTR=elections-v1.gwg.testnet
 REGISTRY=registry-1.i-am-human.testnet
 
 # create proposal
+# note: start and end time must be in milliseconds
 
-near call $CTR create_proposal '{"start": 1686221747, "end": 1686653747, "ref_link": "example.com", "quorum": 10, "candidates": ["candidate1.testnet", "candidate2.testnet", "candidate3.testnet", "candidate4.testnet"], "typ": "HouseOfMerit", "seats": 3}' --accountId $CTR
+near call $CTR create_proposal '{"start": 1686221747000, "end": 1686653747000, "ref_link": "example.com", "quorum": 10, "candidates": ["candidate1.testnet", "candidate2.testnet", "candidate3.testnet", "candidate4.testnet"], "typ": "HouseOfMerit", "seats": 3}' --accountId $CTR
 
 # fetch all proposal
 
