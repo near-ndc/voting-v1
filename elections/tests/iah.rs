@@ -32,18 +32,16 @@ async fn init(
     let john_acc = worker.dev_create_account().await?;
 
     // initialize contracts
-    let res = ndc_elections_contract
+    let res1 = ndc_elections_contract
         .call("new")
         .args_json(json!({
             "authority": authority_acc.id(),
             "sbt_registry": registry_contract.id(),
         }))
         .max_gas()
-        .transact()
-        .await?;
-    assert!(res.is_success());
+        .transact();
 
-    let res = registry_contract
+    let res2 = registry_contract
         .call("new")
         .args_json(json!({
             "authority": authority_acc.id(),
@@ -51,11 +49,12 @@ async fn init(
             "iah_classes": (1,),
         }))
         .max_gas()
-        .transact()
-        .await?;
-    assert!(res.is_success());
+        .transact();
 
-    // add sbt_gd_as_an_issuer
+    assert!(res1.await?.is_success());
+    assert!(res2.await?.is_success());
+
+    // add iah issuer
     let res = authority_acc
         .call(registry_contract.id(), "admin_add_sbt_issuer")
         .args_json(json!({"issuer": iah_issuer.id()}))
@@ -91,23 +90,23 @@ async fn init(
         (john_acc.id(), vec![token_metadata_short_expire_at]),
     ];
 
-    let res = iah_issuer
+    let res1 = iah_issuer
         .call(registry_contract.id(), "sbt_mint")
         .args_json(json!({ "token_spec": token_spec }))
         .deposit(parse_near!("1 N"))
         .max_gas()
         .transact()
         .await?;
-    assert!(res.is_success(), "{:?}", res);
 
     // create a proposal
-    let proposal_id: u32 = authority_acc
+    let res2 = authority_acc
     .call(ndc_elections_contract.id(), "create_proposal")
     .args_json(json!({"typ": HouseType::HouseOfMerit, "start": start_time, "end": u64::MAX, "ref_link": "test.io", "quorum": 10, "credits": 5, "seats": 1, "candidates": [john_acc.id(), alice_acc.id()],}))
     .max_gas()
-    .transact()
-    .await?
-    .json()?;
+    .transact();
+
+    assert!(res1.is_success(), "{:?}", res);
+    let proposal_id: u32 = res2.await?.json()?;
 
     return Ok((
         ndc_elections_contract.to_owned(),
@@ -126,7 +125,6 @@ async fn vote_by_human() -> anyhow::Result<()> {
     // fast forward to the voting period
     worker.fast_forward(10).await?;
 
-    // create a vote
     let res = alice_acc
         .call(ndc_elections_contract.id(), "vote")
         .args_json(json!({"prop_id": proposal_id, "vote": [john_acc.id()],}))
@@ -147,7 +145,6 @@ async fn vote_by_non_human() -> anyhow::Result<()> {
     // fast forward to the voting period
     worker.fast_forward(10).await?;
 
-    // create a vote
     let res = bob_acc
         .call(ndc_elections_contract.id(), "vote")
         .args_json(json!({"prop_id": proposal_id, "vote": [john_acc.id()],}))
@@ -171,7 +168,6 @@ async fn vote_expired_iah_token() -> anyhow::Result<()> {
     // fast forward to the voting period
     worker.fast_forward(10).await?;
 
-    // create a vote
     let res = john_acc
         .call(ndc_elections_contract.id(), "vote")
         .args_json(json!({"prop_id": proposal_id, "vote": [alice_acc.id()],}))
