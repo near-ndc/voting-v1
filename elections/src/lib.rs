@@ -2,8 +2,7 @@ use std::collections::HashSet;
 
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, LookupSet};
-use near_sdk::env::panic_str;
-use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise, PromiseResult};
+use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise};
 
 mod constants;
 mod errors;
@@ -140,11 +139,6 @@ impl Contract {
         prop_id: u32,
         vote: Vote,
     ) -> Result<(), VoteError> {
-        match env::promise_result(0) {
-            PromiseResult::Successful(_) => (),
-            _ => panic_str("is_human check was not successful"),
-        }
-
         if tokens.is_empty() || tokens[0].1.is_empty() {
             return Err(VoteError::NoSBTs);
         }
