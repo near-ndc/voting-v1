@@ -16,14 +16,13 @@ async fn init(
     worker: &Worker<impl DevNetwork>,
 ) -> anyhow::Result<(Contract, Account, Account, Account, u32)> {
     // deploy contracts
-    let ndc_elections_contract = worker
-        .dev_deploy(include_bytes!("../../res/elections.wasm"))
-        .await?;
-
+    let ndc_elections_contract = worker.dev_deploy(include_bytes!("../../res/elections.wasm"));
     let registry_contract = worker
         // registry is a contract form https://github.com/near-ndc/i-am-human
-        .dev_deploy(include_bytes!("../../res/registry.wasm"))
-        .await?;
+        .dev_deploy(include_bytes!("../../res/registry.wasm"));
+
+    let ndc_elections_contract = ndc_elections_contract.await?;
+    let registry_contract = registry_contract.await?;
 
     let authority_acc = worker.dev_create_account().await?;
     let iah_issuer = worker.dev_create_account().await?;
@@ -143,7 +142,7 @@ async fn vote_by_non_human() -> anyhow::Result<()> {
     let (ndc_elections_contract, _, bob_acc, john_acc, proposal_id) = init(&worker).await?;
 
     // fast forward to the voting period
-    worker.fast_forward(10).await?;
+    worker.fast_forward(12).await?;
 
     let res = bob_acc
         .call(ndc_elections_contract.id(), "vote")
@@ -153,8 +152,11 @@ async fn vote_by_non_human() -> anyhow::Result<()> {
         .transact()
         .await?;
     assert!(res.is_failure(), "resp should be a failure {:?}", res);
+    let res_str = format!("{:?}", res);
     assert!(
-        format!("{:?}", res).contains("Voter is not a verified human, or the token has expired")
+        res_str.contains("voter is not a verified human"),
+        "{}",
+        res_str
     );
 
     Ok(())
@@ -166,7 +168,7 @@ async fn vote_expired_iah_token() -> anyhow::Result<()> {
     let (ndc_elections_contract, alice_acc, _, john_acc, proposal_id) = init(&worker).await?;
 
     // fast forward to the voting period
-    worker.fast_forward(10).await?;
+    worker.fast_forward(100).await?;
 
     let res = john_acc
         .call(ndc_elections_contract.id(), "vote")
@@ -176,8 +178,11 @@ async fn vote_expired_iah_token() -> anyhow::Result<()> {
         .transact()
         .await?;
     assert!(res.is_failure(), "resp should be a failure {:?}", res);
+    let res_str = format!("{:?}", res);
     assert!(
-        format!("{:?}", res).contains("Voter is not a verified human, or the token has expired")
+        res_str.contains("voter is not a verified human"),
+        "{}",
+        res_str
     );
 
     Ok(())

@@ -5,19 +5,22 @@ use near_sdk::{ext_contract, AccountId};
 #[allow(unused_imports)]
 use near_sdk::serde::Serialize;
 
-use crate::Vote;
+use crate::{Vote, VoteError};
 
 #[ext_contract(ext_self)]
 pub trait ExtSelf {
-    fn on_vote_verified(&mut self, prop_id: u32, user: AccountId, vote: Vote);
+    fn on_vote_verified(&mut self, prop_id: u32, vote: Vote) -> Result<(), VoteError>;
 }
 
 #[ext_contract(ext_sbtreg)]
 pub trait ExtSbtRegistry {
-    fn is_human(&self, account: AccountId) -> Vec<(AccountId, Vec<TokenId>)>;
+    fn is_human(&self, account: AccountId) -> HumanSBTs;
 }
 
 // TODO: use SBT crate once it is published
+
+pub type TokenId = u64;
+pub type HumanSBTs = Vec<(AccountId, Vec<TokenId>)>;
 
 /// token data for sbt_tokens_by_owner response
 #[derive(Deserialize)]
@@ -39,5 +42,3 @@ pub struct TokenMetadata {
     pub reference: Option<String>,
     pub reference_hash: Option<String>,
 }
-
-pub type TokenId = u64;

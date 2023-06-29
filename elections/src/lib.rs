@@ -5,12 +5,14 @@ use near_sdk::collections::{LookupMap, LookupSet};
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise};
 
 mod constants;
+mod errors;
 mod ext;
 pub mod proposal;
 mod storage;
 mod view;
 
 pub use crate::constants::*;
+pub use crate::errors::*;
 pub use crate::ext::*;
 pub use crate::proposal::*;
 use crate::storage::*;
@@ -100,7 +102,6 @@ impl Contract {
         let p = self._proposal(prop_id);
         p.assert_active();
         let user = env::predecessor_account_id();
-        require!(!p.voters.contains(&user), "caller already voted");
         require!(
             env::attached_deposit() >= VOTE_COST,
             format!(
@@ -115,11 +116,11 @@ impl Contract {
         validate_vote(&vote, p.seats, &p.candidates);
         // call SBT registry to verify SBT
         ext_sbtreg::ext(self.sbt_registry.clone())
-            .is_human(user.clone())
+            .is_human(user)
             .then(
                 ext_self::ext(env::current_account_id())
                     .with_static_gas(VOTE_GAS_CALLBACK)
-                    .on_vote_verified(prop_id, user, vote),
+                    .on_vote_verified(prop_id, vote),
             )
     }
 
@@ -128,19 +129,22 @@ impl Contract {
      ****************/
 
     #[private]
+    #[handle_result]
     pub fn on_vote_verified(
         &mut self,
-        #[callback_unwrap] tokens: Vec<(AccountId, Vec<TokenId>)>,
+        #[callback_unwrap] tokens: HumanSBTs,
         prop_id: u32,
-        user: AccountId,
         vote: Vote,
-    ) {
-        require!(
-            !tokens.is_empty(),
-            "Voter is not a verified human, or the token has expired"
-        );
-        let mut p = self._proposal(prop_id);
-        p.vote_on_verified(&user, vote);
+    ) -> Result<(), VoteError> {
+        if tokens.is_empty() || tokens[0].1.is_empty() {
+            return Err(VoteError::NoSBTs);
+        }
+        if tokens.len() != 1 {
+            // in current version we support only one proof of personhood issuer: Fractal, so here
+            // we simplify by requiring that the result contains tokens only from one issuer.
+            return Err(VoteError::WrongIssuer);
+        }
+        self._proposal(prop_id).vote_on_verified(&tokens[0].1, vote)
     }
 
     /*****************
@@ -185,6 +189,10 @@ mod unit_tests {
 
     fn sbt_registry() -> AccountId {
         AccountId::new_unchecked("sbt_registry.near".to_string())
+    }
+
+    fn human_issuer() -> AccountId {
+        AccountId::new_unchecked("h_isser.near".to_string())
     }
 
     fn setup(predecessor: &AccountId) -> (VMContext, Contract) {
@@ -288,6 +296,18 @@ mod unit_tests {
         )
     }
 
+    fn mk_human_sbt(sbt: TokenId) -> HumanSBTs {
+        vec![(human_issuer(), vec![sbt])]
+    }
+
+    fn mk_human_sbts(sbt: Vec<TokenId>) -> HumanSBTs {
+        vec![(human_issuer(), sbt)]
+    }
+
+    fn mk_nohuman_sbt(sbt: TokenId) -> HumanSBTs {
+        vec![(human_issuer(), vec![sbt]), (admin(), vec![sbt])]
+    }
+
     fn voting_context(ctx: &mut VMContext) {
         ctx.attached_deposit = VOTE_COST;
         ctx.block_timestamp = (START + 2) * MSECOND;
@@ -342,19 +362,54 @@ mod unit_tests {
     }
 
     #[test]
-    #[should_panic(expected = "caller already voted")]
-    fn vote_caller_already_voted() {
+    fn on_vote_verified() {
         let (mut ctx, mut ctr) = setup(&admin());
 
         let prop_id = mk_proposal(&mut ctr);
-
-        //set bob as voter and attempt double vote
-        ctr._proposal(prop_id).voters.insert(&bob());
-        ctx.predecessor_account_id = bob();
-        ctx.attached_deposit = VOTE_COST;
+        let vote = vec![candidate(1)];
         ctx.block_timestamp = (START + 2) * MSECOND;
         testing_env!(ctx.clone());
-        ctr.vote(prop_id, vec![candidate(1)]);
+
+        // successful vote
+        match ctr.on_vote_verified(mk_human_sbt(1), prop_id, vote.clone()) {
+            Ok(_) => (),
+            x => panic!("expected OK, got: {:?}", x),
+        };
+        let p = ctr._proposal(prop_id);
+        assert!(p.voters.contains(&1));
+
+        // attempt double vote
+        match ctr.on_vote_verified(mk_human_sbt(1), prop_id, vote.clone()) {
+            Err(VoteError::DoubleVote(1)) => (),
+            x => panic!("expected DoubleVote(1), got: {:?}", x),
+        };
+
+        //set sbt=4 and attempt double vote
+        ctr._proposal(prop_id).voters.insert(&4);
+        match ctr.on_vote_verified(mk_human_sbt(4), prop_id, vote.clone()) {
+            Err(VoteError::DoubleVote(4)) => (),
+            x => panic!("expected DoubleVote(4), got: {:?}", x),
+        };
+
+        // attempt to double vote with few tokens
+        match ctr.on_vote_verified(mk_human_sbts(vec![2, 4]), prop_id, vote.clone()) {
+            Err(VoteError::DoubleVote(4)) => (),
+            x => panic!("expected DoubleVote(4), got: {:?}", x),
+        };
+
+        // wrong issuer
+        match ctr.on_vote_verified(mk_nohuman_sbt(3), prop_id, vote.clone()) {
+            Err(VoteError::WrongIssuer) => (),
+            x => panic!("expected WrongIssuer, got: {:?}", x),
+        };
+        match ctr.on_vote_verified(vec![], prop_id, vote.clone()) {
+            Err(VoteError::NoSBTs) => (),
+            x => panic!("expected WrongIssuer, got: {:?}", x),
+        };
+        match ctr.on_vote_verified(vec![(human_issuer(), vec![])], prop_id, vote.clone()) {
+            Err(VoteError::NoSBTs) => (),
+            x => panic!("expected NoSBTs, got: {:?}", x),
+        };
     }
 
     #[test]
