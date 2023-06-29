@@ -413,11 +413,6 @@ mod unit_tests {
         };
     }
 
-    // ctx.predecessor_account_id = bob();
-    // ctx.attached_deposit = VOTE_COST;
-    // ctx.block_timestamp = (START + 2) * MSECOND;
-    // testing_env!(ctx.clone());
-
     #[test]
     #[should_panic(expected = "not enough gas, min: Gas(70000000000000)")]
     fn vote_wrong_gas() {
