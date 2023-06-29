@@ -2,7 +2,8 @@ use std::collections::HashSet;
 
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, LookupSet};
-use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise};
+use near_sdk::env::panic_str;
+use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise, PromiseResult};
 
 mod constants;
 mod errors;
@@ -28,18 +29,18 @@ pub struct Contract {
     pub authority: AccountId,
     pub sbt_registry: AccountId,
     /// issuer used by the sbt_registry for proof of personhood
-    pub human_issuer: AccountId,
+    pub iah_issuer: AccountId,
 }
 
 #[near_bindgen]
 impl Contract {
     #[init]
-    pub fn new(authority: AccountId, sbt_registry: AccountId, human_issuer: AccountId) -> Self {
+    pub fn new(authority: AccountId, sbt_registry: AccountId, iah_issuer: AccountId) -> Self {
         Self {
             pause: false,
             authority,
             sbt_registry,
-            human_issuer,
+            iah_issuer,
             proposals: LookupMap::new(StorageKey::Proposals),
             prop_counter: 0,
         }
@@ -139,11 +140,16 @@ impl Contract {
         prop_id: u32,
         vote: Vote,
     ) -> Result<(), VoteError> {
-        if !(tokens.len() == 1 && tokens[0].0 == self.human_issuer) {
-            return Err(VoteError::WrongIssuer);
+        match env::promise_result(0) {
+            PromiseResult::Successful(_) => (),
+            _ => panic_str("is_human check was not successful"),
         }
-        if tokens[0].1.is_empty() {
+
+        if tokens.is_empty() || tokens[0].1.is_empty() {
             return Err(VoteError::NoSBTs);
+        }
+        if tokens.len() != 1 || tokens[0].0 != self.iah_issuer {
+            return Err(VoteError::WrongIssuer);
         }
         self._proposal(prop_id).vote_on_verified(&tokens[0].1, vote)
     }
@@ -404,7 +410,7 @@ mod unit_tests {
             x => panic!("expected WrongIssuer, got: {:?}", x),
         };
         match ctr.on_vote_verified(vec![], prop_id, vote.clone()) {
-            Err(VoteError::WrongIssuer) => (),
+            Err(VoteError::NoSBTs) => (),
             x => panic!("expected WrongIssuer, got: {:?}", x),
         };
         match ctr.on_vote_verified(vec![(human_issuer(), vec![])], prop_id, vote.clone()) {

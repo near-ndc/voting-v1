@@ -37,6 +37,7 @@ async fn init(
         .args_json(json!({
             "authority": authority_acc.id(),
             "sbt_registry": registry_contract.id(),
+            "iah_issuer": iah_issuer.id(),
         }))
         .max_gas()
         .transact()
@@ -145,7 +146,7 @@ async fn vote_by_non_human() -> anyhow::Result<()> {
     let (ndc_elections_contract, _, bob_acc, john_acc, proposal_id) = init(&worker).await?;
 
     // fast forward to the voting period
-    worker.fast_forward(10).await?;
+    worker.fast_forward(12).await?;
 
     // create a vote
     let res = bob_acc
@@ -156,8 +157,11 @@ async fn vote_by_non_human() -> anyhow::Result<()> {
         .transact()
         .await?;
     assert!(res.is_failure(), "resp should be a failure {:?}", res);
+    let res_str = format!("{:?}", res);
     assert!(
-        format!("{:?}", res).contains("Voter is not a verified human, or the token has expired")
+        res_str.contains("voter is not a verified human"),
+        "{}",
+        res_str
     );
 
     Ok(())
@@ -169,7 +173,7 @@ async fn vote_expired_iah_token() -> anyhow::Result<()> {
     let (ndc_elections_contract, alice_acc, _, john_acc, proposal_id) = init(&worker).await?;
 
     // fast forward to the voting period
-    worker.fast_forward(10).await?;
+    worker.fast_forward(100).await?;
 
     // create a vote
     let res = john_acc
@@ -180,8 +184,11 @@ async fn vote_expired_iah_token() -> anyhow::Result<()> {
         .transact()
         .await?;
     assert!(res.is_failure(), "resp should be a failure {:?}", res);
+    let res_str = format!("{:?}", res);
     assert!(
-        format!("{:?}", res).contains("Voter is not a verified human, or the token has expired")
+        res_str.contains("voter is not a verified human"),
+        "{}",
+        res_str
     );
 
     Ok(())
