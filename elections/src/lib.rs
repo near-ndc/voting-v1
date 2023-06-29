@@ -27,19 +27,16 @@ pub struct Contract {
     /// address which can pause the contract and make a new proposal. Should be a multisig / DAO;
     pub authority: AccountId,
     pub sbt_registry: AccountId,
-    /// issuer used by the sbt_registry for proof of personhood
-    pub iah_issuer: AccountId,
 }
 
 #[near_bindgen]
 impl Contract {
     #[init]
-    pub fn new(authority: AccountId, sbt_registry: AccountId, iah_issuer: AccountId) -> Self {
+    pub fn new(authority: AccountId, sbt_registry: AccountId) -> Self {
         Self {
             pause: false,
             authority,
             sbt_registry,
-            iah_issuer,
             proposals: LookupMap::new(StorageKey::Proposals),
             prop_counter: 0,
         }
@@ -142,7 +139,9 @@ impl Contract {
         if tokens.is_empty() || tokens[0].1.is_empty() {
             return Err(VoteError::NoSBTs);
         }
-        if tokens.len() != 1 || tokens[0].0 != self.iah_issuer {
+        if tokens.len() != 1 {
+            // in current version we support only one proof of personhood issuer: Fractal, so here
+            // we simplify by requiring that the result contains tokens only from one issuer.
             return Err(VoteError::WrongIssuer);
         }
         self._proposal(prop_id).vote_on_verified(&tokens[0].1, vote)
@@ -203,7 +202,7 @@ mod unit_tests {
             .is_view(false)
             .build();
         testing_env!(ctx.clone());
-        let ctr = Contract::new(admin(), sbt_registry(), human_issuer());
+        let ctr = Contract::new(admin(), sbt_registry());
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
         return (ctx, ctr);
@@ -306,7 +305,7 @@ mod unit_tests {
     }
 
     fn mk_nohuman_sbt(sbt: TokenId) -> HumanSBTs {
-        vec![(admin(), vec![sbt])]
+        vec![(human_issuer(), vec![sbt]), (admin(), vec![sbt])]
     }
 
     fn voting_context(ctx: &mut VMContext) {

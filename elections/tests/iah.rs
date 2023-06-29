@@ -36,7 +36,6 @@ async fn init(
         .args_json(json!({
             "authority": authority_acc.id(),
             "sbt_registry": registry_contract.id(),
-            "iah_issuer": iah_issuer.id(),
         }))
         .max_gas()
         .transact();
