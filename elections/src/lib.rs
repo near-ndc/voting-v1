@@ -375,7 +375,7 @@ mod unit_tests {
 
         // check initial state
         let p = ctr._proposal(prop_id);
-        assert_eq!(p.voters_num, 0, "vouters num should be zero");
+        assert_eq!(p.voters_num, 0, "voters num should be zero");
         assert_eq!(p.result, vec![0, 0, 0],);
 
         // successful vote
@@ -385,16 +385,16 @@ mod unit_tests {
         };
         let p = ctr._proposal(prop_id);
         assert!(p.voters.contains(&1));
-        assert_eq!(p.voters_num, 1, "vouters num should increment");
-        assert_eq!(p.result, vec![1, 0, 0], "voute should be counted");
+        assert_eq!(p.voters_num, 1, "voters num should increment");
+        assert_eq!(p.result, vec![1, 0, 0], "vote should be counted");
 
         // attempt double vote
         match ctr.on_vote_verified(mk_human_sbt(1), prop_id, vote.clone()) {
             Err(VoteError::DoubleVote(1)) => (),
             x => panic!("expected DoubleVote(1), got: {:?}", x),
         };
-        assert_eq!(p.voters_num, 1, "vouters num should not increment");
-        assert_eq!(p.result, vec![1, 0, 0], "voute result should not change");
+        assert_eq!(p.voters_num, 1, "voters num should not increment");
+        assert_eq!(p.result, vec![1, 0, 0], "vote result should not change");
 
         //set sbt=4 and attempt double vote
         ctr._proposal(prop_id).voters.insert(&4);
@@ -402,14 +402,14 @@ mod unit_tests {
             Err(VoteError::DoubleVote(4)) => (),
             x => panic!("expected DoubleVote(4), got: {:?}", x),
         };
-        assert_eq!(p.result, vec![1, 0, 0], "voute result should not change");
+        assert_eq!(p.result, vec![1, 0, 0], "vote result should not change");
 
         // attempt to double vote with few tokens
         match ctr.on_vote_verified(mk_human_sbts(vec![2, 4]), prop_id, vote.clone()) {
             Err(VoteError::DoubleVote(4)) => (),
             x => panic!("expected DoubleVote(4), got: {:?}", x),
         };
-        assert_eq!(p.result, vec![1, 0, 0], "voute result should not change");
+        assert_eq!(p.result, vec![1, 0, 0], "vote result should not change");
 
         // wrong issuer
         match ctr.on_vote_verified(mk_nohuman_sbt(3), prop_id, vote.clone()) {
@@ -424,8 +424,8 @@ mod unit_tests {
             Err(VoteError::NoSBTs) => (),
             x => panic!("expected NoSBTs, got: {:?}", x),
         };
-        assert_eq!(p.voters_num, 1, "vouters num should not increment");
-        assert_eq!(p.result, vec![1, 0, 0], "voute result should not change");
+        assert_eq!(p.voters_num, 1, "voters num should not increment");
+        assert_eq!(p.result, vec![1, 0, 0], "vote result should not change");
 
         //
         // Create more successful votes
@@ -439,8 +439,8 @@ mod unit_tests {
         };
         let p = ctr._proposal(prop_id);
         assert!(p.voters.contains(&20), "token id should be recorded");
-        assert_eq!(p.voters_num, 2, "vouters num should  increment");
-        assert_eq!(p.result, vec![1, 0, 1], "voute should be counted");
+        assert_eq!(p.voters_num, 2, "voters num should  increment");
+        assert_eq!(p.result, vec![1, 0, 1], "vote should be counted");
 
         // bob, tokenID=22: vote with 2 selections
         ctx.predecessor_account_id = alice();
@@ -452,8 +452,8 @@ mod unit_tests {
         };
         let p = ctr._proposal(prop_id);
         assert!(p.voters.contains(&22), "token id should be recorded");
-        assert_eq!(p.voters_num, 3, "vouters num should  increment");
-        assert_eq!(p.result, vec![1, 1, 2], "voute should be counted");
+        assert_eq!(p.voters_num, 3, "voters num should  increment");
+        assert_eq!(p.result, vec![1, 1, 2], "vote should be counted");
     }
 
     #[test]
