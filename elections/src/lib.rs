@@ -443,7 +443,7 @@ mod unit_tests {
         assert_eq!(p.result, vec![1, 0, 1], "vote should be counted");
 
         // bob, tokenID=22: vote with 2 selections
-        ctx.predecessor_account_id = alice();
+        ctx.predecessor_account_id = bob();
         testing_env!(ctx.clone());
         // candidates are put in non alphabetical order.
         match ctr.on_vote_verified(mk_human_sbt(22), prop_id, vec![candidate(3), candidate(2)]) {
