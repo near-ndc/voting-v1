@@ -6,7 +6,7 @@ use workspaces::{Account, Contract, DevNetwork, Worker};
 //extern crate elections;
 use elections::{
     proposal::{HouseType, VOTE_COST},
-    TokenMetadata,
+    ProposalView, TokenMetadata,
 };
 
 /// 1ms in seconds
@@ -184,6 +184,42 @@ async fn vote_expired_iah_token() -> anyhow::Result<()> {
         "{}",
         res_str
     );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn state_change() -> anyhow::Result<()> {
+    let worker = workspaces::sandbox().await?;
+    let (ndc_elections_contract, alice_acc, _, john_acc, proposal_id) = init(&worker).await?;
+
+    // fast forward to the voting period
+    worker.fast_forward(10).await?;
+
+    let proposal = alice_acc
+        .call(ndc_elections_contract.id(), "proposal")
+        .args_json(json!({ "prop_id": proposal_id }))
+        .view()
+        .await?
+        .json::<ProposalView>()?;
+    assert_eq!(proposal.voters_num, 0);
+
+    let res = alice_acc
+        .call(ndc_elections_contract.id(), "vote")
+        .args_json(json!({"prop_id": proposal_id, "vote": [john_acc.id()],}))
+        .deposit(VOTE_COST)
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success(), "{:?}", res);
+
+    let proposal = alice_acc
+        .call(ndc_elections_contract.id(), "proposal")
+        .args_json(json!({ "prop_id": proposal_id }))
+        .view()
+        .await?
+        .json::<ProposalView>()?;
+    assert_eq!(proposal.voters_num, 1);
 
     Ok(())
 }
