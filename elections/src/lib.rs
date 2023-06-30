@@ -144,7 +144,10 @@ impl Contract {
             // we simplify by requiring that the result contains tokens only from one issuer.
             return Err(VoteError::WrongIssuer);
         }
-        self._proposal(prop_id).vote_on_verified(&tokens[0].1, vote)
+        let mut p = self._proposal(prop_id);
+        p.vote_on_verified(&tokens[0].1, vote)?;
+        self.proposals.insert(&prop_id, &p);
+        Ok(())
     }
 
     /*****************
@@ -377,12 +380,14 @@ mod unit_tests {
         };
         let p = ctr._proposal(prop_id);
         assert!(p.voters.contains(&1));
+        assert_eq!(p.result, vec![1, 0, 0], "voute should be counted");
 
         // attempt double vote
         match ctr.on_vote_verified(mk_human_sbt(1), prop_id, vote.clone()) {
             Err(VoteError::DoubleVote(1)) => (),
             x => panic!("expected DoubleVote(1), got: {:?}", x),
         };
+        assert_eq!(p.result, vec![1, 0, 0], "voute result should not change");
 
         //set sbt=4 and attempt double vote
         ctr._proposal(prop_id).voters.insert(&4);
@@ -390,12 +395,14 @@ mod unit_tests {
             Err(VoteError::DoubleVote(4)) => (),
             x => panic!("expected DoubleVote(4), got: {:?}", x),
         };
+        assert_eq!(p.result, vec![1, 0, 0], "voute result should not change");
 
         // attempt to double vote with few tokens
         match ctr.on_vote_verified(mk_human_sbts(vec![2, 4]), prop_id, vote.clone()) {
             Err(VoteError::DoubleVote(4)) => (),
             x => panic!("expected DoubleVote(4), got: {:?}", x),
         };
+        assert_eq!(p.result, vec![1, 0, 0], "voute result should not change");
 
         // wrong issuer
         match ctr.on_vote_verified(mk_nohuman_sbt(3), prop_id, vote.clone()) {
@@ -410,6 +417,33 @@ mod unit_tests {
             Err(VoteError::NoSBTs) => (),
             x => panic!("expected NoSBTs, got: {:?}", x),
         };
+        assert_eq!(p.result, vec![1, 0, 0], "voute result should not change");
+
+        //
+        // Create more successful votes
+
+        // alice, tokenID=20: successful vote with single selection
+        ctx.predecessor_account_id = alice();
+        testing_env!(ctx.clone());
+        match ctr.on_vote_verified(mk_human_sbt(20), prop_id, vec![candidate(3)]) {
+            Ok(_) => (),
+            x => panic!("expected OK, got: {:?}", x),
+        };
+        let p = ctr._proposal(prop_id);
+        assert!(p.voters.contains(&20), "token id should be recorded");
+        assert_eq!(p.result, vec![1, 0, 1], "voute should be counted");
+
+        // bob, tokenID=22: vote with 2 selections
+        ctx.predecessor_account_id = alice();
+        testing_env!(ctx.clone());
+        // candidates are put in non alphabetical order.
+        match ctr.on_vote_verified(mk_human_sbt(22), prop_id, vec![candidate(3), candidate(2)]) {
+            Ok(_) => (),
+            x => panic!("expected OK, got: {:?}", x),
+        };
+        let p = ctr._proposal(prop_id);
+        assert!(p.voters.contains(&22), "token id should be recorded");
+        assert_eq!(p.result, vec![1, 1, 2], "voute should be counted");
     }
 
     #[test]
@@ -464,6 +498,7 @@ mod unit_tests {
 
         let prop_id = mk_proposal(&mut ctr);
         voting_context(&mut ctx);
+        // should not panic
         ctr.vote(prop_id, vec![]);
         // note: we can only check vote result and state change through an integration test.
     }
