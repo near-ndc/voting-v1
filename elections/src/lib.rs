@@ -373,6 +373,11 @@ mod unit_tests {
         ctx.block_timestamp = (START + 2) * MSECOND;
         testing_env!(ctx.clone());
 
+        // check initial state
+        let p = ctr._proposal(prop_id);
+        assert_eq!(p.voters_num, 0, "vouters num should be zero");
+        assert_eq!(p.result, vec![0, 0, 0],);
+
         // successful vote
         match ctr.on_vote_verified(mk_human_sbt(1), prop_id, vote.clone()) {
             Ok(_) => (),
@@ -380,6 +385,7 @@ mod unit_tests {
         };
         let p = ctr._proposal(prop_id);
         assert!(p.voters.contains(&1));
+        assert_eq!(p.voters_num, 1, "vouters num should increment");
         assert_eq!(p.result, vec![1, 0, 0], "voute should be counted");
 
         // attempt double vote
@@ -387,6 +393,7 @@ mod unit_tests {
             Err(VoteError::DoubleVote(1)) => (),
             x => panic!("expected DoubleVote(1), got: {:?}", x),
         };
+        assert_eq!(p.voters_num, 1, "vouters num should not increment");
         assert_eq!(p.result, vec![1, 0, 0], "voute result should not change");
 
         //set sbt=4 and attempt double vote
@@ -417,6 +424,7 @@ mod unit_tests {
             Err(VoteError::NoSBTs) => (),
             x => panic!("expected NoSBTs, got: {:?}", x),
         };
+        assert_eq!(p.voters_num, 1, "vouters num should not increment");
         assert_eq!(p.result, vec![1, 0, 0], "voute result should not change");
 
         //
@@ -431,6 +439,7 @@ mod unit_tests {
         };
         let p = ctr._proposal(prop_id);
         assert!(p.voters.contains(&20), "token id should be recorded");
+        assert_eq!(p.voters_num, 2, "vouters num should  increment");
         assert_eq!(p.result, vec![1, 0, 1], "voute should be counted");
 
         // bob, tokenID=22: vote with 2 selections
@@ -443,6 +452,7 @@ mod unit_tests {
         };
         let p = ctr._proposal(prop_id);
         assert!(p.voters.contains(&22), "token id should be recorded");
+        assert_eq!(p.voters_num, 3, "vouters num should  increment");
         assert_eq!(p.result, vec![1, 1, 2], "voute should be counted");
     }
 
