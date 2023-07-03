@@ -47,3 +47,17 @@ near view $CTR proposals '{"prop_id": 2}'
 
 near call $CTR vote '{"prop_id": 1, "vote": ["candidate1.testnet", "candidate3.testnet"]}' --gas 70000000000000 --deposit 0.002 --accountId me.testnet
 ```
+
+## Deployed Contracts
+
+### Mainnet:
+
+Coming Soon
+
+- mainnet testing: `elections-v1.gwg-testing.near` - [deployment tx](https://explorer.mainnet.near.org/transactions/k8CYckfdqrubJovPTX8UreZkdxgwxkxjaFTv955aJbS)
+  registry: `registry-v1.gwg-testing.near`
+
+### Testnet:
+
+- `elections-v1.gwg.testnet` - [deployment tx](https://explorer.testnet.near.org/transactions/6mQVLLsrEkBithTf1ys36SHCUAhDK9gVDEyCrgV1VWoR).
+  registry: `registry-1.i-am-human.testnet`

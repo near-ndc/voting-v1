@@ -55,5 +55,4 @@ Setting a proposal will require a big bond of NEAR (to be defined). Such proposa
   - only admin can create constitution proposal
 - [ ] Decide about NDC proposal deposits to allow others to create proposals
   - would be good to consider adding veto in addition to yes/no/abstain votes.
-- [ ] Add vote overwrite (user should be able to change his vote while the proposal is active).
 - [ ] Fork Astro DAO to add Veto Hooks and challenge period and Veto proposal (to allow TC to veto HoM).
