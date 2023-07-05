@@ -213,7 +213,7 @@ async fn self_nominate_expired_token_fail() -> anyhow::Result<()> {
 #[tokio::test]
 async fn upvote() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
-    let (ndc_elections_contract, _, bob, john, _) = init(&worker).await?;
+    let (ndc_elections_contract, alice, bob, john, _) = init(&worker).await?;
 
     // self nominate
     let res = john
@@ -234,6 +234,30 @@ async fn upvote() -> anyhow::Result<()> {
         .transact()
         .await?;
     assert!(res.is_success());
+
+    let res: Vec<(String, u32)> = ndc_elections_contract
+        .view("nominations")
+        .args_json(json!({ "house": HouseType::HouseOfMerit }))
+        .await?
+        .json()?;
+    assert_eq!(res, vec![(john.id().as_str().to_owned(), 1)]);
+
+    // another upvote
+    let res = alice
+        .call(ndc_elections_contract.id(), "upvote")
+        .args_json(json!({"candidate": john.id(),}))
+        .max_gas()
+        .deposit(parse_near!("1 N"))
+        .transact()
+        .await?;
+    assert!(res.is_success());
+
+    let res: Vec<(String, u32)> = ndc_elections_contract
+        .view("nominations")
+        .args_json(json!({ "house": HouseType::HouseOfMerit }))
+        .await?
+        .json()?;
+    assert_eq!(res, vec![(john.id().as_str().to_owned(), 2)]);
 
     println!("Passed ✅ upvote");
     Ok(())
