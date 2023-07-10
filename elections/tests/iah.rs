@@ -220,6 +220,8 @@ async fn state_change() -> anyhow::Result<()> {
         .await?
         .json::<ProposalView>()?;
     assert_eq!(proposal.voters_num, 1);
+    assert_eq!(proposal.result[0].1, 0); // votes for alice
+    assert_eq!(proposal.result[1].1, 1); // votes for john
 
     Ok(())
 }
