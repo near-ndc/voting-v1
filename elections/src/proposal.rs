@@ -41,9 +41,10 @@ pub struct Proposal {
     pub voters_num: u32,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize)]
 #[serde(crate = "near_sdk::serde")]
 #[cfg_attr(test, derive(Debug, PartialEq))]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Deserialize))]
 pub struct ProposalView {
     pub id: u32,
     pub typ: HouseType,
