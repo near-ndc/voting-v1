@@ -47,15 +47,6 @@ async fn init(
         .await?;
     assert!(res.is_success());
 
-    // add iah_issuer
-    let res = authority_acc
-        .call(registry_contract.id(), "admin_add_sbt_issuer")
-        .args_json(json!({"issuer": iah_issuer.id()}))
-        .max_gas()
-        .transact()
-        .await?;
-    assert!(res.is_success(), "{:?}", res);
-
     // mint IAH and OG sbt to alice
     let alice_tokens = vec![
         TokenMetadata {

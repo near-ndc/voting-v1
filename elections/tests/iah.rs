@@ -53,15 +53,6 @@ async fn init(
     assert!(res1.await?.is_success());
     assert!(res2.await?.is_success());
 
-    // add iah issuer
-    let res = authority_acc
-        .call(registry_contract.id(), "admin_add_sbt_issuer")
-        .args_json(json!({"issuer": iah_issuer.id()}))
-        .max_gas()
-        .transact()
-        .await?;
-    assert!(res.is_success());
-
     // get current block time
     let block = worker.view_block().await?;
     let now = block.timestamp() / MSECOND; // timestamp in seconds
@@ -104,7 +95,7 @@ async fn init(
     .max_gas()
     .transact();
 
-    assert!(res1.is_success(), "{:?}", res);
+    assert!(res1.is_success(), "{:?}", res1);
     let proposal_id: u32 = res2.await?.json()?;
 
     return Ok((
