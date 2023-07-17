@@ -33,7 +33,7 @@ async fn init(
     // initialize contracts
     let res  = ndc_nominations_contract
         .call("new")
-        .args_json(json!({"sbt_registry": registry_contract.id(),"iah_issuer": iah_issuer.id(),"og_sbt": (iah_issuer.id(),2), "admins": [authority_acc.id()], "start_time": 0, "end_time": end_time}))
+        .args_json(json!({"sbt_registry": registry_contract.id(),"og_sbt": (iah_issuer.id(),2), "admins": [authority_acc.id()], "start_time": 0, "end_time": end_time}))
         .max_gas()
         .transact()
         .await?;

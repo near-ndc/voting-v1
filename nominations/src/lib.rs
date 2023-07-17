@@ -17,8 +17,6 @@ pub use crate::ext::*;
 pub struct Contract {
     /// registry address
     pub sbt_registry: AccountId,
-    /// IAH issuer account for proof of humanity
-    pub iah_issuer: AccountId,
     /// OG token (issuer, class_id)
     pub og_sbt: (AccountId, u64),
     /// map of nominations
@@ -41,7 +39,6 @@ impl Contract {
     #[init]
     pub fn new(
         sbt_registry: AccountId,
-        iah_issuer: AccountId,
         og_sbt: (AccountId, u64),
         admins: Vec<AccountId>,
         start_time: u64,
@@ -50,7 +47,6 @@ impl Contract {
         require!(start_time < end_time, "start must be before end time");
         Self {
             sbt_registry,
-            iah_issuer,
             og_sbt,
             start_time,
             end_time,
@@ -349,10 +345,6 @@ mod tests {
         AccountId::new_unchecked("sbt_registry.near".to_string())
     }
 
-    fn iah_issuer() -> AccountId {
-        AccountId::new_unchecked("iah_issuer.near".to_string())
-    }
-
     fn og_token_issuer() -> AccountId {
         AccountId::new_unchecked("og.near".to_string())
     }
@@ -394,7 +386,6 @@ mod tests {
         testing_env!(ctx.clone());
         let ctr = Contract::new(
             sbt_registry(),
-            iah_issuer(),
             (og_token_issuer(), OG_CLASS_ID),
             vec![admin()],
             START * SEC_TO_MS,
