@@ -73,6 +73,11 @@ impl Contract {
         results
     }
 
+    /// Returns nominations start time and end time as a pair of unix timestamp in miliseconds.
+    pub fn active_time(&self) -> (u64, u64) {
+        (self.start_time, self.end_time)
+    }
+
     /**********
      * TRANSACTIONS
      **********/
@@ -187,6 +192,7 @@ impl Contract {
     /// Instruments in the indexer to remove a comment.
     /// Caller must be an author of the comment (must be checked by the indexer).
     pub fn remove_comment(&mut self, comment: u64) {
+        self.assert_active();
         require!(comment < self.next_comment_id, "invalid comment ID");
         // we don't record commetns, so additional authorization must happen in the indexer.
     }
@@ -401,6 +407,8 @@ mod tests {
     fn assert_active() {
         let (_, ctr) = setup(&admin());
         ctr.assert_active();
+        let at = ctr.active_time();
+        assert_eq!(at, (START * SEC_TO_MS, END * SEC_TO_MS));
     }
 
     #[test]
