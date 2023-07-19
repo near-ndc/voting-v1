@@ -3,7 +3,7 @@
 Smart contract for nominations.
 [Specification](https://near-ndc.notion.site/Nominations-b4281e30ac4e44cfbd894f0e2443bc88?pvs=4)
 
-Smart contract is primarly used for NDC v1 Elections, but can be used also for other use cases (eg Kudos).
+Smart contract is primally used for NDC v1 Elections, but can be used also for other use cases (eg Kudos).
 
 ## Transactions
 
@@ -15,17 +15,36 @@ Smart contract is primarly used for NDC v1 Elections, but can be used also for o
 
 ## Queries
 
-- `nominations(&self, house: HouseType) -> Vec<(AccountId, u32)>` - returns all the nominations for the given house with the numbers of upvotes recived eg. `[("candidate1.near", 16), ("candidate2.near", 5), ...]`.
+- `nominations(&self, house: HouseType) -> Vec<(AccountId, u32)>` - returns all the nominations for the given house with the numbers of upvotes received eg. `[("candidate1.near", 16), ("candidate2.near", 5), ...]`.
 
 Comment and upvote queries should be go through an indexer.
 
 ## Deployed Contracts
 
-### Mainnet:
+### Mainnet Production
 
-Coming Soon
+**nominations.ndc-gwg.near** @ nominations/v1.0.0
 
-### Testnet:
+```yaml
+sbt_registry: registry.i-am-human.near,
+og_sbt: ["community.i-am-human.near", 1],
+start_time: 1689778800000,
+end_time: 1694995199000
+```
+
+### Mainnet Testing
+
+**nominations-v1.gwg-testing.near** @ nominations/v1.0.0
+
+```yaml
+sbt_registry: registry-v1.gwg-testing.near,
+iah_issuer: fractal.i-am-human.near,
+og_sbt: [fractal.i-am-human.near, 2],
+start_time: 1687792608708,
+end_time: 1787792508708
+```
+
+### Testnet
 
 - **nominations-v1**: `nominations-v1.gwg.testnet`, initialized with values:
   ```yaml
