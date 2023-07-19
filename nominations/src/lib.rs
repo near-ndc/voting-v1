@@ -232,6 +232,22 @@ impl Contract {
     }
 
     /*****************
+     * ADMIN
+     ****************/
+
+    /// Admin: set new end_time, must be in miliseconds.
+    pub fn update_end_time(&mut self, end_time: u64) {
+        require!(
+            self.admins
+                .get()
+                .unwrap()
+                .contains(&env::predecessor_account_id()),
+            "not authorized"
+        );
+        self.end_time = end_time;
+    }
+
+    /*****************
      * PRIVATE
      ****************/
 
