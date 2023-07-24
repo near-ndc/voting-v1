@@ -95,13 +95,13 @@ impl Proposal {
     pub fn vote_on_verified(&mut self, sbts: &Vec<TokenId>, vote: Vote) -> Result<(), VoteError> {
         self.assert_active();
         for t in sbts {
-            if !self.voters.insert(&t) {
+            if !self.voters.insert(t) {
                 return Err(VoteError::DoubleVote(*t));
             }
         }
         self.voters_num += 1;
         for candidate in vote {
-            let idx = self.candidates.binary_search(&candidate).unwrap() as usize;
+            let idx = self.candidates.binary_search(&candidate).unwrap();
             self.result[idx] += 1;
         }
         Ok(())
@@ -111,7 +111,7 @@ impl Proposal {
 pub type Vote = Vec<AccountId>;
 
 /// * valid_candidates must be a sorted slice.
-pub fn validate_vote(vs: &Vote, max_credits: u16, valid_candidates: &Vec<AccountId>) {
+pub fn validate_vote(vs: &Vote, max_credits: u16, valid_candidates: &[AccountId]) {
     require!(
         vs.len() <= max_credits as usize,
         format!("max vote is {} seats", max_credits)
