@@ -1,8 +1,10 @@
 [package]
 name = "ndc_voting_body"
 version = "1.0.0"
-authors = ["NDC GWG (https://near.social/#/mob.near/widget/ProfilePage?accountId=govworkinggroup.near)"]
-edition = "2021"
+authors = { workspace = true }
+edition = { workspace = true }
+repository = { workspace = true }
+license = { workspace = true }
 
 [lib]
 crate-type = ["cdylib"]
