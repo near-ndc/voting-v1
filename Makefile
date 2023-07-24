@@ -18,5 +18,8 @@ lint:
 lint-fix:
 	cargo clippy --fix
 
+lint-md:
+	markdownlint-cli2-config .markdownlint.json  **/*.md
+
 test:
 	@cargo test

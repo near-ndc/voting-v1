@@ -50,14 +50,14 @@ near call $CTR vote '{"prop_id": 1, "vote": ["candidate1.testnet", "candidate3.t
 
 ## Deployed Contracts
 
-### Mainnet:
+### Mainnet
 
 Coming Soon
 
 - mainnet testing: `elections-v1.gwg-testing.near` - [deployment tx](https://explorer.mainnet.near.org/transactions/k8CYckfdqrubJovPTX8UreZkdxgwxkxjaFTv955aJbS)
   registry: `registry-v1.gwg-testing.near`
 
-### Testnet:
+### Testnet
 
 - `elections-v1.gwg.testnet` - [deployment tx](https://explorer.testnet.near.org/transactions/6mQVLLsrEkBithTf1ys36SHCUAhDK9gVDEyCrgV1VWoR).
   registry: `registry-1.i-am-human.testnet`

@@ -47,6 +47,7 @@ end_time: 1787792508708
 ### Testnet
 
 - **nominations-v1**: `nominations-v1.gwg.testnet`, initialized with values:
+
   ```yaml
   sbt_registry: registry-unstable.i-am-human.testnet,
   iah_issuer: i-am-human-staging.testnet,
