@@ -117,13 +117,13 @@ async fn init(
         .await?;
     assert!(res.is_success());
 
-    return Ok((
+    Ok((
         ndc_nominations_contract,
         alice_acc,
         bob_acc,
         john_acc,
         elon_acc,
-    ));
+    ))
 }
 
 #[tokio::test]
