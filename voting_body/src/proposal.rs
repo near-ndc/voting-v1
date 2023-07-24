@@ -158,7 +158,7 @@ impl Proposal {
             }
         }
 
-        self.votes.insert(&user, &vote);
+        self.votes.insert(user, &vote);
         match vote {
             Vote::No => self.no += 1,
             Vote::Yes => self.no += 1,
