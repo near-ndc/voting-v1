@@ -1,6 +1,6 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::UnorderedMap;
-use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise};
+use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault};
 
 mod consent;
 mod constants;
@@ -33,10 +33,6 @@ pub struct Contract {
     /// Should be a multisig / DAO;
     pub gwg: AccountId,
     pub sbt_registry: AccountId,
-    /// Gooddollar SBT issuer account for proof of humanity
-    pub sbt_gd_issuer: AccountId,
-    /// SBT class ID used for Facetech verification
-    pub sbt_gd_class_id: u64,
 }
 
 #[near_bindgen]
@@ -45,8 +41,6 @@ impl Contract {
     pub fn new(
         gwg: AccountId,
         sbt_registry: AccountId,
-        sbt_gd_issuer: AccountId,
-        sbt_gd_class_id: u64,
         sup_consent: Consent,
         consent: Consent,
         prop_duration: u32,
@@ -56,8 +50,6 @@ impl Contract {
             pause: false,
             gwg,
             sbt_registry,
-            sbt_gd_issuer,
-            sbt_gd_class_id,
             sup_consent,
             consent,
             prop_duration,
@@ -103,7 +95,7 @@ impl Contract {
 
     /// aggregated vote for a binary proposal
     #[payable]
-    pub fn vote(&mut self, prop_id: u32, vote: Vote) -> Promise {
+    pub fn vote(&mut self, prop_id: u32, _vote: Vote) {
         let p = self._proposal(prop_id);
         p.assert_active();
         let user = env::predecessor_account_id();
@@ -123,19 +115,7 @@ impl Contract {
 
         // TODO: call staking contract and i-am-human
 
-        // call SBT registry to verify G$ SBT
-        ext_sbtreg::ext(self.sbt_registry.clone())
-            .sbt_tokens_by_owner(
-                user.clone(),
-                Some(self.sbt_gd_issuer.clone()),
-                Some(self.sbt_gd_class_id.clone()),
-                Some(1),
-            )
-            .then(
-                ext_self::ext(env::current_account_id())
-                    .with_static_gas(GAS_VOTE_CALLBACK)
-                    .on_vote_verified(prop_id, user, vote),
-            )
+        // call SBT registry to verify is_human
     }
 
     /*****************

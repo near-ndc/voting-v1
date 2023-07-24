@@ -12,5 +12,11 @@ cp-builds:
 	@mkdir -p res
 	@cp target/wasm32-unknown-unknown/release/*.wasm res/
 
+lint:
+	cargo clippy
+
+lint-fix:
+	cargo clippy --fix
+
 test:
 	@cargo test

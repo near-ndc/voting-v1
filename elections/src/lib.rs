@@ -208,7 +208,7 @@ mod unit_tests {
         let ctr = Contract::new(admin(), sbt_registry());
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
-        return (ctx, ctr);
+        (ctx, ctr)
     }
 
     #[test]
@@ -360,7 +360,7 @@ mod unit_tests {
 
         ctx.attached_deposit = VOTE_COST - 1;
         ctx.block_timestamp = (START + 2) * MSECOND;
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         ctr.vote(prop_id, vec![candidate(1)]);
     }
 
@@ -420,7 +420,7 @@ mod unit_tests {
             Err(VoteError::NoSBTs) => (),
             x => panic!("expected WrongIssuer, got: {:?}", x),
         };
-        match ctr.on_vote_verified(vec![(human_issuer(), vec![])], prop_id, vote.clone()) {
+        match ctr.on_vote_verified(vec![(human_issuer(), vec![])], prop_id, vote) {
             Err(VoteError::NoSBTs) => (),
             x => panic!("expected NoSBTs, got: {:?}", x),
         };
@@ -444,7 +444,7 @@ mod unit_tests {
 
         // bob, tokenID=22: vote with 2 selections
         ctx.predecessor_account_id = bob();
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         // candidates are put in non alphabetical order.
         match ctr.on_vote_verified(mk_human_sbt(22), prop_id, vec![candidate(3), candidate(2)]) {
             Ok(_) => (),
@@ -465,7 +465,7 @@ mod unit_tests {
         ctx.attached_deposit = VOTE_COST;
         ctx.block_timestamp = (START + 2) * MSECOND;
         ctx.prepaid_gas = Gas(10 * Gas::ONE_TERA.0);
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         ctr.vote(prop_id, vec![candidate(1)]);
     }
 
@@ -478,7 +478,7 @@ mod unit_tests {
         ctx.attached_deposit = VOTE_COST;
         ctx.block_timestamp = (START + 2) * MSECOND;
         ctx.prepaid_gas = VOTE_GAS;
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         ctr.vote(prop_id, vec![candidate(1), candidate(1)]);
     }
 

@@ -98,13 +98,13 @@ async fn init(
     assert!(res1.is_success(), "{:?}", res1);
     let proposal_id: u32 = res2.await?.json()?;
 
-    return Ok((
+    Ok((
         ndc_elections_contract.to_owned(),
         alice_acc,
         bob_acc,
         john_acc,
         proposal_id,
-    ));
+    ))
 }
 
 #[tokio::test]

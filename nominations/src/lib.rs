@@ -115,7 +115,7 @@ impl Contract {
             .sbt_tokens_by_owner(
                 nominee.clone(),
                 Some(self.og_sbt.0.clone()),
-                Some(self.og_sbt.1.clone()),
+                Some(self.og_sbt.1),
                 Some(1),
                 Some(false),
             )
@@ -181,7 +181,7 @@ impl Contract {
 
         // call SBT registry to verify IAH
         ext_sbtreg::ext(self.sbt_registry.clone())
-            .is_human(commenter.clone())
+            .is_human(commenter)
             .then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(GAS_NOMINATE)
@@ -416,7 +416,7 @@ mod tests {
         ctx.block_timestamp = (START + 1) * SECOND;
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
-        return (ctx, ctr);
+        (ctx, ctr)
     }
 
     #[test]
@@ -432,7 +432,7 @@ mod tests {
     fn assert_active_too_early() {
         let (mut ctx, ctr) = setup(&alice());
         ctx.block_timestamp = (START - 5) * SECOND;
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         ctr.assert_active();
     }
 
@@ -441,7 +441,7 @@ mod tests {
     fn assert_active_too_late() {
         let (mut ctx, ctr) = setup(&alice());
         ctx.block_timestamp = (END + 5) * SECOND;
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         ctr.assert_active();
     }
 
@@ -458,7 +458,7 @@ mod tests {
     fn self_nominate_wrong_gas() {
         let (mut ctx, mut ctr) = setup(&alice());
         ctx.prepaid_gas = GAS_NOMINATE.sub(Gas(10));
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         ctr.self_nominate(HouseType::HouseOfMerit, String::from("test"), None);
     }
 
@@ -474,7 +474,7 @@ mod tests {
     fn self_nominate_not_active() {
         let (mut ctx, mut ctr) = setup(&alice());
         ctx.block_timestamp = (START - 5) * SECOND;
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         ctr.self_nominate(HouseType::HouseOfMerit, String::from("test"), None);
     }
 
@@ -482,7 +482,7 @@ mod tests {
     fn self_nominate() {
         let (mut ctx, mut ctr) = setup(&alice());
         ctx.attached_deposit = NOMINATE_COST;
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         ctr.self_nominate(HouseType::HouseOfMerit, String::from("test"), None);
     }
 
@@ -509,7 +509,7 @@ mod tests {
         ctr.self_revoke();
 
         ctx.predecessor_account_id = bob();
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         ctr.upvote(alice());
     }
 
@@ -519,7 +519,7 @@ mod tests {
         let (mut ctx, mut ctr) = setup(&bob());
         insert_nomination(&mut ctr, alice(), None);
         ctx.prepaid_gas = GAS_UPVOTE.sub(Gas(10));
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         ctr.upvote(alice());
     }
 
@@ -535,7 +535,7 @@ mod tests {
     fn upvote() {
         let (mut ctx, mut ctr) = setup(&bob());
         ctx.attached_deposit = UPVOTE_COST;
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
 
         insert_nomination(&mut ctr, alice(), None);
         ctr.upvote(alice());
@@ -553,7 +553,7 @@ mod tests {
     fn comment_wrong_gas() {
         let (mut ctx, mut ctr) = setup(&bob());
         ctx.prepaid_gas = GAS_COMMENT.sub(Gas(10));
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         insert_nomination(&mut ctr, alice(), None);
         ctr.comment(alice(), String::from("test"));
     }
@@ -578,7 +578,7 @@ mod tests {
         insert_nomination(&mut ctr, alice(), None);
         assert!(ctr.nominations.len() == 1);
         ctx.predecessor_account_id = alice();
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         ctr.self_revoke();
         assert!(ctr.nominations.is_empty());
     }
