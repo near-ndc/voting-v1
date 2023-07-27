@@ -2,6 +2,7 @@ use ndc_nominations::{storage::HouseType, TokenMetadata, MSECOND};
 use near_units::parse_near;
 use serde_json::json;
 use workspaces::{Account, Contract, DevNetwork, Worker};
+use integration_test_common::{setup_registry};
 
 // multiplayer from sec to millisecond
 const SEC_TO_MS: u64 = 1_000;
@@ -12,10 +13,6 @@ async fn init(
     // deploy contracts
     let ndc_nominations_contract = worker
         .dev_deploy(include_bytes!("../../res/ndc_nominations.wasm"))
-        .await?;
-
-    let registry_contract = worker
-        .dev_deploy(include_bytes!("../../res/registry.wasm"))
         .await?;
 
     let authority_acc = worker.dev_create_account().await?;
@@ -30,6 +27,7 @@ async fn init(
     let current_timestamp_ms = block_info.timestamp() / MSECOND;
     let end_time = current_timestamp_ms + (60 * SEC_TO_MS);
 
+    let registry_contract = setup_registry(worker, authority_acc.clone(), iah_issuer.clone()).await?;
     // initialize contracts
     let res  = ndc_nominations_contract
         .call("new")
@@ -38,14 +36,6 @@ async fn init(
         .transact()
         .await?;
     assert!(res.is_success(), "{:?}", res);
-
-    let res = registry_contract
-        .call("new")
-        .args_json(json!({"authority": authority_acc.id(),"iah_issuer": iah_issuer.id(), "iah_classes": [1],}))
-        .max_gas()
-        .transact()
-        .await?;
-    assert!(res.is_success());
 
     // mint IAH and OG sbt to alice
     let alice_tokens = vec![

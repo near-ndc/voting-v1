@@ -1,5 +1,5 @@
 [package]
-name = "elections"
+name = "integration-test-common"
 version = "1.0.0"
 authors = { workspace = true }
 edition = { workspace = true }
@@ -15,10 +15,8 @@ uint.workspace = true
 near-sdk.workspace = true
 serde_json.workspace = true
 
-[dev-dependencies]
 anyhow.workspace = true
 tokio.workspace = true
 workspaces.workspace = true
 near-primitives.workspace = true
 near-units.workspace = true
-integration-test-common = {path="../integration-test-common"}

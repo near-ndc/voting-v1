@@ -2,7 +2,8 @@
 members = [
     "voting_body",
     "elections",
-    "nominations"
+    "nominations",
+    "integration-test-common"
 ]
 
 [workspace.package]
