@@ -16,8 +16,8 @@ near-sdk.workspace = true
 serde_json.workspace = true
 
 [dev-dependencies]
-anyhow = "1.0.71"
-tokio = { version = "1.28.2", features = ["full"] }
-workspaces = "0.7.0"
-near-primitives = "0.17.0"
-near-units = "0.2.0"
+anyhow.workspace = true
+tokio.workspace = true
+workspaces.workspace = true
+near-primitives.workspace = true
+near-units.workspace = true

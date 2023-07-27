@@ -131,7 +131,7 @@ async fn self_nominate() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
     let (ndc_elections_contract, alice, _, _, _) = init(&worker).await?;
 
-    // slef nominate
+    // self nominate
     let res = alice
         .call(ndc_elections_contract.id(), "self_nominate")
         .args_json(json!({"house": HouseType::HouseOfMerit, "comment": "solid nomination", "link": "external_link.io"}))

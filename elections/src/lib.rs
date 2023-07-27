@@ -351,7 +351,7 @@ mod unit_tests {
 
     #[test]
     #[should_panic(
-        expected = "requires 2000000000000000000000 yocto deposit for storage fees for every new vote"
+        expected = "requires 500000000000000000000 yocto deposit for storage fees for every new vote"
     )]
     fn vote_wrong_deposit() {
         let (mut ctx, mut ctr) = setup(&admin());
