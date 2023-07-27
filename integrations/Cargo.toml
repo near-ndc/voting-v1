@@ -1,0 +1,22 @@
+[package]
+name = "integrations"
+version = "1.0.0"
+authors = { workspace = true }
+edition = { workspace = true }
+repository = { workspace = true }
+license = { workspace = true }
+
+[lib]
+# rlib is needed for integration tests
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+uint.workspace = true
+near-sdk.workspace = true
+serde_json.workspace = true
+
+anyhow.workspace = true
+tokio.workspace = true
+workspaces.workspace = true
+near-primitives.workspace = true
+near-units.workspace = true
