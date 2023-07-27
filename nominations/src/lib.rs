@@ -628,7 +628,7 @@ mod tests {
         insert_upvote(&mut ctr, candidate(4), candidate(1));
         insert_upvote(&mut ctr, candidate(4), candidate(2));
 
-        // querry nominations for CouncilOfAdvisord
+        // query nominations for CouncilOfAdvisord
         let counsil_of_advisors = ctr.nominations(HouseType::CouncilOfAdvisors);
         assert!(counsil_of_advisors.len() == 2);
         assert!(counsil_of_advisors[0].0 == candidate(1));
@@ -636,7 +636,7 @@ mod tests {
         assert!(counsil_of_advisors[1].0 == candidate(2));
         assert!(counsil_of_advisors[1].1 == upvotes_candidate_2);
 
-        // querry nominations for HouseOfMerit
+        // query nominations for HouseOfMerit
         let counsil_of_advisors = ctr.nominations(HouseType::HouseOfMerit);
         assert!(counsil_of_advisors.len() == 1);
         assert!(counsil_of_advisors[0].0 == candidate(3));

@@ -1,8 +1,8 @@
+use integration_test_common::setup_registry;
 use ndc_nominations::{storage::HouseType, TokenMetadata, MSECOND};
 use near_units::parse_near;
 use serde_json::json;
 use workspaces::{Account, Contract, DevNetwork, Worker};
-use integration_test_common::{setup_registry};
 
 // multiplayer from sec to millisecond
 const SEC_TO_MS: u64 = 1_000;
@@ -27,7 +27,9 @@ async fn init(
     let current_timestamp_ms = block_info.timestamp() / MSECOND;
     let end_time = current_timestamp_ms + (60 * SEC_TO_MS);
 
-    let registry_contract = setup_registry(worker, authority_acc.clone(), iah_issuer.clone()).await?;
+    let registry_contract =
+        setup_registry(worker, authority_acc.clone(), iah_issuer.clone()).await?;
+
     // initialize contracts
     let res  = ndc_nominations_contract
         .call("new")
@@ -140,7 +142,7 @@ async fn self_nominate_only_og() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
     let (ndc_elections_contract, _, _, john, _) = init(&worker).await?;
 
-    // slef nominate
+    // self nominate
     let res = john
         .call(ndc_elections_contract.id(), "self_nominate")
         .args_json(json!({"house": HouseType::HouseOfMerit, "comment": "solid nomination", "link": "external_link.io"}))
@@ -158,7 +160,7 @@ async fn self_nominate_only_iah_fail() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
     let (ndc_elections_contract, _, bob, _, _) = init(&worker).await?;
 
-    // slef nominate
+    // self nominate
     let res = bob
         .call(ndc_elections_contract.id(), "self_nominate")
         .args_json(json!({"house": HouseType::HouseOfMerit, "comment": "solid nomination", "link": "external_link.io"}))

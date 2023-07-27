@@ -1,11 +1,14 @@
-use workspaces::{Account, Contract, DevNetwork, Worker};
 use serde_json::json;
+use workspaces::{Account, Contract, DevNetwork, Worker};
 
-pub async fn setup_registry(worker: &Worker<impl DevNetwork>, authority_acc: Account, iah_issuer: Account) 
--> anyhow::Result<Contract> {
+pub async fn setup_registry(
+    worker: &Worker<impl DevNetwork>,
+    authority_acc: Account,
+    iah_issuer: Account,
+) -> anyhow::Result<Contract> {
     let registry_contract = worker
-    .dev_deploy(include_bytes!("../../res/registry.wasm"))
-    .await?;
+        .dev_deploy(include_bytes!("../../res/registry.wasm"))
+        .await?;
 
     let res = registry_contract
     .call("new")
