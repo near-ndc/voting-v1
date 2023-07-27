@@ -1,4 +1,4 @@
-use integration_test_common::setup_registry;
+use integrations::setup_registry;
 use ndc_nominations::{storage::HouseType, TokenMetadata, MSECOND};
 use near_units::parse_near;
 use serde_json::json;
@@ -28,7 +28,7 @@ async fn init(
     let end_time = current_timestamp_ms + (60 * SEC_TO_MS);
 
     let registry_contract =
-        setup_registry(worker, authority_acc.clone(), iah_issuer.clone()).await?;
+        setup_registry(worker, authority_acc.clone(), iah_issuer.clone(), None).await?;
 
     // initialize contracts
     let res  = ndc_nominations_contract

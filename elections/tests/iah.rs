@@ -1,4 +1,4 @@
-use integration_test_common::setup_registry;
+use integrations::setup_registry;
 use near_units::parse_near;
 use serde_json::json;
 use workspaces::{Account, Contract, DevNetwork, Worker};
@@ -27,7 +27,7 @@ async fn init(
     let john_acc = worker.dev_create_account().await?;
 
     let registry_contract =
-        setup_registry(worker, authority_acc.clone(), iah_issuer.clone()).await?;
+        setup_registry(worker, authority_acc.clone(), iah_issuer.clone(), None).await?;
 
     // initialize contracts
     let res1 = ndc_elections_contract

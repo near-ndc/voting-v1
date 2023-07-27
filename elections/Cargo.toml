@@ -21,4 +21,4 @@ tokio.workspace = true
 workspaces.workspace = true
 near-primitives.workspace = true
 near-units.workspace = true
-integration-test-common = {path="../integration-test-common"}
+integrations = { path = "../integrations" }
