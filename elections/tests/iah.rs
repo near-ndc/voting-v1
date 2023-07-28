@@ -1,3 +1,4 @@
+use integrations::setup_registry;
 use near_units::parse_near;
 use serde_json::json;
 use workspaces::{Account, Contract, DevNetwork, Worker};
@@ -17,18 +18,16 @@ async fn init(
 ) -> anyhow::Result<(Contract, Account, Account, Account, u32)> {
     // deploy contracts
     let ndc_elections_contract = worker.dev_deploy(include_bytes!("../../res/elections.wasm"));
-    let registry_contract = worker
-        // registry is a contract form https://github.com/near-ndc/i-am-human
-        .dev_deploy(include_bytes!("../../res/registry.wasm"));
-
     let ndc_elections_contract = ndc_elections_contract.await?;
-    let registry_contract = registry_contract.await?;
 
     let authority_acc = worker.dev_create_account().await?;
     let iah_issuer = worker.dev_create_account().await?;
     let alice_acc = worker.dev_create_account().await?;
     let bob_acc = worker.dev_create_account().await?;
     let john_acc = worker.dev_create_account().await?;
+
+    let registry_contract =
+        setup_registry(worker, authority_acc.clone(), iah_issuer.clone(), None).await?;
 
     // initialize contracts
     let res1 = ndc_elections_contract
@@ -40,18 +39,7 @@ async fn init(
         .max_gas()
         .transact();
 
-    let res2 = registry_contract
-        .call("new")
-        .args_json(json!({
-            "authority": authority_acc.id(),
-            "iah_issuer": iah_issuer.id(),
-            "iah_classes": (1,),
-        }))
-        .max_gas()
-        .transact();
-
     assert!(res1.await?.is_success());
-    assert!(res2.await?.is_success());
 
     // get current block time
     let block = worker.view_block().await?;

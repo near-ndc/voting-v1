@@ -1,15 +1,13 @@
 [workspace]
-members = [
-    "voting_body",
-    "elections",
-    "nominations"
-]
+members = ["voting_body", "elections", "nominations", "integrations"]
 
 [workspace.package]
 edition = "2021"
 license = "Mozilla Public License Version 2.0"
 repository = "https://github.com/near-ndc/i-am-human"
-authors = ["NDC GWG (https://near.social/#/mob.near/widget/ProfilePage?accountId=govworkinggroup.near)"]
+authors = [
+    "NDC GWG (https://near.social/#/mob.near/widget/ProfilePage?accountId=govworkinggroup.near)",
+]
 
 [profile.release]
 codegen-units = 1
@@ -28,3 +26,11 @@ rpath = false
 near-sdk = "^4.1.1"
 uint = { version = "^0.9.5", default-features = false }
 serde_json = "^1.0"
+
+# workspace doesn't have dev-dependencies field, so we have to put the dependencies here
+# https://doc.rust-lang.org/cargo/reference/workspaces.html
+anyhow = "1.0.72"
+tokio = { version = "1.29.1", features = ["full"] }
+workspaces = "0.7.0"
+near-primitives = "0.17.0"
+near-units = "0.2.0"

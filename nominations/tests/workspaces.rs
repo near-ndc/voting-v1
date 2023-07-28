@@ -1,3 +1,4 @@
+use integrations::setup_registry;
 use ndc_nominations::{storage::HouseType, TokenMetadata, MSECOND};
 use near_units::parse_near;
 use serde_json::json;
@@ -14,10 +15,6 @@ async fn init(
         .dev_deploy(include_bytes!("../../res/ndc_nominations.wasm"))
         .await?;
 
-    let registry_contract = worker
-        .dev_deploy(include_bytes!("../../res/registry.wasm"))
-        .await?;
-
     let authority_acc = worker.dev_create_account().await?;
     let iah_issuer = worker.dev_create_account().await?;
     let alice_acc = worker.dev_create_account().await?;
@@ -30,6 +27,9 @@ async fn init(
     let current_timestamp_ms = block_info.timestamp() / MSECOND;
     let end_time = current_timestamp_ms + (60 * SEC_TO_MS);
 
+    let registry_contract =
+        setup_registry(worker, authority_acc.clone(), iah_issuer.clone(), None).await?;
+
     // initialize contracts
     let res  = ndc_nominations_contract
         .call("new")
@@ -38,14 +38,6 @@ async fn init(
         .transact()
         .await?;
     assert!(res.is_success(), "{:?}", res);
-
-    let res = registry_contract
-        .call("new")
-        .args_json(json!({"authority": authority_acc.id(),"iah_issuer": iah_issuer.id(), "iah_classes": [1],}))
-        .max_gas()
-        .transact()
-        .await?;
-    assert!(res.is_success());
 
     // mint IAH and OG sbt to alice
     let alice_tokens = vec![
@@ -131,7 +123,7 @@ async fn self_nominate() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
     let (ndc_elections_contract, alice, _, _, _) = init(&worker).await?;
 
-    // slef nominate
+    // self nominate
     let res = alice
         .call(ndc_elections_contract.id(), "self_nominate")
         .args_json(json!({"house": HouseType::HouseOfMerit, "comment": "solid nomination", "link": "external_link.io"}))
@@ -150,7 +142,7 @@ async fn self_nominate_only_og() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
     let (ndc_elections_contract, _, _, john, _) = init(&worker).await?;
 
-    // slef nominate
+    // self nominate
     let res = john
         .call(ndc_elections_contract.id(), "self_nominate")
         .args_json(json!({"house": HouseType::HouseOfMerit, "comment": "solid nomination", "link": "external_link.io"}))
@@ -168,7 +160,7 @@ async fn self_nominate_only_iah_fail() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
     let (ndc_elections_contract, _, bob, _, _) = init(&worker).await?;
 
-    // slef nominate
+    // self nominate
     let res = bob
         .call(ndc_elections_contract.id(), "self_nominate")
         .args_json(json!({"house": HouseType::HouseOfMerit, "comment": "solid nomination", "link": "external_link.io"}))

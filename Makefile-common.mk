@@ -8,7 +8,7 @@ build-quick:
 
 
 build-all:
-	@RUSTFLAGS='-C link-arg=-s' cargo build --all --target wasm32-unknown-unknown --release
+	@RUSTFLAGS='-C link-arg=-s' cargo build --workspace --exclude integrations --target wasm32-unknown-unknown --release
 	@cp ../target/wasm32-unknown-unknown/release/*.wasm ../res/
 
 lint:
