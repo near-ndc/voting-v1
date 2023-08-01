@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::LookupSet;
+use near_sdk::collections::{LookupMap, LookupSet};
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{env, require, AccountId};
 
@@ -39,6 +39,9 @@ pub struct Proposal {
     // set of tokenIDs, which were used for voting, as a proof of personhood
     pub voters: LookupSet<TokenId>,
     pub voters_num: u32,
+
+    // map of votesers -> candidates they voted for (token IDs used for voting -> candidates index)
+    pub voters_candidates: LookupMap<TokenId, Vec<usize>>,
 }
 
 #[derive(Serialize)]
@@ -99,12 +102,28 @@ impl Proposal {
                 return Err(VoteError::DoubleVote(*t));
             }
         }
+        let mut indexes = Vec::new();
         self.voters_num += 1;
         for candidate in vote {
             let idx = self.candidates.binary_search(&candidate).unwrap();
             self.result[idx] += 1;
+            indexes.push(idx);
         }
+        // TODO: this logic needs to be updated once we use more tokens per user to vote
+        self.voters_candidates.insert(&sbts[0], &indexes);
         Ok(())
+    }
+
+    pub fn revoke_votes(&mut self, token_id: TokenId) {
+        for candidate in self
+            .voters_candidates
+            .get(&token_id)
+            .expect("voter did not vote on this proposal")
+        {
+            self.result[candidate] -= 1;
+        }
+        self.voters_num -= 1;
+        self.voters_candidates.remove(&token_id);
     }
 }
 
@@ -153,6 +172,7 @@ mod tests {
             result: vec![10000, 5, 321, 121],
             voters: LookupSet::new(StorageKey::ProposalVoters(1)),
             voters_num: 10,
+            voters_candidates: LookupMap::new(StorageKey::VotersCandidates(1)),
         };
         assert_eq!(
             ProposalView {
@@ -173,5 +193,35 @@ mod tests {
             },
             p.to_view(12)
         )
+    }
+
+    #[test]
+    fn revoke_votes() {
+        let mut p = Proposal {
+            typ: HouseType::CouncilOfAdvisors,
+            ref_link: "near.social/abc".to_owned(),
+            start: 10,
+            end: 111222,
+            quorum: 551,
+            seats: 2,
+            candidates: vec![mk_account(1), mk_account(2)],
+            result: vec![3, 1],
+            voters: LookupSet::new(StorageKey::ProposalVoters(1)),
+            voters_num: 3,
+            voters_candidates: LookupMap::new(StorageKey::VotersCandidates(1)),
+        };
+        p.voters.insert(&1);
+        p.voters.insert(&2);
+        p.voters.insert(&3);
+        p.voters_candidates.insert(&1, &vec![0, 1]);
+        p.voters_candidates.insert(&2, &vec![0]);
+        p.voters_candidates.insert(&3, &vec![0]);
+
+        p.revoke_votes(1);
+        assert_eq!(p.result, vec![2, 0]);
+        p.revoke_votes(2);
+        assert_eq!(p.result, vec![1, 0]);
+        p.revoke_votes(3);
+        assert_eq!(p.result, vec![0, 0]);
     }
 }

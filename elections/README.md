@@ -46,6 +46,9 @@ near view $CTR proposals '{"prop_id": 2}'
 # vote
 
 near call $CTR vote '{"prop_id": 1, "vote": ["candidate1.testnet", "candidate3.testnet"]}' --gas 70000000000000 --deposit 0.002 --accountId me.testnet
+
+# revoke vote (authority only)
+near call $CTR revoke_vote '{"prop_id": 1, "token_id": 1}'
 ```
 
 ## Deployed Contracts

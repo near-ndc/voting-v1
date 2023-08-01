@@ -90,6 +90,7 @@ impl Contract {
             result: vec![0; l],
             voters: LookupSet::new(StorageKey::ProposalVoters(self.prop_counter)),
             voters_num: 0,
+            voters_candidates: LookupMap::new(StorageKey::VotersCandidates(self.prop_counter)),
         };
 
         self.proposals.insert(&self.prop_counter, &p);
@@ -122,6 +123,16 @@ impl Contract {
                     .with_static_gas(VOTE_GAS_CALLBACK)
                     .on_vote_verified(prop_id, vote),
             )
+    }
+
+    /// Method for the authority to revoke votes from blacklisted accounts
+    pub fn revoke_vote(&mut self, prop_id: u32, token_id: TokenId) {
+        // check if the caller is the authority allowed to revoke votes
+        self.assert_admin();
+        let mut p = self._proposal(prop_id);
+        // TODO: do we allow to revoke votes from non active proposals?
+        p.revoke_votes(token_id);
+        self.proposals.insert(&prop_id, &p);
     }
 
     /*****************
@@ -511,5 +522,29 @@ mod unit_tests {
         // should not panic
         ctr.vote(prop_id, vec![]);
         // note: we can only check vote result and state change through an integration test.
+    }
+
+    #[test]
+    #[should_panic(expected = "not an admin")]
+    fn revoke_vote_wrong_caller() {
+        let (_, mut ctr) = setup(&alice());
+        let prop_id = mk_proposal(&mut ctr);
+        ctr.revoke_vote(prop_id, 1);
+    }
+
+    #[test]
+    #[should_panic(expected = "voter did not vote on this proposal")]
+    fn revoke_vote_no_votes() {
+        let (_, mut ctr) = setup(&admin());
+        let prop_id = mk_proposal(&mut ctr);
+        ctr.revoke_vote(prop_id, 1);
+    }
+
+    #[test]
+    #[should_panic(expected = "proposal not found")]
+    fn revoke_vote_no_proposal() {
+        let (_, mut ctr) = setup(&admin());
+        let prop_id = 2;
+        ctr.revoke_vote(prop_id, 1);
     }
 }
