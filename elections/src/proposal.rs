@@ -40,7 +40,7 @@ pub struct Proposal {
     pub voters: LookupSet<TokenId>,
     pub voters_num: u32,
 
-    // map of votesers -> candidates they voted for (token IDs used for voting -> candidates index)
+    // map of voters -> candidates they voted for (token IDs used for voting -> candidates index)
     pub voters_candidates: LookupMap<TokenId, Vec<usize>>,
 }
 
