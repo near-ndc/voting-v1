@@ -54,6 +54,7 @@ impl Contract {
         typ: HouseType,
         start: u64,
         end: u64,
+        cooldown: u64,
         ref_link: String,
         quorum: u32,
         seats: u16,
@@ -83,6 +84,7 @@ impl Contract {
             typ,
             start,
             end,
+            cooldown,
             quorum,
             ref_link,
             seats,
@@ -130,7 +132,6 @@ impl Contract {
         // check if the caller is the authority allowed to revoke votes
         self.assert_admin();
         let mut p = self._proposal(prop_id);
-        // TODO: do we allow to revoke votes from non active proposals?
         p.revoke_votes(token_id);
         self.proposals.insert(&prop_id, &p);
     }
@@ -243,6 +244,7 @@ mod unit_tests {
             crate::HouseType::HouseOfMerit,
             START - 1,
             START + 100,
+            100,
             String::from("ref_link.io"),
             2,
             2,
@@ -259,6 +261,7 @@ mod unit_tests {
             crate::HouseType::HouseOfMerit,
             START + 10,
             START,
+            100,
             String::from("ref_link.io"),
             2,
             2,
@@ -275,6 +278,7 @@ mod unit_tests {
             crate::HouseType::HouseOfMerit,
             START + 1,
             START + 10,
+            100,
             String::from("short"),
             2,
             2,
@@ -291,6 +295,7 @@ mod unit_tests {
             crate::HouseType::HouseOfMerit,
             START + 1,
             START + 10,
+            100,
             String::from("ref_link.io"),
             2,
             2,
@@ -303,6 +308,7 @@ mod unit_tests {
             crate::HouseType::HouseOfMerit,
             START + 1,
             START + 10,
+            100,
             String::from("ref_link.io"),
             2,
             2,
@@ -535,8 +541,10 @@ mod unit_tests {
     #[test]
     #[should_panic(expected = "voter did not vote on this proposal")]
     fn revoke_vote_no_votes() {
-        let (_, mut ctr) = setup(&admin());
+        let (mut ctx, mut ctr) = setup(&admin());
         let prop_id = mk_proposal(&mut ctr);
+        ctx.block_timestamp = (START + 100) * MSECOND;
+        testing_env!(ctx);
         ctr.revoke_vote(prop_id, 1);
     }
 

@@ -26,6 +26,9 @@ pub struct Proposal {
     pub start: u64,
     /// end of voting as Unix timestamp (in milliseconds)
     pub end: u64,
+    /// duration of cooldown after the proposal ends. During this time votes cannot be submitted and
+    /// the malicious votes can be revoked by authorities (in milliseconds).
+    pub cooldown: u64,
     /// min amount of voters to legitimize the voting.
     pub quorum: u32,
     /// max amount of seats a voter can allocate candidates for.
@@ -56,6 +59,8 @@ pub struct ProposalView {
     pub start: u64,
     /// end of voting as Unix timestamp (in milliseconds)
     pub end: u64,
+    /// cooldown period after voting ends (in milliseconds)
+    pub cooldown: u64,
     /// min amount of voters to legitimize the voting.
     pub quorum: u32,
     pub voters_num: u32,
@@ -79,6 +84,7 @@ impl Proposal {
             ref_link: self.ref_link,
             start: self.start,
             end: self.end,
+            cooldown: self.cooldown,
             quorum: self.quorum,
             voters_num: self.voters_num,
             seats: self.seats,
@@ -91,6 +97,16 @@ impl Proposal {
         require!(
             self.start <= now && now <= self.end,
             format!("can only vote between proposal start and end time")
+        )
+    }
+
+    pub fn assert_active_cooldown(&self) {
+        let now = env::block_timestamp_ms();
+        require!(
+            self.start <= now && now <= (self.end + self.cooldown),
+            format!(
+                "can only revoke votes between proposal start and end time + cooldown duration"
+            )
         )
     }
 
@@ -115,6 +131,7 @@ impl Proposal {
     }
 
     pub fn revoke_votes(&mut self, token_id: TokenId) {
+        self.assert_active_cooldown();
         for candidate in self
             .voters_candidates
             .get(&token_id)
@@ -166,6 +183,7 @@ mod tests {
             ref_link: "near.social/abc".to_owned(),
             start: 10,
             end: 111222,
+            cooldown: 1000,
             quorum: 551,
             seats: 2,
             candidates: vec![mk_account(2), mk_account(1), mk_account(3), mk_account(4)],
@@ -181,6 +199,7 @@ mod tests {
                 ref_link: p.ref_link.clone(),
                 start: p.start,
                 end: p.end,
+                cooldown: p.cooldown,
                 quorum: p.quorum,
                 seats: p.seats,
                 voters_num: p.voters_num,
@@ -202,6 +221,7 @@ mod tests {
             ref_link: "near.social/abc".to_owned(),
             start: 10,
             end: 111222,
+            cooldown: 1000,
             quorum: 551,
             seats: 2,
             candidates: vec![mk_account(1), mk_account(2)],
