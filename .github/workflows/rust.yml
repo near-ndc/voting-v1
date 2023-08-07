@@ -24,7 +24,7 @@ jobs:
         with:
           PATTERNS: |
             **/**.rs
-            contracts/Cargo.lock
+            Cargo.lock
       - name: Install latest nightly
         if: env.GIT_DIFF
         uses: actions-rs/toolchain@v1
@@ -32,19 +32,16 @@ jobs:
           toolchain: 1.69.0
           override: true
           components: rustfmt, clippy
-    
+
       - name: Install wasm32 toolchain
         if: env.GIT_DIFF
         run: rustup target add wasm32-unknown-unknown
       - name: Build
         if: env.GIT_DIFF
-        working-directory: ./contracts
         run: make build
       - name: Clippy
         if: env.GIT_DIFF
-        working-directory: ./contracts
         run: cargo clippy
       - name: Run tests
         if: env.GIT_DIFF
-        working-directory: ./contracts
         run: cargo test --verbose
