@@ -33,19 +33,19 @@ REGISTRY=registry-1.i-am-human.testnet
 # create proposal
 # note: start and end time must be in milliseconds
 
-near call $CTR create_proposal '{"start": 1686221747000, "end": 1686653747000, "ref_link": "example.com", "quorum": 10, "candidates": ["candidate1.testnet", "candidate2.testnet", "candidate3.testnet", "candidate4.testnet"], "typ": "HouseOfMerit", "seats": 3}' --accountId $CTR
+near call $CTR create_proposal '{"start": 1686221747000, "end": 1686653747000, "ref_link": "example.com", "quorum": 10, "candidates": ["candidate1.testnet", "candidate2.testnet", "candidate3.testnet", "candidate4.testnet"], "typ": "HouseOfMerit", "seats": 3, "policy": "f1c09f8686fe7d0d798517111a66675da0012d8ad1693a47e0e2a7d3ae1c69d4"}' --accountId $CTR
 
 # fetch all proposal
-
 near view $CTR proposals ''
 
 # query proposal by ID
-
 near view $CTR proposals '{"prop_id": 2}'
 
-# vote
+# accept fair voting policy
+near call $CTR accept_fair_voting_policy '{"policy": "f1c09f8686fe7d0d798517111a66675da0012d8ad1693a47e0e2a7d3ae1c69d4"}' --deposit 0.001 --accountId me.testnet
 
-near call $CTR vote '{"prop_id": 1, "vote": ["candidate1.testnet", "candidate3.testnet"]}' --gas 70000000000000 --deposit 0.002 --accountId me.testnet
+# vote
+near call $CTR vote '{"prop_id": 1, "vote": ["candidate1.testnet", "candidate3.testnet"]}' --gas 70000000000000 --deposit 0.0005 --accountId me.testnet
 ```
 
 ## Deployed Contracts

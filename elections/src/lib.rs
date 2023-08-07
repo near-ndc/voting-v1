@@ -104,9 +104,9 @@ impl Contract {
     }
 
     /// Transaction to record the predecessor account accepting the Fair Voting Policy.
-    /// * `policy` is a blake2s-256 hex-encoded hash of the Fair Voting Policy text.
+    /// * `policy` is a blake2s-256 hex-encoded hash (must be 64 bytes) of the Fair Voting Policy text.
     #[payable]
-    pub fn accept_fair_voting_policy(&mut self, #[allow(unused_variables)] policy: String) {
+    pub fn accept_fair_voting_policy(&mut self, policy: String) {
         require!(
             env::attached_deposit() >= ACCEPT_POLICY_COST,
             format!(
