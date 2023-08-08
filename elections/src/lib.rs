@@ -48,7 +48,7 @@ impl Contract {
      * TRANSACTIONS
      **********/
 
-    /// Creates a new empty proposal. `start` and `end` is a timestamp in milliseconds.
+    /// Creates a new empty proposal. `start` and `end`are timestamps in milliseconds.
     /// * `policy` is a blake2s-256 hex-encoded hash of the Fair Voting Policy text.
     /// Returns the new proposal ID.
     /// NOTE: storage is paid from the account state
