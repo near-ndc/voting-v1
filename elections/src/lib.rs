@@ -21,8 +21,9 @@ use crate::storage::*;
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
     pub pause: bool,
-    prop_counter: u32,
+    pub prop_counter: u32,
     pub proposals: LookupMap<u32, Proposal>,
+    pub accepted_policy: LookupMap<AccountId, [u8; 32]>,
 
     /// address which can pause the contract and make a new proposal. Should be a multisig / DAO;
     pub authority: AccountId,
@@ -38,6 +39,7 @@ impl Contract {
             authority,
             sbt_registry,
             proposals: LookupMap::new(StorageKey::Proposals),
+            accepted_policy: LookupMap::new(StorageKey::AcceptedPolicy),
             prop_counter: 0,
         }
     }
@@ -46,8 +48,9 @@ impl Contract {
      * TRANSACTIONS
      **********/
 
-    /// creates a new empty proposal. `start` and `end` is a timestamp in milliseconds.
-    /// returns the new proposal ID
+    /// Creates a new empty proposal. `start` and `end`are timestamps in milliseconds.
+    /// * `policy` is a blake2s-256 hex-encoded hash of the Fair Voting Policy text.
+    /// Returns the new proposal ID.
     /// NOTE: storage is paid from the account state
     pub fn create_proposal(
         &mut self,
@@ -58,6 +61,7 @@ impl Contract {
         quorum: u32,
         seats: u16,
         #[allow(unused_mut)] mut candidates: Vec<AccountId>,
+        policy: String,
     ) -> u32 {
         self.assert_admin();
         let min_start = env::block_timestamp_ms();
@@ -73,6 +77,8 @@ impl Contract {
                 MIN_REF_LINK_LEN, MAX_REF_LINK_LEN
             )
         );
+        let policy = assert_hash_hex_string(&policy);
+
         let cs: HashSet<&AccountId> = HashSet::from_iter(candidates.iter());
         require!(cs.len() == candidates.len(), "duplicated candidates");
         candidates.sort();
@@ -90,10 +96,27 @@ impl Contract {
             result: vec![0; l],
             voters: LookupSet::new(StorageKey::ProposalVoters(self.prop_counter)),
             voters_num: 0,
+            policy,
         };
 
         self.proposals.insert(&self.prop_counter, &p);
         self.prop_counter
+    }
+
+    /// Transaction to record the predecessor account accepting the Fair Voting Policy.
+    /// * `policy` is a blake2s-256 hex-encoded hash (must be 64 bytes) of the Fair Voting Policy text.
+    #[payable]
+    pub fn accept_fair_voting_policy(&mut self, policy: String) {
+        require!(
+            env::attached_deposit() >= ACCEPT_POLICY_COST,
+            format!(
+                "requires {} yocto deposit for storage fees",
+                ACCEPT_POLICY_COST
+            )
+        );
+        let policy = assert_hash_hex_string(&policy);
+        self.accepted_policy
+            .insert(&env::predecessor_account_id(), &policy);
     }
 
     /// election vote using plural vote mechanism
@@ -113,6 +136,11 @@ impl Contract {
             env::prepaid_gas() >= VOTE_GAS,
             format!("not enough gas, min: {:?}", VOTE_GAS)
         );
+        require!(
+            p.policy == self.accepted_policy.get(&user).unwrap_or_default(),
+            "user didn't accept the voting policy, or the accepted voting policy doesn't match the required one"
+        );
+
         validate_vote(&vote, p.seats, &p.candidates);
         // call SBT registry to verify SBT
         ext_sbtreg::ext(self.sbt_registry.clone())
@@ -198,6 +226,14 @@ mod unit_tests {
         AccountId::new_unchecked("h_isser.near".to_string())
     }
 
+    fn policy1() -> String {
+        "f1c09f8686fe7d0d798517111a66675da0012d8ad1693a47e0e2a7d3ae1c69d4".to_owned()
+    }
+
+    fn policy2() -> String {
+        "21c09f8686fe7d0d798517111a66675da0012d8ad1693a47e0e2a7d3ae1c69d4".to_owned()
+    }
+
     fn setup(predecessor: &AccountId) -> (VMContext, Contract) {
         let mut ctx = VMContextBuilder::new()
             .predecessor_account_id(admin())
@@ -236,6 +272,7 @@ mod unit_tests {
             2,
             2,
             vec![candidate(1)],
+            policy1(),
         );
     }
 
@@ -252,6 +289,7 @@ mod unit_tests {
             2,
             2,
             vec![candidate(1)],
+            policy1(),
         );
     }
 
@@ -268,6 +306,7 @@ mod unit_tests {
             2,
             2,
             vec![candidate(1)],
+            policy1(),
         );
     }
 
@@ -284,6 +323,7 @@ mod unit_tests {
             2,
             2,
             vec![candidate(1), candidate(1)],
+            policy1(),
         );
     }
 
@@ -296,6 +336,7 @@ mod unit_tests {
             2,
             2,
             vec![candidate(1), candidate(2), candidate(3)],
+            policy1(),
         )
     }
 
@@ -311,11 +352,15 @@ mod unit_tests {
         vec![(human_issuer(), vec![sbt]), (admin(), vec![sbt])]
     }
 
-    fn voting_context(ctx: &mut VMContext) {
+    fn alice_voting_context(ctx: &mut VMContext, ctr: &mut Contract) {
+        ctx.predecessor_account_id = alice();
+        ctx.attached_deposit = ACCEPT_POLICY_COST;
+        testing_env!(ctx.clone());
+        ctr.accept_fair_voting_policy(policy1());
+
         ctx.attached_deposit = VOTE_COST;
         ctx.block_timestamp = (START + 2) * MSECOND;
         ctx.prepaid_gas = VOTE_GAS;
-        ctx.predecessor_account_id = alice();
         testing_env!(ctx.clone());
     }
 
@@ -337,31 +382,6 @@ mod unit_tests {
         assert_eq!(proposals.len(), 2);
         assert_eq!(proposals[0].id, 1);
         assert_eq!(proposals[1].id, 2);
-    }
-
-    #[test]
-    #[should_panic(expected = "can only vote between proposal start and end time")]
-    fn vote_wrong_time() {
-        let (_, mut ctr) = setup(&admin());
-
-        let prop_id = mk_proposal(&mut ctr);
-        let vote: Vote = vec![candidate(1)];
-        ctr.vote(prop_id, vote);
-    }
-
-    #[test]
-    #[should_panic(
-        expected = "requires 500000000000000000000 yocto deposit for storage fees for every new vote"
-    )]
-    fn vote_wrong_deposit() {
-        let (mut ctx, mut ctr) = setup(&admin());
-
-        let prop_id = mk_proposal(&mut ctr);
-
-        ctx.attached_deposit = VOTE_COST - 1;
-        ctx.block_timestamp = (START + 2) * MSECOND;
-        testing_env!(ctx);
-        ctr.vote(prop_id, vec![candidate(1)]);
     }
 
     #[test]
@@ -457,6 +477,39 @@ mod unit_tests {
     }
 
     #[test]
+    #[should_panic(expected = "requires 1000000000000000000000 yocto deposit for storage fees")]
+    fn accepted_policy_deposit() {
+        let (mut ctx, mut ctr) = setup(&admin());
+
+        ctx.attached_deposit = ACCEPT_POLICY_COST / 2;
+        testing_env!(ctx);
+
+        ctr.accept_fair_voting_policy(policy1());
+    }
+
+    #[test]
+    fn accepted_policy_deposit_ok() {
+        let (mut ctx, mut ctr) = setup(&admin());
+
+        ctx.attached_deposit = ACCEPT_POLICY_COST;
+        testing_env!(ctx);
+
+        ctr.accept_fair_voting_policy(policy1());
+        // should be able to accept more then once
+        ctr.accept_fair_voting_policy(policy1());
+    }
+
+    #[test]
+    #[should_panic(expected = "can only vote between proposal start and end time")]
+    fn vote_wrong_time() {
+        let (_, mut ctr) = setup(&admin());
+
+        let prop_id = mk_proposal(&mut ctr);
+        let vote: Vote = vec![candidate(1)];
+        ctr.vote(prop_id, vote);
+    }
+
+    #[test]
     #[should_panic(expected = "not enough gas, min: Gas(70000000000000)")]
     fn vote_wrong_gas() {
         let (mut ctx, mut ctr) = setup(&admin());
@@ -466,6 +519,58 @@ mod unit_tests {
         ctx.block_timestamp = (START + 2) * MSECOND;
         ctx.prepaid_gas = Gas(10 * Gas::ONE_TERA.0);
         testing_env!(ctx);
+
+        ctr.vote(prop_id, vec![candidate(1)]);
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "requires 500000000000000000000 yocto deposit for storage fees for every new vote"
+    )]
+    fn vote_wrong_deposit() {
+        let (mut ctx, mut ctr) = setup(&admin());
+
+        let prop_id = mk_proposal(&mut ctr);
+        ctx.attached_deposit = VOTE_COST - 1;
+        ctx.block_timestamp = (START + 2) * MSECOND;
+        testing_env!(ctx);
+
+        ctr.vote(prop_id, vec![candidate(1)]);
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "user didn't accept the voting policy, or the accepted voting policy doesn't match the required one"
+    )]
+    fn vote_not_accepted_policy() {
+        let (mut ctx, mut ctr) = setup(&admin());
+
+        let prop_id = mk_proposal(&mut ctr);
+        ctx.attached_deposit = VOTE_COST;
+        ctx.block_timestamp = (START + 2) * MSECOND;
+        ctx.prepaid_gas = VOTE_GAS;
+        testing_env!(ctx);
+
+        ctr.vote(prop_id, vec![candidate(1)]);
+    }
+
+    #[test]
+    #[should_panic(
+        expected = "user didn't accept the voting policy, or the accepted voting policy doesn't match the required one"
+    )]
+    fn vote_wrong_accepted_policy() {
+        let (mut ctx, mut ctr) = setup(&admin());
+
+        ctx.attached_deposit = ACCEPT_POLICY_COST;
+        testing_env!(ctx.clone());
+        ctr.accept_fair_voting_policy(policy2());
+
+        let prop_id = mk_proposal(&mut ctr);
+        ctx.attached_deposit = VOTE_COST;
+        ctx.block_timestamp = (START + 2) * MSECOND;
+        ctx.prepaid_gas = VOTE_GAS;
+        testing_env!(ctx);
+
         ctr.vote(prop_id, vec![candidate(1)]);
     }
 
@@ -474,11 +579,16 @@ mod unit_tests {
     fn vote_double_vote_same_candidate() {
         let (mut ctx, mut ctr) = setup(&admin());
 
+        ctx.attached_deposit = ACCEPT_POLICY_COST;
+        testing_env!(ctx.clone());
+        ctr.accept_fair_voting_policy(policy1());
+
         let prop_id = mk_proposal(&mut ctr);
         ctx.attached_deposit = VOTE_COST;
         ctx.block_timestamp = (START + 2) * MSECOND;
         ctx.prepaid_gas = VOTE_GAS;
         testing_env!(ctx);
+
         ctr.vote(prop_id, vec![candidate(1), candidate(1)]);
     }
 
@@ -488,7 +598,7 @@ mod unit_tests {
         let (mut ctx, mut ctr) = setup(&admin());
 
         let prop_id = mk_proposal(&mut ctr);
-        voting_context(&mut ctx);
+        alice_voting_context(&mut ctx, &mut ctr);
         ctr.vote(prop_id, vec![bob()]);
     }
 
@@ -498,7 +608,7 @@ mod unit_tests {
         let (mut ctx, mut ctr) = setup(&admin());
 
         let prop_id = mk_proposal(&mut ctr);
-        voting_context(&mut ctx);
+        alice_voting_context(&mut ctx, &mut ctr);
         ctr.vote(prop_id, vec![candidate(1), candidate(2), candidate(3)]);
     }
 
@@ -507,7 +617,7 @@ mod unit_tests {
         let (mut ctx, mut ctr) = setup(&admin());
 
         let prop_id = mk_proposal(&mut ctr);
-        voting_context(&mut ctx);
+        alice_voting_context(&mut ctx, &mut ctr);
         // should not panic
         ctr.vote(prop_id, vec![]);
         // note: we can only check vote result and state change through an integration test.
