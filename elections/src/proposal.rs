@@ -110,6 +110,13 @@ impl Proposal {
         )
     }
 
+    pub fn assert_used_token(&self, token_id: TokenId) {
+        require!(
+            self.voters.contains(&token_id),
+            "voter did not vote on this proposal"
+        );
+    }
+
     /// once vote proof has been verified, we call this function to register a vote.
     pub fn vote_on_verified(&mut self, sbts: &Vec<TokenId>, vote: Vote) -> Result<(), VoteError> {
         self.assert_active();
@@ -132,10 +139,11 @@ impl Proposal {
 
     pub fn revoke_votes(&mut self, token_id: TokenId) {
         self.assert_active_cooldown();
+        self.assert_used_token(token_id);
         for candidate in self
             .voters_candidates
             .get(&token_id)
-            .expect("voter did not vote on this proposal")
+            .expect("vote already revoked")
         {
             self.result[candidate] -= 1;
         }
@@ -219,9 +227,9 @@ mod tests {
         let mut p = Proposal {
             typ: HouseType::CouncilOfAdvisors,
             ref_link: "near.social/abc".to_owned(),
-            start: 10,
-            end: 111222,
-            cooldown: 1000,
+            start: 0,
+            end: 100,
+            cooldown: 10,
             quorum: 551,
             seats: 2,
             candidates: vec![mk_account(1), mk_account(2)],
@@ -243,5 +251,53 @@ mod tests {
         assert_eq!(p.result, vec![1, 0]);
         p.revoke_votes(3);
         assert_eq!(p.result, vec![0, 0]);
+    }
+
+    #[test]
+    #[should_panic(expected = "vote already revoked")]
+    fn revoke_revoked_votes() {
+        let mut p = Proposal {
+            typ: HouseType::CouncilOfAdvisors,
+            ref_link: "near.social/abc".to_owned(),
+            start: 0,
+            end: 100,
+            cooldown: 10,
+            quorum: 551,
+            seats: 2,
+            candidates: vec![mk_account(1), mk_account(2)],
+            result: vec![1, 1],
+            voters: LookupSet::new(StorageKey::ProposalVoters(1)),
+            voters_num: 1,
+            voters_candidates: LookupMap::new(StorageKey::VotersCandidates(1)),
+        };
+        p.voters.insert(&1);
+        p.voters_candidates.insert(&1, &vec![0, 1]);
+
+        p.revoke_votes(1);
+        assert_eq!(p.result, vec![0, 0]);
+        p.revoke_votes(1);
+    }
+
+    #[test]
+    #[should_panic(expected = "voter did not vote on this proposal")]
+    fn revoke_non_exising_votes() {
+        let mut p = Proposal {
+            typ: HouseType::CouncilOfAdvisors,
+            ref_link: "near.social/abc".to_owned(),
+            start: 0,
+            end: 100,
+            cooldown: 10,
+            quorum: 551,
+            seats: 2,
+            candidates: vec![mk_account(1), mk_account(2)],
+            result: vec![1, 1],
+            voters: LookupSet::new(StorageKey::ProposalVoters(1)),
+            voters_num: 1,
+            voters_candidates: LookupMap::new(StorageKey::VotersCandidates(1)),
+        };
+        p.voters.insert(&1);
+        p.voters_candidates.insert(&1, &vec![0, 1]);
+
+        p.revoke_votes(2);
     }
 }
