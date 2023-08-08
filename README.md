@@ -8,18 +8,19 @@ This repository provides smart contracts for NDC v1 Voting Body.
 
 ## Proposal types
 
-| Proposal                                                          | Voting Entity | Contract    |
-| :---------------------------------------------------------------- | :------------ | :---------- |
-| Elect house representatives                                       | Voting Body   | elections   |
-| Constitution ratification                                         | Voting Body   | voting_body |
-| Dissolve a house and call for new elections                       | Voting Body   | voting_body |
-| Veto HoM (1) Big Budget Decisions, and (2) Recurring Budget Items | Voting Body   | voting_body |
-| Transfer Funds                                                    | HoM           | Astra++     |
-| Budget proposal                                                   | HoM           | Astra++     |
-| Veto                                                              | CoA           | Astra++     |
-| Reinstate representative                                          | TC / CoA      | Astra++     |
-| Investigate                                                       | TC            | Astra++     |
-| Remove representative                                             | TC            | Astra++     |
+| Proposal                                                 | Voting Entity | Contract    |
+| :------------------------------------------------------- | :------------ | :---------- |
+| Elect house representatives                              | Voting Body   | elections   |
+| Constitution ratification                                | Voting Body   | voting_body |
+| Dissolve a house and call for new elections              | Voting Body   | voting_body |
+| Setup Budget (fund HoM DAO)                              | Voting Body   | voting_body |
+| Veto any HoM proposal (in principle any fund deployment) | Voting Body   | voting_body |
+| Transfer Funds                                           | HoM           | Astra++     |
+| Budget proposal                                          | HoM           | Astra++     |
+| Veto                                                     | CoA           | Astra++     |
+| Reinstate representative                                 | TC / CoA      | Astra++     |
+| Investigate                                              | TC            | Astra++     |
+| Remove representative                                    | TC            | Astra++     |
 
 In NDC v1, Voting Body can't make proposal for budget management. They can only veto budget proposals.
 
@@ -43,11 +44,14 @@ Candidates can only be submitted by the Voting Committee, following the process 
 
 Voting Body is set of human verified NEAR accounts constituting NDC.
 
-The main purpose is Constitution Ratification - passes when [NEAR Supermajority Constent](https://github.com/near-ndc/gov/blob/main/framework-v1/ratification-and-election-process.md#voting) is met.
+Setting a proposal will require a big bond of NEAR (to be defined).
 
-Setting a proposal will require a big bond of NEAR (to be defined). Such proposal passes when [NEAR Consent](https://github.com/near-ndc/gov/blob/main/framework-v1/ratification-and-election-process.md#voting) is met.
+The main purposes is Constitution Ratifications - passes when [NEAR Supermajority Consent](https://github.com/near-ndc/gov/blob/main/framework-v1/ratification-and-election-process.md#voting) is met.
 
-**Voting Body Veto** is a special proposal to veto other proposal made by a house. When a HoM or CoA proposal will pass it must not be executed immediately. There must be an challenge period, where a Voting Body or the TC can stop the proposal execution by successfully submitting a Veto proposal.
+Moreover, Voting Body can make the following proposals, that will pass when [NEAR Consent](https://github.com/near-ndc/gov/blob/main/framework-v1/ratification-and-election-process.md#voting) is met.
+
+- Propose and approve HoM **setup package**: a request to deploy funds from the [Community Treasury](https://github.com/near-ndc/gov/blob/main/framework-v1/community-treasury.md) to HoM DAO.
+- **Voting Body Veto** is a special proposal to veto other proposal made by a house. When a HoM or CoA proposal will pass it must not be executed immediately. There must be an challenge period, where a Voting Body or the TC can stop the proposal execution by successfully submitting a Veto proposal.
 
 ## TODO
 
