@@ -170,9 +170,7 @@ mod tests {
     #[should_panic(expected = "policy must be a 64byte hex string")]
     fn test_assert_hash_hex_string_not_64bytes() {
         let h = "f1c09f8";
-        let b1 = assert_hash_hex_string(h);
-        let b2 = hex::decode(h).unwrap();
-        assert_eq!(b1.to_vec(), b2);
+        assert_hash_hex_string(h);
     }
 
     #[test]
