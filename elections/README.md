@@ -44,6 +44,9 @@ near view $CTR proposals '{"prop_id": 2}'
 # accept fair voting policy
 near call $CTR accept_fair_voting_policy '{"policy": "f1c09f8686fe7d0d798517111a66675da0012d8ad1693a47e0e2a7d3ae1c69d4"}' --deposit 0.001 --accountId me.testnet
 
+# query the accepted policy by user it either returns the policy or `None` if user did not accept any policy
+near call $CTR accepted_policy '{"user": "alice.testnet"}' --accountId me.testnet
+
 # vote
 near call $CTR vote '{"prop_id": 1, "vote": ["candidate1.testnet", "candidate3.testnet"]}' --gas 70000000000000 --deposit 0.0005 --accountId me.testnet
 ```
