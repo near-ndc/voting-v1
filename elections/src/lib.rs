@@ -159,10 +159,9 @@ impl Contract {
 
     /// Returns the policy if user has accepted it otherwise returns None
     pub fn accepted_policy(&self, user: AccountId) -> Option<String> {
-        match self.accepted_policy.get(&user) {
-            Some(policy) => Some(hex::encode(policy)),
-            None => None,
-        }
+        self.accepted_policy
+            .get(&user)
+            .map(|policy| hex::encode(policy))
     }
 
     /*****************
