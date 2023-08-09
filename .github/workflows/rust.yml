@@ -44,4 +44,5 @@ jobs:
         run: cargo clippy
       - name: Run tests
         if: env.GIT_DIFF
-        run: cargo test --verbose
+        # TODO: switch to all tests once we find efficient way how to link registry contract
+        run: make test-unit
