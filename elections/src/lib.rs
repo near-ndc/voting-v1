@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, LookupSet};
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise};
+use uint::hex;
 
 mod constants;
 mod errors;
@@ -157,8 +158,11 @@ impl Contract {
      ****************/
 
     /// Returns the policy if user has accepted it otherwise returns None
-    pub fn accepted_policy(&self, user: AccountId) -> Option<[u8; 32]> {
-        self.accepted_policy.get(&user)
+    pub fn accepted_policy(&self, user: AccountId) -> Option<String> {
+        match self.accepted_policy.get(&user) {
+            Some(policy) => Some(hex::encode(policy)),
+            None => None,
+        }
     }
 
     /*****************
@@ -595,10 +599,7 @@ mod unit_tests {
         ctr.accept_fair_voting_policy(policy1());
         res = ctr.accepted_policy(admin());
         assert!(res.is_some());
-        let mut expected: [u8; 32] = [0u8; 32];
-        let res1 = hex::decode_to_slice(policy1(), &mut expected);
-        assert!(res1.is_ok());
-        assert_eq!(res.unwrap(), expected);
+        assert_eq!(res.unwrap(), policy1());
     }
 
     #[test]
