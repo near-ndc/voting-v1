@@ -21,4 +21,8 @@ lint-md:
 	markdownlint-cli2-config .markdownlint.json  **/*.md
 
 test:
+	@[ -f "res/registry.wasm" ] || (echo "res/registry.wasm is required to run integration tests. Link it to the registry contract from the i-am-human repository" && exit 1)
 	@cargo test
+
+test-unit:
+	@cargo test --lib
