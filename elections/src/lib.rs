@@ -153,6 +153,15 @@ impl Contract {
     }
 
     /*****************
+     * QUERIES
+     ****************/
+
+    /// Returns the policy if user has accepted it otherwise returns None
+    pub fn accepted_policy(&self, user: AccountId) -> Option<[u8; 32]> {
+        self.accepted_policy.get(&user)
+    }
+
+    /*****************
      * PRIVATE
      ****************/
 
@@ -194,6 +203,7 @@ impl Contract {
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod unit_tests {
     use near_sdk::{test_utils::VMContextBuilder, testing_env, Gas, VMContext};
+    use uint::hex;
 
     use crate::*;
 
@@ -572,6 +582,23 @@ mod unit_tests {
         testing_env!(ctx);
 
         ctr.vote(prop_id, vec![candidate(1)]);
+    }
+
+    #[test]
+    fn accepted_policy_query() {
+        let (mut ctx, mut ctr) = setup(&admin());
+
+        let mut res = ctr.accepted_policy(admin());
+        assert!(res.is_none());
+        ctx.attached_deposit = ACCEPT_POLICY_COST;
+        testing_env!(ctx.clone());
+        ctr.accept_fair_voting_policy(policy1());
+        res = ctr.accepted_policy(admin());
+        assert!(res.is_some());
+        let mut expected: [u8; 32] = [0u8; 32];
+        let res1 = hex::decode_to_slice(policy1(), &mut expected);
+        assert!(res1.is_ok());
+        assert_eq!(res.unwrap(), expected);
     }
 
     #[test]
