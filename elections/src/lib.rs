@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, LookupSet};
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise};
+use uint::hex;
 
 mod constants;
 mod errors;
@@ -153,6 +154,17 @@ impl Contract {
     }
 
     /*****************
+     * QUERIES
+     ****************/
+
+    /// Returns the policy if user has accepted it otherwise returns None
+    pub fn accepted_policy(&self, user: AccountId) -> Option<String> {
+        self.accepted_policy
+            .get(&user)
+            .map(|policy| hex::encode(policy))
+    }
+
+    /*****************
      * PRIVATE
      ****************/
 
@@ -194,6 +206,7 @@ impl Contract {
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod unit_tests {
     use near_sdk::{test_utils::VMContextBuilder, testing_env, Gas, VMContext};
+    use uint::hex;
 
     use crate::*;
 
@@ -572,6 +585,20 @@ mod unit_tests {
         testing_env!(ctx);
 
         ctr.vote(prop_id, vec![candidate(1)]);
+    }
+
+    #[test]
+    fn accepted_policy_query() {
+        let (mut ctx, mut ctr) = setup(&admin());
+
+        let mut res = ctr.accepted_policy(admin());
+        assert!(res.is_none());
+        ctx.attached_deposit = ACCEPT_POLICY_COST;
+        testing_env!(ctx.clone());
+        ctr.accept_fair_voting_policy(policy1());
+        res = ctr.accepted_policy(admin());
+        assert!(res.is_some());
+        assert_eq!(res.unwrap(), policy1());
     }
 
     #[test]
