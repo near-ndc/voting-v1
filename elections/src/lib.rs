@@ -206,7 +206,6 @@ impl Contract {
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod unit_tests {
     use near_sdk::{test_utils::VMContextBuilder, testing_env, Gas, VMContext};
-    use uint::hex;
 
     use crate::*;
 

@@ -78,15 +78,15 @@ async fn init(
 
     // create a proposal
     let res2 = authority_acc
-    .call(ndc_elections_contract.id(), "create_proposal")
-    .args_json(json!({
-        "typ": HouseType::HouseOfMerit, "start": start_time,
-        "end": u64::MAX, "ref_link": "test.io", "quorum": 10,
-        "credits": 5, "seats": 1, "candidates": [john_acc.id(), alice_acc.id()],
-        "policy": policy1(),
-    }))
-    .max_gas()
-    .transact();
+        .call(ndc_elections_contract.id(), "create_proposal")
+        .args_json(json!({
+            "typ": HouseType::HouseOfMerit, "start": start_time,
+            "end": u64::MAX, "ref_link": "test.io", "quorum": 10,
+            "credits": 5, "seats": 1, "candidates": [john_acc.id(), alice_acc.id()],
+            "policy": policy1(),
+        }))
+        .max_gas()
+        .transact();
 
     accept_policy(ndc_elections_contract.clone(), alice_acc.clone(), policy1()).await?;
     accept_policy(ndc_elections_contract.clone(), bob_acc.clone(), policy1()).await?;
@@ -166,11 +166,11 @@ async fn vote_expired_iah_token() -> anyhow::Result<()> {
         .transact()
         .await?;
     assert!(res.is_failure(), "resp should be a failure {:?}", res);
-    let res_str = format!("{:?}", res);
+    let failures = format!("{:?}", res.receipt_failures());
     assert!(
-        res_str.contains("voter is not a verified human"),
+        failures.contains("voter is not a verified human"),
         "{}",
-        res_str
+        failures
     );
 
     Ok(())
@@ -192,11 +192,11 @@ async fn vote_without_accepting_policy() -> anyhow::Result<()> {
         .transact()
         .await?;
     assert!(res.is_failure(), "resp should be a failure {:?}", res);
-    let res_str = format!("{:?}", res);
+    let failures = format!("{:?}", res.receipt_failures());
     assert!(
-        res_str.contains("user didn't accept the voting policy, or the accepted voting policy doesn't match the required one"),
+        failures.contains("user didn't accept the voting policy, or the accepted voting policy doesn't match the required one"),
         "{}",
-        res_str
+        failures
     );
 
     Ok(())
@@ -243,13 +243,14 @@ async fn state_change() -> anyhow::Result<()> {
 async fn accept_policy(election: Contract, user: Account, policy: String) -> anyhow::Result<()> {
     let call_from = user.clone();
     let res = call_from
-    .call(election.id(), "accept_fair_voting_policy")
-    .args_json(json!({
-        "policy": policy,
-    }))
-    .deposit(ACCEPT_POLICY_COST)
-    .max_gas()
-    .transact().await?;
+        .call(election.id(), "accept_fair_voting_policy")
+        .args_json(json!({
+            "policy": policy,
+        }))
+        .deposit(ACCEPT_POLICY_COST)
+        .max_gas()
+        .transact()
+        .await?;
 
     assert!(res.is_success(), "{:?}", res);
     Ok(())
