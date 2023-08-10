@@ -32,5 +32,5 @@ pub async fn setup_registry(
         }
     }
 
-    return Ok(registry_contract);
+    Ok(registry_contract)
 }
