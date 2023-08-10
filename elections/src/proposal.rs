@@ -1,9 +1,8 @@
-use std::collections::HashSet;
-
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, LookupSet};
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{env, require, AccountId};
+use std::collections::HashSet;
 use uint::hex;
 
 pub use crate::constants::*;
@@ -104,21 +103,19 @@ impl Proposal {
         )
     }
 
-    pub fn assert_active_cooldown(&self) {
+    pub fn is_active_cooldown(&self) -> bool {
         let now = env::block_timestamp_ms();
-        require!(
-            self.start <= now && now <= (self.end + self.cooldown),
-            format!(
-                "can only revoke votes between proposal start and end time + cooldown duration"
-            )
-        )
+        if self.start <= now && now <= (self.end + self.cooldown) {
+            true
+        }
+        false
     }
 
-    pub fn assert_used_token(&self, token_id: TokenId) {
-        require!(
-            self.voters.contains(&token_id),
-            "voter did not vote on this proposal"
-        );
+    pub fn is_used_token(&self, token_id: TokenId) -> bool {
+        if self.voters.contains(&token_id) {
+            true
+        }
+        false
     }
 
     /// once vote proof has been verified, we call this function to register a vote.
@@ -141,18 +138,23 @@ impl Proposal {
         Ok(())
     }
 
-    pub fn revoke_votes(&mut self, token_id: TokenId) {
-        self.assert_active_cooldown();
-        self.assert_used_token(token_id);
+    pub fn revoke_votes(&mut self, token_id: TokenId) -> Result<(), VoteError> {
+        if !self.is_active_cooldown() {
+            return Err(VoteError::RevokeNotActive);
+        }
+        if !self.is_used_token(token_id) {
+            return Err(VoteError::NotVoted);
+        }
         for candidate in self
             .voters_candidates
             .get(&token_id)
-            .expect("vote already revoked")
+            .ok_or(VoteError::DoubleRevoke)?
         {
             self.result[candidate] -= 1;
         }
         self.voters_num -= 1;
         self.voters_candidates.remove(&token_id);
+        Ok(())
     }
 }
 
@@ -271,6 +273,7 @@ mod tests {
             voters: LookupSet::new(StorageKey::ProposalVoters(1)),
             voters_num: 3,
             voters_candidates: LookupMap::new(StorageKey::VotersCandidates(1)),
+            policy: policy1(),
         };
         p.voters.insert(&1);
         p.voters.insert(&2);
@@ -303,6 +306,7 @@ mod tests {
             voters: LookupSet::new(StorageKey::ProposalVoters(1)),
             voters_num: 1,
             voters_candidates: LookupMap::new(StorageKey::VotersCandidates(1)),
+            policy: policy1(),
         };
         p.voters.insert(&1);
         p.voters_candidates.insert(&1, &vec![0, 1]);
@@ -328,6 +332,7 @@ mod tests {
             voters: LookupSet::new(StorageKey::ProposalVoters(1)),
             voters_num: 1,
             voters_candidates: LookupMap::new(StorageKey::VotersCandidates(1)),
+            policy: policy1(),
         };
         p.voters.insert(&1);
         p.voters_candidates.insert(&1, &vec![0, 1]);

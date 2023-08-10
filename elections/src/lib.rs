@@ -1,4 +1,5 @@
 use std::collections::HashSet;
+use std::fmt::Result;
 
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, LookupSet};
@@ -158,7 +159,8 @@ impl Contract {
 
     /// Method for the authority to revoke votes from blacklisted accounts.
     /// Panics if the proposal doesn't exists or the it's called before the proposal starts or after proposal `end+cooldown`.
-    pub fn revoke_vote(&mut self, prop_id: u32, token_id: TokenId) {
+    #[handle_result]
+    pub fn revoke_vote(&mut self, prop_id: u32, token_id: TokenId) -> Result<(), VoteError> {
         // check if the caller is the authority allowed to revoke votes
         self.assert_admin();
         let mut p = self._proposal(prop_id);
@@ -188,7 +190,7 @@ impl Contract {
         #[callback_unwrap] tokens: HumanSBTs,
         prop_id: u32,
         vote: Vote,
-    ) -> Result<(), VoteError> {
+    ) -> Result {
         if tokens.is_empty() || tokens[0].1.is_empty() {
             return Err(VoteError::NoSBTs);
         }
