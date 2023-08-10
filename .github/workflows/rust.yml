@@ -37,7 +37,7 @@ jobs:
         if: env.GIT_DIFF
         run: rustup target add wasm32-unknown-unknown
       - name: stub registry.wasm file
-        run: mkdir res && touch .res/registry.wasm
+        run: mkdir res && touch res/registry.wasm
       - name: Build
         if: env.GIT_DIFF
         run: make build
