@@ -28,7 +28,7 @@ impl FunctionError for VoteError {
                 panic_str(&format!("user already voted with sbt={}", sbt))
             }
             VoteError::RevokeNotActive => panic_str(
-                "can only revoke votes between proposal start and end time + cooldown duration",
+                "can only revoke votes between proposal start and (end time + cooldown)"
             ),
             VoteError::NotVoted => panic_str("voter did not vote on this proposal"),
             VoteError::DoubleRevoke => panic_str("vote already revoked"),
