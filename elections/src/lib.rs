@@ -1,5 +1,4 @@
 use std::collections::HashSet;
-use std::fmt::Result;
 
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, LookupSet};
@@ -164,8 +163,9 @@ impl Contract {
         // check if the caller is the authority allowed to revoke votes
         self.assert_admin();
         let mut p = self._proposal(prop_id);
-        p.revoke_votes(token_id);
+        p.revoke_votes(token_id)?;
         self.proposals.insert(&prop_id, &p);
+        Ok(())
     }
 
     /*****************
@@ -190,7 +190,7 @@ impl Contract {
         #[callback_unwrap] tokens: HumanSBTs,
         prop_id: u32,
         vote: Vote,
-    ) -> Result {
+    ) -> Result<(), VoteError> {
         if tokens.is_empty() || tokens[0].1.is_empty() {
             return Err(VoteError::NoSBTs);
         }
@@ -220,6 +220,8 @@ impl Contract {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod unit_tests {
+    use core::panic;
+
     use near_sdk::{test_utils::VMContextBuilder, testing_env, Gas, VMContext};
 
     use crate::*;
@@ -674,17 +676,21 @@ mod unit_tests {
     fn revoke_vote_wrong_caller() {
         let (_, mut ctr) = setup(&alice());
         let prop_id = mk_proposal(&mut ctr);
-        ctr.revoke_vote(prop_id, 1);
+        match ctr.revoke_vote(prop_id, 1) {
+            x => panic!("{:?}", x),
+        }
     }
 
     #[test]
-    #[should_panic(expected = "voter did not vote on this proposal")]
     fn revoke_vote_no_votes() {
         let (mut ctx, mut ctr) = setup(&admin());
         let prop_id = mk_proposal(&mut ctr);
         ctx.block_timestamp = (START + 100) * MSECOND;
         testing_env!(ctx);
-        ctr.revoke_vote(prop_id, 1);
+        match ctr.revoke_vote(prop_id, 1) {
+            Err(VoteError::NotVoted) => (),
+            x => panic!("expected NotVoted, got: {:?}", x),
+        }
     }
 
     #[test]
@@ -692,6 +698,8 @@ mod unit_tests {
     fn revoke_vote_no_proposal() {
         let (_, mut ctr) = setup(&admin());
         let prop_id = 2;
-        ctr.revoke_vote(prop_id, 1);
+        match ctr.revoke_vote(prop_id, 1) {
+            x => panic!("{:?}", x),
+        }
     }
 }

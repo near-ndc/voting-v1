@@ -106,14 +106,14 @@ impl Proposal {
     pub fn is_active_cooldown(&self) -> bool {
         let now = env::block_timestamp_ms();
         if self.start <= now && now <= (self.end + self.cooldown) {
-            true
+            return true;
         }
         false
     }
 
     pub fn is_used_token(&self, token_id: TokenId) -> bool {
         if self.voters.contains(&token_id) {
-            true
+            return true;
         }
         false
     }
@@ -282,16 +282,24 @@ mod tests {
         p.voters_candidates.insert(&2, &vec![0]);
         p.voters_candidates.insert(&3, &vec![0]);
 
-        p.revoke_votes(1);
+        match p.revoke_votes(1) {
+            Ok(_) => (),
+            x => panic!("expected OK, got: {:?}", x),
+        }
         assert_eq!(p.result, vec![2, 0]);
-        p.revoke_votes(2);
+        match p.revoke_votes(2) {
+            Ok(_) => (),
+            x => panic!("expected OK, got: {:?}", x),
+        }
         assert_eq!(p.result, vec![1, 0]);
-        p.revoke_votes(3);
+        match p.revoke_votes(3) {
+            Ok(_) => (),
+            x => panic!("expected OK, got: {:?}", x),
+        }
         assert_eq!(p.result, vec![0, 0]);
     }
 
     #[test]
-    #[should_panic(expected = "vote already revoked")]
     fn revoke_revoked_votes() {
         let mut p = Proposal {
             typ: HouseType::CouncilOfAdvisors,
@@ -311,13 +319,18 @@ mod tests {
         p.voters.insert(&1);
         p.voters_candidates.insert(&1, &vec![0, 1]);
 
-        p.revoke_votes(1);
+        match p.revoke_votes(1) {
+            Ok(_) => (),
+            x => panic!("expected OK, got: {:?}", x),
+        }
         assert_eq!(p.result, vec![0, 0]);
-        p.revoke_votes(1);
+        match p.revoke_votes(1) {
+            Err(VoteError::DoubleRevoke) => (),
+            x => panic!("expected DoubleRevoke, got: {:?}", x),
+        }
     }
 
     #[test]
-    #[should_panic(expected = "voter did not vote on this proposal")]
     fn revoke_non_exising_votes() {
         let mut p = Proposal {
             typ: HouseType::CouncilOfAdvisors,
@@ -337,6 +350,9 @@ mod tests {
         p.voters.insert(&1);
         p.voters_candidates.insert(&1, &vec![0, 1]);
 
-        p.revoke_votes(2);
+        match p.revoke_votes(2) {
+            Err(VoteError::NotVoted) => (),
+            x => panic!("expected NotVoted, got: {:?}", x),
+        }
     }
 }
