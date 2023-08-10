@@ -241,7 +241,6 @@ async fn state_change() -> anyhow::Result<()> {
 }
 
 async fn accept_policy(election: Contract, user: Account, policy: String) -> anyhow::Result<()> {
-    // accept policy by alice
     let call_from = user.clone();
     let res = call_from
     .call(election.id(), "accept_fair_voting_policy")
