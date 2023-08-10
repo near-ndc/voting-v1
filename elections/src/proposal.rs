@@ -4,6 +4,7 @@ use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, LookupSet};
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{env, require, AccountId};
+use uint::hex;
 
 pub use crate::constants::*;
 use crate::{TokenId, VoteError};
@@ -38,13 +39,13 @@ pub struct Proposal {
     /// running result (ongoing sum of votes per candidate), in the same order as `candidates`.
     /// result[i] = sum of votes for candidates[i]
     pub result: Vec<u64>,
-
-    // set of tokenIDs, which were used for voting, as a proof of personhood
+    /// set of tokenIDs, which were used for voting, as a proof of personhood
     pub voters: LookupSet<TokenId>,
     pub voters_num: u32,
-
     // map of voters -> candidates they voted for (token IDs used for voting -> candidates index)
     pub voters_candidates: LookupMap<TokenId, Vec<usize>>,
+    /// blake2s-256 hash of the Fair Voting Policy text.
+    pub policy: [u8; 32],
 }
 
 #[derive(Serialize)]
@@ -68,6 +69,8 @@ pub struct ProposalView {
     pub seats: u16,
     /// list of candidates with sum of votes.
     pub result: Vec<(AccountId, u64)>,
+    /// blake2s-256 hex-encoded hash of the Fair Voting Policy text.
+    pub policy: String,
 }
 
 impl Proposal {
@@ -89,6 +92,7 @@ impl Proposal {
             voters_num: self.voters_num,
             seats: self.seats,
             result,
+            policy: hex::encode(self.policy),
         }
     }
 
@@ -173,6 +177,14 @@ pub fn validate_vote(vs: &Vote, max_credits: u16, valid_candidates: &[AccountId]
     }
 }
 
+/// Decodes hex string into bytes. Panics if `s` is not a 64byte hex string.
+pub fn assert_hash_hex_string(s: &str) -> [u8; 32] {
+    require!(s.len() == 64, "policy must be a 64byte hex string");
+    let mut a: [u8; 32] = [0u8; 32];
+    hex::decode_to_slice(s, &mut a).expect("policy must be a proper hex string");
+    a
+}
+
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use near_sdk::collections::LookupSet;
@@ -182,6 +194,25 @@ mod tests {
 
     fn mk_account(i: u16) -> AccountId {
         AccountId::new_unchecked(format!("acc{}", i))
+    }
+
+    fn policy1() -> [u8; 32] {
+        assert_hash_hex_string("f1c09f8686fe7d0d798517111a66675da0012d8ad1693a47e0e2a7d3ae1c69d4")
+    }
+
+    #[test]
+    fn test_assert_hash_hex_string() {
+        let h = "f1c09f8686fe7d0d798517111a66675da0012d8ad1693a47e0e2a7d3ae1c69d4";
+        let b1 = assert_hash_hex_string(h);
+        let b2 = hex::decode(h).unwrap();
+        assert_eq!(b1.to_vec(), b2);
+    }
+
+    #[test]
+    #[should_panic(expected = "policy must be a 64byte hex string")]
+    fn test_assert_hash_hex_string_not_64bytes() {
+        let h = "f1c09f8";
+        assert_hash_hex_string(h);
     }
 
     #[test]
@@ -199,6 +230,7 @@ mod tests {
             voters: LookupSet::new(StorageKey::ProposalVoters(1)),
             voters_num: 10,
             voters_candidates: LookupMap::new(StorageKey::VotersCandidates(1)),
+            policy: policy1(),
         };
         assert_eq!(
             ProposalView {
@@ -216,7 +248,9 @@ mod tests {
                     (mk_account(1), 5),
                     (mk_account(3), 321),
                     (mk_account(4), 121)
-                ]
+                ],
+                policy: "f1c09f8686fe7d0d798517111a66675da0012d8ad1693a47e0e2a7d3ae1c69d4"
+                    .to_owned()
             },
             p.to_view(12)
         )

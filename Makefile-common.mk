@@ -26,6 +26,7 @@ lint-fix:
 
 test:
 # to test specific test run: cargo test <test name>
+	@[ -f "../res/registry.wasm" ] || (echo "res/registry.wasm is required to run integration tests. Link it to the registry contract from the i-am-human repository" && exit 1)
 	@cargo test
 
 test-unit-debug:

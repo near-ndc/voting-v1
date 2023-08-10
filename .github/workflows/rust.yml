@@ -36,12 +36,15 @@ jobs:
       - name: Install wasm32 toolchain
         if: env.GIT_DIFF
         run: rustup target add wasm32-unknown-unknown
+      - name: stub registry.wasm file
+        run: mkdir res && touch res/registry.wasm
       - name: Build
         if: env.GIT_DIFF
         run: make build
       - name: Clippy
         if: env.GIT_DIFF
-        run: cargo clippy
+        run: make lint
       - name: Run tests
         if: env.GIT_DIFF
-        run: cargo test --verbose
+        # TODO: switch to all tests once we find efficient way how to link registry contract
+        run: make test-unit
