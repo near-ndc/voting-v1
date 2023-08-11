@@ -671,12 +671,11 @@ mod unit_tests {
 
     #[test]
     #[should_panic(expected = "not an admin")]
-    fn revoke_vote_wrong_caller() {
+    fn revoke_vote_not_admin() {
         let (_, mut ctr) = setup(&alice());
         let prop_id = mk_proposal(&mut ctr);
-        match ctr.revoke_vote(prop_id, 1) {
-            x => panic!("{:?}", x),
-        }
+        let res = ctr.revoke_vote(prop_id, 1);
+        assert!(res.is_err());
     }
 
     #[test]
