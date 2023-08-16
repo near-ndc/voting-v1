@@ -675,6 +675,7 @@ mod unit_tests {
         let (_, mut ctr) = setup(&alice());
         let prop_id = mk_proposal(&mut ctr);
         let res = ctr.revoke_vote(prop_id, 1);
+        // this will never be checked since the method is panicing not returning an error
         assert!(res.is_err());
     }
 
