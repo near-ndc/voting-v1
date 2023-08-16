@@ -7,8 +7,9 @@
 - Only the authority (set during contract initialization) can create proposals. Each proposal specifies:
 
   - `typ`: must be HouseType variant
-  - `start`: voting start time as UNIX time (in seconds)
-  - `end`: voting start time as UNIX time (in seconds)
+  - `start`: voting start time as UNIX time (in miliseconds)
+  - `end`: voting start time as UNIX time (in miliseconds)
+  - `cooldown`: cooldown duration when votes from blacklisted accounts can be revoked by an authority (in miliseconds)
   - `ref_link`: string (can't be empty) - a link to external resource with more details (eg near social post). Max length is 120 characters.
   - `quorum`: minimum amount of legit accounts to vote to legitimize the elections.
   - `seats`: max number of candidates to elect, also max number of credits each user has when casting a vote.
@@ -21,6 +22,7 @@
 - Once the proposals are created and the elections start (`now >= proposal.start`), all human verified near accounts can vote according to the NDC Elections [v1 Framework](../README.md#elections).
 - Anyone can query the proposal and the ongoing result at any time.
 - Voting is active until the `proposal.end` time.
+- Vote revocation is active until the `proposal.end` + `cooldown` time.
 
 ## Usage
 
@@ -31,9 +33,9 @@ CTR=elections-v1.gwg.testnet
 REGISTRY=registry-1.i-am-human.testnet
 
 # create proposal
-# note: start and end time must be in milliseconds
+# note: start time, end time and cooldown must be in milliseconds
 
-near call $CTR create_proposal '{"start": 1686221747000, "end": 1686653747000, "ref_link": "example.com", "quorum": 10, "candidates": ["candidate1.testnet", "candidate2.testnet", "candidate3.testnet", "candidate4.testnet"], "typ": "HouseOfMerit", "seats": 3, "policy": "f1c09f8686fe7d0d798517111a66675da0012d8ad1693a47e0e2a7d3ae1c69d4"}' --accountId $CTR
+near call $CTR create_proposal '{"start": 1686221747000, "end": 1686653747000, "cooldown": 604800000  "ref_link": "example.com", "quorum": 10, "candidates": ["candidate1.testnet", "candidate2.testnet", "candidate3.testnet", "candidate4.testnet"], "typ": "HouseOfMerit", "seats": 3, "policy": "f1c09f8686fe7d0d798517111a66675da0012d8ad1693a47e0e2a7d3ae1c69d4"}' --accountId $CTR
 
 # fetch all proposal
 near view $CTR proposals ''
@@ -49,6 +51,9 @@ near call $CTR accepted_policy '{"user": "alice.testnet"}' --accountId me.testne
 
 # vote
 near call $CTR vote '{"prop_id": 1, "vote": ["candidate1.testnet", "candidate3.testnet"]}' --gas 70000000000000 --deposit 0.0005 --accountId me.testnet
+
+# revoke vote (authority only)
+near call $CTR revoke_vote '{"prop_id": 1, "token_id": 1}'
 ```
 
 ## Deployed Contracts

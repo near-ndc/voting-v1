@@ -58,6 +58,7 @@ impl Contract {
         typ: HouseType,
         start: u64,
         end: u64,
+        cooldown: u64,
         ref_link: String,
         quorum: u32,
         seats: u16,
@@ -90,6 +91,7 @@ impl Contract {
             typ,
             start,
             end,
+            cooldown,
             quorum,
             ref_link,
             seats,
@@ -97,6 +99,7 @@ impl Contract {
             result: vec![0; l],
             voters: LookupSet::new(StorageKey::ProposalVoters(self.prop_counter)),
             voters_num: 0,
+            voters_candidates: LookupMap::new(StorageKey::VotersCandidates(self.prop_counter)),
             policy,
         };
 
@@ -151,6 +154,18 @@ impl Contract {
                     .with_static_gas(VOTE_GAS_CALLBACK)
                     .on_vote_verified(prop_id, vote),
             )
+    }
+
+    /// Method for the authority to revoke votes from blacklisted accounts.
+    /// Panics if the proposal doesn't exists or the it's called before the proposal starts or after proposal `end+cooldown`.
+    #[handle_result]
+    pub fn revoke_vote(&mut self, prop_id: u32, token_id: TokenId) -> Result<(), VoteError> {
+        // check if the caller is the authority allowed to revoke votes
+        self.assert_admin();
+        let mut p = self._proposal(prop_id);
+        p.revoke_votes(token_id)?;
+        self.proposals.insert(&prop_id, &p);
+        Ok(())
     }
 
     /*****************
@@ -280,6 +295,7 @@ mod unit_tests {
             crate::HouseType::HouseOfMerit,
             START - 1,
             START + 100,
+            100,
             String::from("ref_link.io"),
             2,
             2,
@@ -297,6 +313,7 @@ mod unit_tests {
             crate::HouseType::HouseOfMerit,
             START + 10,
             START,
+            100,
             String::from("ref_link.io"),
             2,
             2,
@@ -314,6 +331,7 @@ mod unit_tests {
             crate::HouseType::HouseOfMerit,
             START + 1,
             START + 10,
+            100,
             String::from("short"),
             2,
             2,
@@ -331,6 +349,7 @@ mod unit_tests {
             crate::HouseType::HouseOfMerit,
             START + 1,
             START + 10,
+            100,
             String::from("ref_link.io"),
             2,
             2,
@@ -344,6 +363,7 @@ mod unit_tests {
             crate::HouseType::HouseOfMerit,
             START + 1,
             START + 10,
+            100,
             String::from("ref_link.io"),
             2,
             2,
@@ -647,5 +667,37 @@ mod unit_tests {
         // should not panic
         ctr.vote(prop_id, vec![]);
         // note: we can only check vote result and state change through an integration test.
+    }
+
+    #[test]
+    #[should_panic(expected = "not an admin")]
+    fn revoke_vote_not_admin() {
+        let (_, mut ctr) = setup(&alice());
+        let prop_id = mk_proposal(&mut ctr);
+        let res = ctr.revoke_vote(prop_id, 1);
+        // this will never be checked since the method is panicing not returning an error
+        assert!(res.is_err());
+    }
+
+    #[test]
+    fn revoke_vote_no_votes() {
+        let (mut ctx, mut ctr) = setup(&admin());
+        let prop_id = mk_proposal(&mut ctr);
+        ctx.block_timestamp = (START + 100) * MSECOND;
+        testing_env!(ctx);
+        match ctr.revoke_vote(prop_id, 1) {
+            Err(VoteError::NotVoted) => (),
+            x => panic!("expected NotVoted, got: {:?}", x),
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "proposal not found")]
+    fn revoke_vote_no_proposal() {
+        let (_, mut ctr) = setup(&admin());
+        let prop_id = 2;
+        match ctr.revoke_vote(prop_id, 1) {
+            x => panic!("{:?}", x),
+        }
     }
 }

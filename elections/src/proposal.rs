@@ -1,9 +1,8 @@
-use std::collections::HashSet;
-
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::LookupSet;
+use near_sdk::collections::{LookupMap, LookupSet};
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{env, require, AccountId};
+use std::collections::HashSet;
 use uint::hex;
 
 pub use crate::constants::*;
@@ -27,6 +26,9 @@ pub struct Proposal {
     pub start: u64,
     /// end of voting as Unix timestamp (in milliseconds)
     pub end: u64,
+    /// duration of cooldown after the proposal ends. During this time votes cannot be submitted and
+    /// the malicious votes can be revoked by authorities (in milliseconds).
+    pub cooldown: u64,
     /// min amount of voters to legitimize the voting.
     pub quorum: u32,
     /// max amount of seats a voter can allocate candidates for.
@@ -36,10 +38,11 @@ pub struct Proposal {
     /// running result (ongoing sum of votes per candidate), in the same order as `candidates`.
     /// result[i] = sum of votes for candidates[i]
     pub result: Vec<u64>,
-
     /// set of tokenIDs, which were used for voting, as a proof of personhood
     pub voters: LookupSet<TokenId>,
     pub voters_num: u32,
+    // map of voters -> candidates they voted for (token IDs used for voting -> candidates index)
+    pub voters_candidates: LookupMap<TokenId, Vec<usize>>,
     /// blake2s-256 hash of the Fair Voting Policy text.
     pub policy: [u8; 32],
 }
@@ -56,6 +59,8 @@ pub struct ProposalView {
     pub start: u64,
     /// end of voting as Unix timestamp (in milliseconds)
     pub end: u64,
+    /// cooldown period after voting ends (in milliseconds)
+    pub cooldown: u64,
     /// min amount of voters to legitimize the voting.
     pub quorum: u32,
     pub voters_num: u32,
@@ -81,6 +86,7 @@ impl Proposal {
             ref_link: self.ref_link,
             start: self.start,
             end: self.end,
+            cooldown: self.cooldown,
             quorum: self.quorum,
             voters_num: self.voters_num,
             seats: self.seats,
@@ -97,6 +103,21 @@ impl Proposal {
         )
     }
 
+    pub fn is_active_cooldown(&self) -> bool {
+        let now = env::block_timestamp_ms();
+        if self.start <= now && now <= (self.end + self.cooldown) {
+            return true;
+        }
+        false
+    }
+
+    pub fn is_used_token(&self, token_id: TokenId) -> bool {
+        if self.voters.contains(&token_id) {
+            return true;
+        }
+        false
+    }
+
     /// once vote proof has been verified, we call this function to register a vote.
     pub fn vote_on_verified(&mut self, sbts: &Vec<TokenId>, vote: Vote) -> Result<(), VoteError> {
         self.assert_active();
@@ -105,11 +126,34 @@ impl Proposal {
                 return Err(VoteError::DoubleVote(*t));
             }
         }
+        let mut indexes = Vec::new();
         self.voters_num += 1;
         for candidate in vote {
             let idx = self.candidates.binary_search(&candidate).unwrap();
             self.result[idx] += 1;
+            indexes.push(idx);
         }
+        // TODO: this logic needs to be updated once we use more tokens per user to vote
+        self.voters_candidates.insert(&sbts[0], &indexes);
+        Ok(())
+    }
+
+    pub fn revoke_votes(&mut self, token_id: TokenId) -> Result<(), VoteError> {
+        if !self.is_active_cooldown() {
+            return Err(VoteError::RevokeNotActive);
+        }
+        if !self.is_used_token(token_id) {
+            return Err(VoteError::NotVoted);
+        }
+        for candidate in self
+            .voters_candidates
+            .get(&token_id)
+            .ok_or(VoteError::DoubleRevoke)?
+        {
+            self.result[candidate] -= 1;
+        }
+        self.voters_num -= 1;
+        self.voters_candidates.remove(&token_id);
         Ok(())
     }
 }
@@ -180,12 +224,14 @@ mod tests {
             ref_link: "near.social/abc".to_owned(),
             start: 10,
             end: 111222,
+            cooldown: 1000,
             quorum: 551,
             seats: 2,
             candidates: vec![mk_account(2), mk_account(1), mk_account(3), mk_account(4)],
             result: vec![10000, 5, 321, 121],
             voters: LookupSet::new(StorageKey::ProposalVoters(1)),
             voters_num: 10,
+            voters_candidates: LookupMap::new(StorageKey::VotersCandidates(1)),
             policy: policy1(),
         };
         assert_eq!(
@@ -195,6 +241,7 @@ mod tests {
                 ref_link: p.ref_link.clone(),
                 start: p.start,
                 end: p.end,
+                cooldown: p.cooldown,
                 quorum: p.quorum,
                 seats: p.seats,
                 voters_num: p.voters_num,
@@ -209,5 +256,103 @@ mod tests {
             },
             p.to_view(12)
         )
+    }
+
+    #[test]
+    fn revoke_votes() {
+        let mut p = Proposal {
+            typ: HouseType::CouncilOfAdvisors,
+            ref_link: "near.social/abc".to_owned(),
+            start: 0,
+            end: 100,
+            cooldown: 10,
+            quorum: 551,
+            seats: 2,
+            candidates: vec![mk_account(1), mk_account(2)],
+            result: vec![3, 1],
+            voters: LookupSet::new(StorageKey::ProposalVoters(1)),
+            voters_num: 3,
+            voters_candidates: LookupMap::new(StorageKey::VotersCandidates(1)),
+            policy: policy1(),
+        };
+        p.voters.insert(&1);
+        p.voters.insert(&2);
+        p.voters.insert(&3);
+        p.voters_candidates.insert(&1, &vec![0, 1]);
+        p.voters_candidates.insert(&2, &vec![0]);
+        p.voters_candidates.insert(&3, &vec![0]);
+
+        match p.revoke_votes(1) {
+            Ok(_) => (),
+            x => panic!("expected OK, got: {:?}", x),
+        }
+        assert_eq!(p.result, vec![2, 0]);
+        match p.revoke_votes(2) {
+            Ok(_) => (),
+            x => panic!("expected OK, got: {:?}", x),
+        }
+        assert_eq!(p.result, vec![1, 0]);
+        match p.revoke_votes(3) {
+            Ok(_) => (),
+            x => panic!("expected OK, got: {:?}", x),
+        }
+        assert_eq!(p.result, vec![0, 0]);
+    }
+
+    #[test]
+    fn revoke_revoked_votes() {
+        let mut p = Proposal {
+            typ: HouseType::CouncilOfAdvisors,
+            ref_link: "near.social/abc".to_owned(),
+            start: 0,
+            end: 100,
+            cooldown: 10,
+            quorum: 551,
+            seats: 2,
+            candidates: vec![mk_account(1), mk_account(2)],
+            result: vec![1, 1],
+            voters: LookupSet::new(StorageKey::ProposalVoters(1)),
+            voters_num: 1,
+            voters_candidates: LookupMap::new(StorageKey::VotersCandidates(1)),
+            policy: policy1(),
+        };
+        p.voters.insert(&1);
+        p.voters_candidates.insert(&1, &vec![0, 1]);
+
+        match p.revoke_votes(1) {
+            Ok(_) => (),
+            x => panic!("expected OK, got: {:?}", x),
+        }
+        assert_eq!(p.result, vec![0, 0]);
+        match p.revoke_votes(1) {
+            Err(VoteError::DoubleRevoke) => (),
+            x => panic!("expected DoubleRevoke, got: {:?}", x),
+        }
+    }
+
+    #[test]
+    fn revoke_non_exising_votes() {
+        let mut p = Proposal {
+            typ: HouseType::CouncilOfAdvisors,
+            ref_link: "near.social/abc".to_owned(),
+            start: 0,
+            end: 100,
+            cooldown: 10,
+            quorum: 551,
+            seats: 2,
+            candidates: vec![mk_account(1), mk_account(2)],
+            result: vec![1, 1],
+            voters: LookupSet::new(StorageKey::ProposalVoters(1)),
+            voters_num: 1,
+            voters_candidates: LookupMap::new(StorageKey::VotersCandidates(1)),
+            policy: policy1(),
+        };
+        p.voters.insert(&1);
+        p.voters_candidates.insert(&1, &vec![0, 1]);
+
+        match p.revoke_votes(2) {
+            Err(VoteError::NotVoted) => (),
+            x => panic!("expected NotVoted, got: {:?}", x),
+        }
     }
 }

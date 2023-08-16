@@ -81,7 +81,7 @@ async fn init(
         .call(ndc_elections_contract.id(), "create_proposal")
         .args_json(json!({
             "typ": HouseType::HouseOfMerit, "start": start_time,
-            "end": u64::MAX, "ref_link": "test.io", "quorum": 10,
+            "end": u64::MAX, "cooldown": 604800000, "ref_link": "test.io", "quorum": 10,
             "credits": 5, "seats": 1, "candidates": [john_acc.id(), alice_acc.id()],
             "policy": policy1(),
         }))
