@@ -33,7 +33,7 @@ CTR=elections-v1.gwg.testnet
 REGISTRY=registry-1.i-am-human.testnet
 
 # create proposal
-# note: start, end  time and cooldown must be in milliseconds
+# note: start time, end time and cooldown must be in milliseconds
 
 near call $CTR create_proposal '{"start": 1686221747000, "end": 1686653747000, "cooldown": 604800000  "ref_link": "example.com", "quorum": 10, "candidates": ["candidate1.testnet", "candidate2.testnet", "candidate3.testnet", "candidate4.testnet"], "typ": "HouseOfMerit", "seats": 3, "policy": "f1c09f8686fe7d0d798517111a66675da0012d8ad1693a47e0e2a7d3ae1c69d4"}' --accountId $CTR
 
