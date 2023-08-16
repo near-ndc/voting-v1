@@ -186,7 +186,7 @@ impl Contract {
         if tokens.is_empty() || tokens[0].1.is_empty() {
             return Err(VoteError::NoSBTs);
         }
-        if tokens.len() != 1 {
+        if !(tokens.len() == 1 && tokens[0].1.len() == 1) {
             // in current version we support only one proof of personhood issuer: Fractal, so here
             // we simplify by requiring that the result contains tokens only from one issuer.
             return Err(VoteError::WrongIssuer);
@@ -449,7 +449,7 @@ mod unit_tests {
         assert_eq!(p.result, vec![1, 0, 0], "vote result should not change");
 
         // attempt to double vote with few tokens
-        match ctr.on_vote_verified(mk_human_sbts(vec![2, 4]), prop_id, vote.clone()) {
+        match ctr.on_vote_verified(mk_human_sbts(vec![4]), prop_id, vote.clone()) {
             Err(VoteError::DoubleVote(4)) => (),
             x => panic!("expected DoubleVote(4), got: {:?}", x),
         };
