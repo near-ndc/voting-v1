@@ -1,4 +1,5 @@
-use near_sdk::near_bindgen;
+use near_sdk::{near_bindgen, AccountId};
+use uint::hex;
 
 use crate::proposal::*;
 use crate::{Contract, ContractExt};
@@ -22,5 +23,12 @@ impl Contract {
 
     pub fn proposal(&self, prop_id: u32) -> ProposalView {
         self._proposal(prop_id).to_view(prop_id)
+    }
+
+    /// Returns the policy if user has accepted it otherwise returns None
+    pub fn accepted_policy(&self, user: AccountId) -> Option<String> {
+        self.accepted_policy
+            .get(&user)
+            .map(|policy| hex::encode(policy))
     }
 }

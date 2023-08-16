@@ -3,7 +3,6 @@ use std::collections::HashSet;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, LookupSet};
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise};
-use uint::hex;
 
 mod constants;
 mod errors;
@@ -44,6 +43,10 @@ impl Contract {
             prop_counter: 0,
         }
     }
+
+    /*
+     * Queries are in view.rs
+     */
 
     /**********
      * TRANSACTIONS
@@ -166,17 +169,6 @@ impl Contract {
         p.revoke_votes(token_id)?;
         self.proposals.insert(&prop_id, &p);
         Ok(())
-    }
-
-    /*****************
-     * QUERIES
-     ****************/
-
-    /// Returns the policy if user has accepted it otherwise returns None
-    pub fn accepted_policy(&self, user: AccountId) -> Option<String> {
-        self.accepted_policy
-            .get(&user)
-            .map(|policy| hex::encode(policy))
     }
 
     /*****************
