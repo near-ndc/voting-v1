@@ -1,5 +1,5 @@
 [workspace]
-members = ["voting_body", "elections", "nominations", "integrations"]
+members = ["voting_body", "elections", "nominations", "integrations", "common"]
 
 [workspace.package]
 edition = "2021"
