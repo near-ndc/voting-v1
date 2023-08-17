@@ -1,0 +1,12 @@
+[package]
+name = "common"
+version = "1.0.0"
+authors = { workspace = true }
+edition = { workspace = true }
+repository = { workspace = true }
+license = { workspace = true }
+
+[dependencies]
+uint.workspace = true
+near-sdk.workspace = true
+serde_json.workspace = true

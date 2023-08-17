@@ -1,11 +1,13 @@
 use std::collections::HashSet;
 
+use events::emit_vote;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, LookupSet};
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise};
 
 mod constants;
 mod errors;
+mod events;
 mod ext;
 pub mod proposal;
 mod storage;
@@ -194,6 +196,7 @@ impl Contract {
         let mut p = self._proposal(prop_id);
         p.vote_on_verified(&tokens[0].1, vote)?;
         self.proposals.insert(&prop_id, &p);
+        emit_vote(prop_id);
         Ok(())
     }
 

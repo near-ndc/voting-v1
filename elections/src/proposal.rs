@@ -188,7 +188,7 @@ pub fn assert_hash_hex_string(s: &str) -> [u8; 32] {
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
-mod tests {
+mod unit_tests {
     use near_sdk::collections::LookupSet;
 
     use super::*;
