@@ -621,7 +621,7 @@ mod unit_tests {
 
         let prop_id = mk_proposal(&mut ctr);
         let mut res = ctr.proposal_status(prop_id);
-        assert_eq!(res, ProposalStatus::NotStarted);
+        assert_eq!(res, ProposalStatus::NOT_STARTED);
 
         ctx.block_timestamp = (START + 2) * MSECOND;
         testing_env!(ctx.clone());
