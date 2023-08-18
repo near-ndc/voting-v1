@@ -36,11 +36,12 @@ impl Contract {
     pub fn proposal_status(&self, prop_id: u32) -> ProposalStatus {
         let proposal = self._proposal(prop_id);
         let current_time = env::block_timestamp_ms();
+        
         if current_time < proposal.start {
             return ProposalStatus::BEFORE;
-        } else if current_time >= proposal.start && current_time <= proposal.end {
+        } else if current_time <= proposal.end {
             return ProposalStatus::ONGOING;
-        } else if current_time > proposal.end && current_time <= (proposal.cooldown + proposal.end) {
+        } else if current_time <= proposal.cooldown + proposal.end {
             return ProposalStatus::COOLDOWN;
         } else {
             return ProposalStatus::ENDED;
