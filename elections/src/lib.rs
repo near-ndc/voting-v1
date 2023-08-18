@@ -105,6 +105,7 @@ impl Contract {
             voters: LookupSet::new(StorageKey::ProposalVoters(self.prop_counter)),
             voters_num: 0,
             voters_candidates: LookupMap::new(StorageKey::VotersCandidates(self.prop_counter)),
+            users_sbt: LookupMap::new(StorageKey::UsersSBT(self.prop_counter)),
             policy,
         };
 

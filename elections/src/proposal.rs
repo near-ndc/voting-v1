@@ -41,8 +41,10 @@ pub struct Proposal {
     /// set of tokenIDs, which were used for voting, as a proof of personhood
     pub voters: LookupSet<TokenId>,
     pub voters_num: u32,
-    // map of voters -> candidates they voted for (token IDs used for voting -> candidates index)
+    /// map of voters -> candidates they voted for (token IDs used for voting -> candidates index)
     pub voters_candidates: LookupMap<TokenId, Vec<usize>>,
+    /// map of users -> SBT they voted with
+    pub users_sbt: LookupMap<AccountId, TokenId>,
     /// blake2s-256 hash of the Fair Voting Policy text.
     pub policy: [u8; 32],
 }
@@ -232,6 +234,7 @@ mod unit_tests {
             voters: LookupSet::new(StorageKey::ProposalVoters(1)),
             voters_num: 10,
             voters_candidates: LookupMap::new(StorageKey::VotersCandidates(1)),
+            users_sbt: LookupMap::new(StorageKey::UsersSBT(1)),
             policy: policy1(),
         };
         assert_eq!(
@@ -273,6 +276,7 @@ mod unit_tests {
             voters: LookupSet::new(StorageKey::ProposalVoters(1)),
             voters_num: 3,
             voters_candidates: LookupMap::new(StorageKey::VotersCandidates(1)),
+            users_sbt: LookupMap::new(StorageKey::UsersSBT(1)),
             policy: policy1(),
         };
         p.voters.insert(&1);
@@ -314,6 +318,7 @@ mod unit_tests {
             voters: LookupSet::new(StorageKey::ProposalVoters(1)),
             voters_num: 1,
             voters_candidates: LookupMap::new(StorageKey::VotersCandidates(1)),
+            users_sbt: LookupMap::new(StorageKey::UsersSBT(1)),
             policy: policy1(),
         };
         p.voters.insert(&1);
@@ -345,6 +350,7 @@ mod unit_tests {
             voters: LookupSet::new(StorageKey::ProposalVoters(1)),
             voters_num: 1,
             voters_candidates: LookupMap::new(StorageKey::VotersCandidates(1)),
+            users_sbt: LookupMap::new(StorageKey::UsersSBT(1)),
             policy: policy1(),
         };
         p.voters.insert(&1);
