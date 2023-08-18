@@ -1,4 +1,4 @@
-use near_sdk::{near_bindgen, AccountId, env};
+use near_sdk::{near_bindgen, AccountId};
 use uint::hex;
 
 use crate::proposal::*;
@@ -10,19 +10,6 @@ impl Contract {
         self.proposals.get(&prop_id).expect("proposal not found")
     }
 
-    /// returns proposal status
-    pub(crate) fn _status(&self, proposal: Proposal) -> ProposalStatus {
-        let current_time = env::block_timestamp_ms();
-        if current_time < proposal.start {
-            return ProposalStatus::NOT_STARTED;
-        } else if current_time <= proposal.end {
-            return ProposalStatus::ONGOING;
-        } else if current_time <= proposal.cooldown + proposal.end {
-            return ProposalStatus::COOLDOWN;
-        } else {
-            return ProposalStatus::ENDED;
-        }
-    }
     /**********
      * QUERIES
      **********/
@@ -48,7 +35,6 @@ impl Contract {
 
     /// Returns the proposal status
     pub fn proposal_status(&self, prop_id: u32) -> ProposalStatus {
-        let proposal = self._proposal(prop_id);
-        return self._status(proposal)
+        return self._proposal(prop_id).status()
     }
 }

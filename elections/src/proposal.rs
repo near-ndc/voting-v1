@@ -17,7 +17,7 @@ pub enum HouseType {
     TransparencyCommission,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize)]
 #[serde(crate = "near_sdk::serde")]
 #[cfg_attr(test, derive(Debug, PartialEq))]
 pub enum ProposalStatus {
@@ -165,6 +165,20 @@ impl Proposal {
         self.voters_num -= 1;
         self.voters_candidates.remove(&token_id);
         Ok(())
+    }
+
+    /// returns proposal status
+    pub fn status(&self) -> ProposalStatus {
+        let current_time = env::block_timestamp_ms();
+        if current_time < self.start {
+            return ProposalStatus::NOT_STARTED;
+        } else if current_time <= self.end {
+            return ProposalStatus::ONGOING;
+        } else if current_time <= self.cooldown + self.end {
+            return ProposalStatus::COOLDOWN;
+        } else {
+            return ProposalStatus::ENDED;
+        }
     }
 }
 
