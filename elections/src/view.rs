@@ -38,7 +38,7 @@ impl Contract {
         let current_time = env::block_timestamp_ms();
         
         if current_time < proposal.start {
-            return ProposalStatus::BEFORE;
+            return ProposalStatus::NotStarted;
         } else if current_time <= proposal.end {
             return ProposalStatus::ONGOING;
         } else if current_time <= proposal.cooldown + proposal.end {

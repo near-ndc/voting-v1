@@ -21,7 +21,7 @@ pub enum HouseType {
 #[serde(crate = "near_sdk::serde")]
 #[cfg_attr(test, derive(Debug, PartialEq))]
 pub enum ProposalStatus {
-    BEFORE,
+    NotStarted,
     ONGOING,
     COOLDOWN,
     ENDED
