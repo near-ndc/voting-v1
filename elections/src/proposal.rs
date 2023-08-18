@@ -121,12 +121,18 @@ impl Proposal {
     }
 
     /// once vote proof has been verified, we call this function to register a vote.
-    pub fn vote_on_verified(&mut self, sbts: &Vec<TokenId>, vote: Vote) -> Result<(), VoteError> {
+    pub fn vote_on_verified(
+        &mut self,
+        sbts: &Vec<TokenId>,
+        vote: Vote,
+        user: AccountId,
+    ) -> Result<(), VoteError> {
         self.assert_active();
         for t in sbts {
             if !self.voters.insert(t) {
                 return Err(VoteError::DoubleVote(*t));
             }
+            self.users_sbt.insert(&user, t);
         }
         let mut indexes = Vec::new();
         self.voters_num += 1;

@@ -154,11 +154,11 @@ impl Contract {
         validate_vote(&vote, p.seats, &p.candidates);
         // call SBT registry to verify SBT
         ext_sbtreg::ext(self.sbt_registry.clone())
-            .is_human(user)
+            .is_human(user.clone())
             .then(
                 ext_self::ext(env::current_account_id())
                     .with_static_gas(VOTE_GAS_CALLBACK)
-                    .on_vote_verified(prop_id, vote),
+                    .on_vote_verified(prop_id, vote, user),
             )
     }
 
@@ -185,6 +185,7 @@ impl Contract {
         #[callback_unwrap] tokens: HumanSBTs,
         prop_id: u32,
         vote: Vote,
+        user: AccountId,
     ) -> Result<(), VoteError> {
         if tokens.is_empty() || tokens[0].1.is_empty() {
             return Err(VoteError::NoSBTs);
@@ -195,7 +196,7 @@ impl Contract {
             return Err(VoteError::WrongIssuer);
         }
         let mut p = self._proposal(prop_id);
-        p.vote_on_verified(&tokens[0].1, vote)?;
+        p.vote_on_verified(&tokens[0].1, vote, user)?;
         self.proposals.insert(&prop_id, &p);
         emit_vote(prop_id);
         Ok(())
@@ -427,7 +428,7 @@ mod unit_tests {
         assert_eq!(p.result, vec![0, 0, 0],);
 
         // successful vote
-        match ctr.on_vote_verified(mk_human_sbt(1), prop_id, vote.clone()) {
+        match ctr.on_vote_verified(mk_human_sbt(1), prop_id, vote.clone(), alice()) {
             Ok(_) => (),
             x => panic!("expected OK, got: {:?}", x),
         };
@@ -437,7 +438,7 @@ mod unit_tests {
         assert_eq!(p.result, vec![1, 0, 0], "vote should be counted");
 
         // attempt double vote
-        match ctr.on_vote_verified(mk_human_sbt(1), prop_id, vote.clone()) {
+        match ctr.on_vote_verified(mk_human_sbt(1), prop_id, vote.clone(), alice()) {
             Err(VoteError::DoubleVote(1)) => (),
             x => panic!("expected DoubleVote(1), got: {:?}", x),
         };
@@ -446,29 +447,29 @@ mod unit_tests {
 
         //set sbt=4 and attempt double vote
         ctr._proposal(prop_id).voters.insert(&4);
-        match ctr.on_vote_verified(mk_human_sbt(4), prop_id, vote.clone()) {
+        match ctr.on_vote_verified(mk_human_sbt(4), prop_id, vote.clone(), alice()) {
             Err(VoteError::DoubleVote(4)) => (),
             x => panic!("expected DoubleVote(4), got: {:?}", x),
         };
         assert_eq!(p.result, vec![1, 0, 0], "vote result should not change");
 
         // attempt to double vote with few tokens
-        match ctr.on_vote_verified(mk_human_sbts(vec![4]), prop_id, vote.clone()) {
+        match ctr.on_vote_verified(mk_human_sbts(vec![4]), prop_id, vote.clone(), alice()) {
             Err(VoteError::DoubleVote(4)) => (),
             x => panic!("expected DoubleVote(4), got: {:?}", x),
         };
         assert_eq!(p.result, vec![1, 0, 0], "vote result should not change");
 
         // wrong issuer
-        match ctr.on_vote_verified(mk_nohuman_sbt(3), prop_id, vote.clone()) {
+        match ctr.on_vote_verified(mk_nohuman_sbt(3), prop_id, vote.clone(), alice()) {
             Err(VoteError::WrongIssuer) => (),
             x => panic!("expected WrongIssuer, got: {:?}", x),
         };
-        match ctr.on_vote_verified(vec![], prop_id, vote.clone()) {
+        match ctr.on_vote_verified(vec![], prop_id, vote.clone(), alice()) {
             Err(VoteError::NoSBTs) => (),
             x => panic!("expected WrongIssuer, got: {:?}", x),
         };
-        match ctr.on_vote_verified(vec![(human_issuer(), vec![])], prop_id, vote) {
+        match ctr.on_vote_verified(vec![(human_issuer(), vec![])], prop_id, vote, alice()) {
             Err(VoteError::NoSBTs) => (),
             x => panic!("expected NoSBTs, got: {:?}", x),
         };
@@ -481,7 +482,7 @@ mod unit_tests {
         // alice, tokenID=20: successful vote with single selection
         ctx.predecessor_account_id = alice();
         testing_env!(ctx.clone());
-        match ctr.on_vote_verified(mk_human_sbt(20), prop_id, vec![candidate(3)]) {
+        match ctr.on_vote_verified(mk_human_sbt(20), prop_id, vec![candidate(3)], alice()) {
             Ok(_) => (),
             x => panic!("expected OK, got: {:?}", x),
         };
@@ -494,7 +495,12 @@ mod unit_tests {
         ctx.predecessor_account_id = bob();
         testing_env!(ctx);
         // candidates are put in non alphabetical order.
-        match ctr.on_vote_verified(mk_human_sbt(22), prop_id, vec![candidate(3), candidate(2)]) {
+        match ctr.on_vote_verified(
+            mk_human_sbt(22),
+            prop_id,
+            vec![candidate(3), candidate(2)],
+            alice(),
+        ) {
             Ok(_) => (),
             x => panic!("expected OK, got: {:?}", x),
         };
@@ -695,5 +701,33 @@ mod unit_tests {
         match ctr.revoke_vote(prop_id, 1) {
             x => panic!("{:?}", x),
         }
+    }
+
+    #[test]
+    fn user_votes() {
+        let (mut ctx, mut ctr) = setup(&admin());
+        let prop_id = mk_proposal(&mut ctr);
+        ctx.block_timestamp = (START + 2) * MSECOND;
+        testing_env!(ctx.clone());
+
+        match ctr.on_vote_verified(
+            mk_human_sbt(1),
+            prop_id,
+            vec![candidate(3), candidate(2)],
+            alice(),
+        ) {
+            Ok(_) => (),
+            x => panic!("expected OK, got: {:?}", x),
+        };
+        let res = ctr.user_votes(alice());
+        assert_eq!(res, vec![(1, Some(vec![2, 1]))]);
+    }
+
+    #[test]
+    #[should_panic(expected = "user not found")]
+    fn user_votes_no_vote() {
+        let (_, mut ctr) = setup(&admin());
+        mk_proposal(&mut ctr);
+        ctr.user_votes(alice());
     }
 }

@@ -31,4 +31,21 @@ impl Contract {
             .get(&user)
             .map(|policy| hex::encode(policy))
     }
+
+    /// Returns all the users votes for all the proposals. If user has not voted yet empty vector will be returned.
+    pub fn user_votes(&self, user: AccountId) -> Vec<(u32, Option<Vec<usize>>)> {
+        let mut to_return = Vec::new();
+
+        for p in 0..=self.prop_counter {
+            if let Some(proposal) = self.proposals.get(&p) {
+                to_return.push((
+                    p,
+                    proposal
+                        .voters_candidates
+                        .get(&proposal.users_sbt.get(&user).expect("user not found")),
+                ));
+            }
+        }
+        to_return
+    }
 }
