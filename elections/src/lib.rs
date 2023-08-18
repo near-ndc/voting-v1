@@ -616,6 +616,33 @@ mod unit_tests {
     }
 
     #[test]
+    fn proposal_status_query() {
+        let (mut ctx, mut ctr) = setup(&admin());
+
+        let prop_id = mk_proposal(&mut ctr);
+        let mut res = ctr.proposal_status(prop_id);
+        assert_eq!(res, ProposalStatus::BEFORE);
+
+        ctx.block_timestamp = (START + 2) * MSECOND;
+        testing_env!(ctx.clone());
+
+        res = ctr.proposal_status(prop_id);
+        assert_eq!(res, ProposalStatus::ONGOING);
+
+        ctx.block_timestamp = (START + 11) * MSECOND;
+        testing_env!(ctx.clone());
+
+        res = ctr.proposal_status(prop_id);
+        assert_eq!(res, ProposalStatus::COOLDOWN);
+
+        ctx.block_timestamp = (START + 111) * MSECOND;
+        testing_env!(ctx.clone());
+
+        res = ctr.proposal_status(prop_id);
+        assert_eq!(res, ProposalStatus::ENDED);
+    }
+
+    #[test]
     #[should_panic(expected = "double vote for the same candidate")]
     fn vote_double_vote_same_candidate() {
         let (mut ctx, mut ctr) = setup(&admin());

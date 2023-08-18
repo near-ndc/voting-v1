@@ -17,6 +17,16 @@ pub enum HouseType {
     TransparencyCommission,
 }
 
+#[derive(Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+#[cfg_attr(test, derive(Debug, PartialEq))]
+pub enum ProposalStatus {
+    BEFORE,
+    ONGOING,
+    COOLDOWN,
+    ENDED
+}
+
 #[derive(BorshDeserialize, BorshSerialize)]
 #[cfg_attr(test, derive(Debug))]
 pub struct Proposal {
