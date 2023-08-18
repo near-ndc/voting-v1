@@ -17,7 +17,7 @@ pub enum HouseType {
     TransparencyCommission,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize)]
 #[serde(crate = "near_sdk::serde")]
 #[cfg_attr(test, derive(Debug, PartialEq))]
 pub enum ProposalStatus {
