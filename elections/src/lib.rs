@@ -621,25 +621,25 @@ mod unit_tests {
 
         let prop_id = mk_proposal(&mut ctr);
         let mut res = ctr.proposal_status(prop_id);
-        assert_eq!(res, ProposalStatus::NOT_STARTED);
+        assert_eq!(res, Some(ProposalStatus::NOT_STARTED));
 
         ctx.block_timestamp = (START + 2) * MSECOND;
         testing_env!(ctx.clone());
 
         res = ctr.proposal_status(prop_id);
-        assert_eq!(res, ProposalStatus::ONGOING);
+        assert_eq!(res, Some(ProposalStatus::ONGOING));
 
         ctx.block_timestamp = (START + 11) * MSECOND;
         testing_env!(ctx.clone());
 
         res = ctr.proposal_status(prop_id);
-        assert_eq!(res, ProposalStatus::COOLDOWN);
+        assert_eq!(res, Some(ProposalStatus::COOLDOWN));
 
         ctx.block_timestamp = (START + 111) * MSECOND;
         testing_env!(ctx.clone());
 
         res = ctr.proposal_status(prop_id);
-        assert_eq!(res, ProposalStatus::ENDED);
+        assert_eq!(res, Some(ProposalStatus::ENDED));
     }
 
     #[test]

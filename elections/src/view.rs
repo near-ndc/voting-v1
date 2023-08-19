@@ -35,6 +35,6 @@ impl Contract {
 
     /// Returns the proposal status
     pub fn proposal_status(&self, prop_id: u32) -> Option<ProposalStatus> {
-        return self._proposal(prop_id).map(|p| p.status())
+        return self.proposals.get(&prop_id).map(|p| p.status())
     }
 }
