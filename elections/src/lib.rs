@@ -60,7 +60,7 @@ impl Contract {
     /// NOTE: storage is paid from the account state
     pub fn create_proposal(
         &mut self,
-        typ: HouseType,
+        typ: ProposalType,
         start: u64,
         end: u64,
         cooldown: u64,
@@ -84,6 +84,14 @@ impl Contract {
                 MIN_REF_LINK_LEN, MAX_REF_LINK_LEN
             )
         );
+        if typ == ProposalType::SetupPackage {
+            require!(
+                candidates.is_empty(),
+                "setup_package candidates must be an empty list"
+            );
+            require!(seats == 0, "setup_package seats must be 0");
+        }
+
         let policy = assert_hash_hex_string(&policy);
 
         let cs: HashSet<&AccountId> = HashSet::from_iter(candidates.iter());
@@ -128,12 +136,16 @@ impl Contract {
             .insert(&env::predecessor_account_id(), &policy);
     }
 
-    /// election vote using plural vote mechanism
+    /// Election vote using a seat-selection mechanism.
+    /// For the `SetupPackage` proposal, vote must be an empty list.
     #[payable]
     pub fn vote(&mut self, prop_id: u32, vote: Vote) -> Promise {
+        let user = env::predecessor_account_id();
         let p = self._proposal(prop_id);
         p.assert_active();
-        let user = env::predecessor_account_id();
+        if p.typ == ProposalType::SetupPackage {
+            require!(vote.is_empty(), "setup_package vote must be an empty list");
+        }
         require!(
             env::attached_deposit() >= VOTE_COST,
             format!(
@@ -256,6 +268,58 @@ mod unit_tests {
         "21c09f8686fe7d0d798517111a66675da0012d8ad1693a47e0e2a7d3ae1c69d4".to_owned()
     }
 
+    fn mk_proposal(ctr: &mut Contract) -> u32 {
+        ctr.create_proposal(
+            crate::ProposalType::HouseOfMerit,
+            START + 1,
+            START + 10,
+            100,
+            String::from("ref_link.io"),
+            2,
+            2,
+            vec![candidate(1), candidate(2), candidate(3)],
+            policy1(),
+        )
+    }
+
+    fn mk_proposal_setup_package(ctr: &mut Contract) -> u32 {
+        ctr.create_proposal(
+            crate::ProposalType::SetupPackage,
+            START + 1,
+            START + 10,
+            100,
+            String::from("ref_link.io"),
+            2,
+            0,
+            vec![],
+            policy1(),
+        )
+    }
+
+    fn mk_human_sbt(sbt: TokenId) -> HumanSBTs {
+        vec![(human_issuer(), vec![sbt])]
+    }
+
+    fn mk_human_sbts(sbt: Vec<TokenId>) -> HumanSBTs {
+        vec![(human_issuer(), sbt)]
+    }
+
+    fn mk_nohuman_sbt(sbt: TokenId) -> HumanSBTs {
+        vec![(human_issuer(), vec![sbt]), (admin(), vec![sbt])]
+    }
+
+    fn alice_voting_context(ctx: &mut VMContext, ctr: &mut Contract) {
+        ctx.predecessor_account_id = alice();
+        ctx.attached_deposit = ACCEPT_POLICY_COST;
+        testing_env!(ctx.clone());
+        ctr.accept_fair_voting_policy(policy1());
+
+        ctx.attached_deposit = VOTE_COST;
+        ctx.block_timestamp = (START + 2) * MSECOND;
+        ctx.prepaid_gas = VOTE_GAS;
+        testing_env!(ctx.clone());
+    }
+
     fn setup(predecessor: &AccountId) -> (VMContext, Contract) {
         let mut ctx = VMContextBuilder::new()
             .predecessor_account_id(admin())
@@ -287,7 +351,7 @@ mod unit_tests {
     fn create_proposal_wrong_start_time() {
         let (_, mut ctr) = setup(&admin());
         ctr.create_proposal(
-            crate::HouseType::HouseOfMerit,
+            crate::ProposalType::HouseOfMerit,
             START - 1,
             START + 100,
             100,
@@ -305,7 +369,7 @@ mod unit_tests {
         let (_, mut ctr) = setup(&admin());
 
         ctr.create_proposal(
-            crate::HouseType::HouseOfMerit,
+            crate::ProposalType::HouseOfMerit,
             START + 10,
             START,
             100,
@@ -323,7 +387,7 @@ mod unit_tests {
         let (_, mut ctr) = setup(&admin());
 
         ctr.create_proposal(
-            crate::HouseType::HouseOfMerit,
+            crate::ProposalType::HouseOfMerit,
             START + 1,
             START + 10,
             100,
@@ -341,7 +405,7 @@ mod unit_tests {
         let (_, mut ctr) = setup(&admin());
 
         ctr.create_proposal(
-            crate::HouseType::HouseOfMerit,
+            crate::ProposalType::HouseOfMerit,
             START + 1,
             START + 10,
             100,
@@ -353,42 +417,36 @@ mod unit_tests {
         );
     }
 
-    fn mk_proposal(ctr: &mut Contract) -> u32 {
+    #[test]
+    #[should_panic(expected = "setup_package candidates must be an empty list")]
+    fn create_proposal_setup_package() {
+        let (_, mut ctr) = setup(&admin());
+
+        let n = ctr.create_proposal(
+            crate::ProposalType::SetupPackage,
+            START + 1,
+            START + 10,
+            100,
+            String::from("ref_link.io"),
+            2,
+            0,
+            vec![],
+            policy1(),
+        );
+        assert_eq!(n, 1);
+
+        // this should fail because setup package requires candidates=[]
         ctr.create_proposal(
-            crate::HouseType::HouseOfMerit,
+            crate::ProposalType::SetupPackage,
             START + 1,
             START + 10,
             100,
             String::from("ref_link.io"),
             2,
             2,
-            vec![candidate(1), candidate(2), candidate(3)],
+            vec![candidate(1)],
             policy1(),
-        )
-    }
-
-    fn mk_human_sbt(sbt: TokenId) -> HumanSBTs {
-        vec![(human_issuer(), vec![sbt])]
-    }
-
-    fn mk_human_sbts(sbt: Vec<TokenId>) -> HumanSBTs {
-        vec![(human_issuer(), sbt)]
-    }
-
-    fn mk_nohuman_sbt(sbt: TokenId) -> HumanSBTs {
-        vec![(human_issuer(), vec![sbt]), (admin(), vec![sbt])]
-    }
-
-    fn alice_voting_context(ctx: &mut VMContext, ctr: &mut Contract) {
-        ctx.predecessor_account_id = alice();
-        ctx.attached_deposit = ACCEPT_POLICY_COST;
-        testing_env!(ctx.clone());
-        ctr.accept_fair_voting_policy(policy1());
-
-        ctx.attached_deposit = VOTE_COST;
-        ctx.block_timestamp = (START + 2) * MSECOND;
-        ctx.prepaid_gas = VOTE_GAS;
-        testing_env!(ctx.clone());
+        );
     }
 
     #[test]
@@ -405,17 +463,24 @@ mod unit_tests {
         assert_eq!(ctr.prop_counter, 2);
         assert!(ctr.proposals.contains_key(&prop_id));
 
+        let prop_id = mk_proposal_setup_package(&mut ctr);
+        assert_eq!(prop_id, 3);
+        assert_eq!(ctr.prop_counter, 3);
+        assert!(ctr.proposals.contains_key(&prop_id));
+
         let proposals = ctr.proposals();
-        assert_eq!(proposals.len(), 2);
+        assert_eq!(proposals.len(), 3);
         assert_eq!(proposals[0].id, 1);
         assert_eq!(proposals[1].id, 2);
+        assert_eq!(proposals[2].id, 3);
     }
 
     #[test]
-    fn on_vote_verified() {
+    fn vote_on_verified() {
         let (mut ctx, mut ctr) = setup(&admin());
 
         let prop_id = mk_proposal(&mut ctr);
+        let prop_sp = mk_proposal_setup_package(&mut ctr);
         let vote = vec![candidate(1)];
         ctx.block_timestamp = (START + 2) * MSECOND;
         testing_env!(ctx.clone());
@@ -501,6 +566,16 @@ mod unit_tests {
         assert!(p.voters.contains(&22), "token id should be recorded");
         assert_eq!(p.voters_num, 3, "voters num should  increment");
         assert_eq!(p.result, vec![1, 1, 2], "vote should be counted");
+
+        // SetupPackage vote, again with bob
+        match ctr.on_vote_verified(mk_human_sbt(22), prop_sp, vec![]) {
+            Ok(_) => (),
+            x => panic!("expected OK, got: {:?}", x),
+        };
+        let p = ctr._proposal(prop_sp);
+        assert!(p.voters.contains(&22), "token id should be recorded");
+        assert_eq!(p.voters_num, 1, "voters num should  increment");
+        assert!(p.result.is_empty(), "vote should be counted");
     }
 
     #[test]
@@ -524,6 +599,20 @@ mod unit_tests {
         ctr.accept_fair_voting_policy(policy1());
         // should be able to accept more then once
         ctr.accept_fair_voting_policy(policy1());
+    }
+
+    #[test]
+    fn accepted_policy_query() {
+        let (mut ctx, mut ctr) = setup(&admin());
+
+        let mut res = ctr.accepted_policy(admin());
+        assert!(res.is_none());
+        ctx.attached_deposit = ACCEPT_POLICY_COST;
+        testing_env!(ctx.clone());
+        ctr.accept_fair_voting_policy(policy1());
+        res = ctr.accepted_policy(admin());
+        assert!(res.is_some());
+        assert_eq!(res.unwrap(), policy1());
     }
 
     #[test]
@@ -602,20 +691,6 @@ mod unit_tests {
     }
 
     #[test]
-    fn accepted_policy_query() {
-        let (mut ctx, mut ctr) = setup(&admin());
-
-        let mut res = ctr.accepted_policy(admin());
-        assert!(res.is_none());
-        ctx.attached_deposit = ACCEPT_POLICY_COST;
-        testing_env!(ctx.clone());
-        ctr.accept_fair_voting_policy(policy1());
-        res = ctr.accepted_policy(admin());
-        assert!(res.is_some());
-        assert_eq!(res.unwrap(), policy1());
-    }
-
-    #[test]
     #[should_panic(expected = "double vote for the same candidate")]
     fn vote_double_vote_same_candidate() {
         let (mut ctx, mut ctr) = setup(&admin());
@@ -645,7 +720,7 @@ mod unit_tests {
 
     #[test]
     #[should_panic(expected = "max vote is 2 seats")]
-    fn vote_too_many_credits() {
+    fn vote_too_many_selections() {
         let (mut ctx, mut ctr) = setup(&admin());
 
         let prop_id = mk_proposal(&mut ctr);
@@ -662,6 +737,32 @@ mod unit_tests {
         // should not panic
         ctr.vote(prop_id, vec![]);
         // note: we can only check vote result and state change through an integration test.
+    }
+
+    #[test]
+    #[should_panic(expected = "setup_package vote must be an empty list")]
+    fn vote_wrong_setup_package_vote() {
+        let (mut ctx, mut ctr) = setup(&admin());
+
+        let prop_id = mk_proposal_setup_package(&mut ctr);
+        alice_voting_context(&mut ctx, &mut ctr);
+        ctr.vote(prop_id, vec![candidate(1)]);
+    }
+
+    #[test]
+    fn vote_valid() {
+        let (mut ctx, mut ctr) = setup(&admin());
+
+        let prop_sp = mk_proposal_setup_package(&mut ctr);
+        let prop_hom1 = mk_proposal(&mut ctr);
+        let prop_hom2 = mk_proposal(&mut ctr);
+        alice_voting_context(&mut ctx, &mut ctr);
+
+        ctr.vote(prop_sp, vec![]);
+        ctr.vote(prop_hom1, vec![]);
+        // need to setup new context, otherwise we have a gas error
+        alice_voting_context(&mut ctx, &mut ctr);
+        ctr.vote(prop_hom2, vec![candidate(2), candidate(1)]);
     }
 
     #[test]

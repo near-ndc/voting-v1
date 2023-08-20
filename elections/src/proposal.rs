@@ -8,19 +8,20 @@ use uint::hex;
 pub use crate::constants::*;
 use crate::{TokenId, VoteError};
 
-#[derive(Serialize, Deserialize, BorshDeserialize, BorshSerialize)]
+#[derive(Serialize, Deserialize, BorshDeserialize, BorshSerialize, PartialEq)]
 #[serde(crate = "near_sdk::serde")]
-#[cfg_attr(test, derive(Debug, PartialEq))]
-pub enum HouseType {
+#[cfg_attr(test, derive(Debug))]
+pub enum ProposalType {
     HouseOfMerit,
     CouncilOfAdvisors,
     TransparencyCommission,
+    SetupPackage,
 }
 
 #[derive(BorshDeserialize, BorshSerialize)]
 #[cfg_attr(test, derive(Debug))]
 pub struct Proposal {
-    pub typ: HouseType,
+    pub typ: ProposalType,
     pub ref_link: String,
     /// start of voting as Unix timestamp (in milliseconds)
     pub start: u64,
@@ -41,7 +42,7 @@ pub struct Proposal {
     /// set of tokenIDs, which were used for voting, as a proof of personhood
     pub voters: LookupSet<TokenId>,
     pub voters_num: u32,
-    // map of voters -> candidates they voted for (token IDs used for voting -> candidates index)
+    /// map of voter SBT -> candidates they voted for (token IDs used for voting -> candidates index)
     pub voters_candidates: LookupMap<TokenId, Vec<usize>>,
     /// blake2s-256 hash of the Fair Voting Policy text.
     pub policy: [u8; 32],
@@ -53,7 +54,7 @@ pub struct Proposal {
 #[cfg_attr(not(target_arch = "wasm32"), derive(Deserialize))]
 pub struct ProposalView {
     pub id: u32,
-    pub typ: HouseType,
+    pub typ: ProposalType,
     pub ref_link: String,
     /// start of voting as Unix timestamp (in milliseconds)
     pub start: u64,
@@ -192,7 +193,7 @@ mod unit_tests {
     use near_sdk::collections::LookupSet;
 
     use super::*;
-    use crate::{storage::StorageKey, HouseType, ProposalView};
+    use crate::{storage::StorageKey, ProposalType, ProposalView};
 
     fn mk_account(i: u16) -> AccountId {
         AccountId::new_unchecked(format!("acc{}", i))
@@ -220,7 +221,7 @@ mod unit_tests {
     #[test]
     fn to_proposal_view() {
         let p = Proposal {
-            typ: HouseType::CouncilOfAdvisors,
+            typ: ProposalType::CouncilOfAdvisors,
             ref_link: "near.social/abc".to_owned(),
             start: 10,
             end: 111222,
@@ -237,7 +238,7 @@ mod unit_tests {
         assert_eq!(
             ProposalView {
                 id: 12,
-                typ: HouseType::CouncilOfAdvisors,
+                typ: ProposalType::CouncilOfAdvisors,
                 ref_link: p.ref_link.clone(),
                 start: p.start,
                 end: p.end,
@@ -261,7 +262,7 @@ mod unit_tests {
     #[test]
     fn revoke_votes() {
         let mut p = Proposal {
-            typ: HouseType::CouncilOfAdvisors,
+            typ: ProposalType::CouncilOfAdvisors,
             ref_link: "near.social/abc".to_owned(),
             start: 0,
             end: 100,
@@ -302,7 +303,7 @@ mod unit_tests {
     #[test]
     fn revoke_revoked_votes() {
         let mut p = Proposal {
-            typ: HouseType::CouncilOfAdvisors,
+            typ: ProposalType::CouncilOfAdvisors,
             ref_link: "near.social/abc".to_owned(),
             start: 0,
             end: 100,
@@ -333,7 +334,7 @@ mod unit_tests {
     #[test]
     fn revoke_non_exising_votes() {
         let mut p = Proposal {
-            typ: HouseType::CouncilOfAdvisors,
+            typ: ProposalType::CouncilOfAdvisors,
             ref_link: "near.social/abc".to_owned(),
             start: 0,
             end: 100,

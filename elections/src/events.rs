@@ -1,4 +1,4 @@
-use near_sdk::{serde::Serialize, AccountId};
+use near_sdk::serde::Serialize;
 use serde_json::json;
 
 use common::{EventPayload, NearEvent};
@@ -21,7 +21,7 @@ pub(crate) fn emit_vote(prop_id: u32) {
 
 #[cfg(test)]
 mod unit_tests {
-    use near_sdk::test_utils;
+    use near_sdk::{test_utils, AccountId};
 
     use super::*;
 
