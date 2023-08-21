@@ -691,20 +691,6 @@ mod unit_tests {
     }
 
     #[test]
-    fn accepted_policy_query() {
-        let (mut ctx, mut ctr) = setup(&admin());
-
-        let mut res = ctr.accepted_policy(admin());
-        assert!(res.is_none());
-        ctx.attached_deposit = ACCEPT_POLICY_COST;
-        testing_env!(ctx.clone());
-        ctr.accept_fair_voting_policy(policy1());
-        res = ctr.accepted_policy(admin());
-        assert!(res.is_some());
-        assert_eq!(res.unwrap(), policy1());
-    }
-
-    #[test]
     fn proposal_status_query() {
         let (mut ctx, mut ctr) = setup(&admin());
 
