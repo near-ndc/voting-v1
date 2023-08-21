@@ -179,7 +179,7 @@ impl Contract {
     /// Method for the authority to revoke votes from blacklisted accounts.
     /// Panics if the proposal doesn't exists or the it's called before the proposal starts or after proposal `end+cooldown`.
     #[handle_result]
-    pub fn revoke_vote(&mut self, prop_id: u32, token_id: TokenId) -> Result<(), VoteError> {
+    pub fn revoke_vote(&mut self, prop_id: u32, token_id: TokenId) -> Result<(), RevokeVoteError> {
         // check if the caller is the authority allowed to revoke votes
         self.assert_admin();
         let mut p = self._proposal(prop_id);

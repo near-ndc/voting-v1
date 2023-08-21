@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use uint::hex;
 
 pub use crate::constants::*;
-use crate::{TokenId, VoteError};
+use crate::{RevokeVoteError, TokenId, VoteError};
 
 #[derive(Serialize, Deserialize, BorshDeserialize, BorshSerialize, PartialEq)]
 #[serde(crate = "near_sdk::serde")]
@@ -138,14 +138,18 @@ impl Proposal {
         Ok(())
     }
 
-    pub fn revoke_votes(&mut self, token_id: TokenId) -> Result<(), VoteError> {
+    pub fn revoke_votes(&mut self, token_id: TokenId) -> Result<(), RevokeVoteError> {
         if !self.is_active_or_cooldown() {
-            return Err(VoteError::RevokeNotActive);
+            return Err(RevokeVoteError::NotActive);
         }
         if !self.voters.contains_key(&token_id) {
-            return Err(VoteError::NotVoted);
+            return Err(RevokeVoteError::NotVoted);
         }
-        for candidate in self.voters.get(&token_id).ok_or(VoteError::DoubleRevoke)? {
+        for candidate in self
+            .voters
+            .get(&token_id)
+            .ok_or(RevokeVoteError::DoubleRevoke)?
+        {
             self.result[candidate] -= 1;
         }
         self.voters_num -= 1;
