@@ -1,4 +1,4 @@
-use near_sdk::{near_bindgen, AccountId};
+use near_sdk::{near_bindgen, AccountId, env};
 use uint::hex;
 
 use crate::proposal::*;
@@ -35,6 +35,7 @@ impl Contract {
 
     /// Returns the proposal status
     pub fn proposal_status(&self, prop_id: u32) -> Option<ProposalStatus> {
-        return self.proposals.get(&prop_id).map(|p| p.status())
+        let now = env::block_timestamp_ms();
+        return self.proposals.get(&prop_id).map(|p| p.status(now))
     }
 }

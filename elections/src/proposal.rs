@@ -168,13 +168,13 @@ impl Proposal {
     }
 
     /// returns proposal status
-    pub fn status(&self) -> ProposalStatus {
-        let current_time = env::block_timestamp_ms();
-        if current_time < self.start {
+    /// now: time in miliseconds
+    pub fn status(&self, now: u64) -> ProposalStatus {
+        if now < self.start {
             return ProposalStatus::NOT_STARTED;
-        } else if current_time <= self.end {
+        } else if now <= self.end {
             return ProposalStatus::ONGOING;
-        } else if current_time <= self.cooldown + self.end {
+        } else if now <= self.cooldown + self.end {
             return ProposalStatus::COOLDOWN;
         } else {
             return ProposalStatus::ENDED;
