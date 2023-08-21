@@ -1,4 +1,4 @@
-use near_sdk::{near_bindgen, AccountId, env};
+use near_sdk::{env, near_bindgen, AccountId};
 use uint::hex;
 
 use crate::proposal::*;
@@ -39,7 +39,7 @@ impl Contract {
 
         for p in 0..=self.prop_counter {
             if let Some(proposal) = self.proposals.get(&p) {
-                if let Some(user_vote_key) = proposal.users_sbt.get(&user) {
+                if let Some(user_vote_key) = proposal.user_sbt.get(&user) {
                     let user_vote = proposal.voters_candidates.get(&user_vote_key);
                     to_return.push((p, user_vote));
                 }
@@ -55,10 +55,10 @@ impl Contract {
         }
         false
     }
-  
+
     /// Returns the proposal status
     pub fn proposal_status(&self, prop_id: u32) -> Option<ProposalStatus> {
         let now = env::block_timestamp_ms();
-        return self.proposals.get(&prop_id).map(|p| p.status(now))
+        return self.proposals.get(&prop_id).map(|p| p.status(now));
     }
 }

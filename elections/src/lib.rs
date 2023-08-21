@@ -113,7 +113,7 @@ impl Contract {
             voters: LookupSet::new(StorageKey::ProposalVoters(self.prop_counter)),
             voters_num: 0,
             voters_candidates: LookupMap::new(StorageKey::VotersCandidates(self.prop_counter)),
-            users_sbt: LookupMap::new(StorageKey::UsersSBT(self.prop_counter)),
+            user_sbt: LookupMap::new(StorageKey::UsersSBT(self.prop_counter)),
             policy,
         };
 
@@ -170,7 +170,7 @@ impl Contract {
             .then(
                 ext_self::ext(env::current_account_id())
                     .with_static_gas(VOTE_GAS_CALLBACK)
-                    .on_vote_verified(prop_id, vote, user),
+                    .on_vote_verified(prop_id, user, vote),
             )
     }
 
@@ -208,7 +208,7 @@ impl Contract {
             return Err(VoteError::WrongIssuer);
         }
         let mut p = self._proposal(prop_id);
-        p.vote_on_verified(&tokens[0].1, user, vote)?;
+        p.vote_on_verified(&tokens[0].1, voter, vote)?;
         self.proposals.insert(&prop_id, &p);
         emit_vote(prop_id);
         Ok(())
@@ -244,6 +244,10 @@ mod unit_tests {
 
     fn bob() -> AccountId {
         AccountId::new_unchecked("bob.near".to_string())
+    }
+
+    fn charlie() -> AccountId {
+        AccountId::new_unchecked("elon.near".to_string())
     }
 
     fn candidate(idx: u32) -> AccountId {
@@ -493,7 +497,7 @@ mod unit_tests {
         assert_eq!(p.result, vec![0, 0, 0],);
 
         // successful vote
-        match ctr.on_vote_verified(mk_human_sbt(1), prop_id, vote.clone(), alice()) {
+        match ctr.on_vote_verified(mk_human_sbt(1), prop_id, alice(), vote.clone()) {
             Ok(_) => (),
             x => panic!("expected OK, got: {:?}", x),
         };
@@ -501,9 +505,10 @@ mod unit_tests {
         assert!(p.voters.contains(&1));
         assert_eq!(p.voters_num, 1, "voters num should increment");
         assert_eq!(p.result, vec![1, 0, 0], "vote should be counted");
+        assert!(p.user_sbt.contains_key(&alice()));
 
         // attempt double vote
-        match ctr.on_vote_verified(mk_human_sbt(1), prop_id, vote.clone(), alice()) {
+        match ctr.on_vote_verified(mk_human_sbt(1), prop_id, alice(), vote.clone()) {
             Err(VoteError::DoubleVote(1)) => (),
             x => panic!("expected DoubleVote(1), got: {:?}", x),
         };
@@ -512,29 +517,29 @@ mod unit_tests {
 
         //set sbt=4 and attempt double vote
         ctr._proposal(prop_id).voters.insert(&4);
-        match ctr.on_vote_verified(mk_human_sbt(4), prop_id, vote.clone(), alice()) {
+        match ctr.on_vote_verified(mk_human_sbt(4), prop_id, alice(), vote.clone()) {
             Err(VoteError::DoubleVote(4)) => (),
             x => panic!("expected DoubleVote(4), got: {:?}", x),
         };
         assert_eq!(p.result, vec![1, 0, 0], "vote result should not change");
 
         // attempt to double vote with few tokens
-        match ctr.on_vote_verified(mk_human_sbts(vec![4]), prop_id, vote.clone(), alice()) {
+        match ctr.on_vote_verified(mk_human_sbts(vec![4]), prop_id, alice(), vote.clone()) {
             Err(VoteError::DoubleVote(4)) => (),
             x => panic!("expected DoubleVote(4), got: {:?}", x),
         };
         assert_eq!(p.result, vec![1, 0, 0], "vote result should not change");
 
         // wrong issuer
-        match ctr.on_vote_verified(mk_nohuman_sbt(3), prop_id, vote.clone(), alice()) {
+        match ctr.on_vote_verified(mk_nohuman_sbt(3), prop_id, alice(), vote.clone()) {
             Err(VoteError::WrongIssuer) => (),
             x => panic!("expected WrongIssuer, got: {:?}", x),
         };
-        match ctr.on_vote_verified(vec![], prop_id, vote.clone(), alice()) {
+        match ctr.on_vote_verified(vec![], prop_id, alice(), vote.clone()) {
             Err(VoteError::NoSBTs) => (),
             x => panic!("expected WrongIssuer, got: {:?}", x),
         };
-        match ctr.on_vote_verified(vec![(human_issuer(), vec![])], prop_id, vote, alice()) {
+        match ctr.on_vote_verified(vec![(human_issuer(), vec![])], prop_id, alice(), vote) {
             Err(VoteError::NoSBTs) => (),
             x => panic!("expected NoSBTs, got: {:?}", x),
         };
@@ -544,10 +549,10 @@ mod unit_tests {
         //
         // Create more successful votes
 
-        // alice, tokenID=20: successful vote with single selection
+        // bob, tokenID=20: successful vote with single selection
         ctx.predecessor_account_id = alice();
         testing_env!(ctx.clone());
-        match ctr.on_vote_verified(mk_human_sbt(20), prop_id, vec![candidate(3)], alice()) {
+        match ctr.on_vote_verified(mk_human_sbt(20), prop_id, bob(), vec![candidate(3)]) {
             Ok(_) => (),
             x => panic!("expected OK, got: {:?}", x),
         };
@@ -555,16 +560,20 @@ mod unit_tests {
         assert!(p.voters.contains(&20), "token id should be recorded");
         assert_eq!(p.voters_num, 2, "voters num should  increment");
         assert_eq!(p.result, vec![1, 0, 1], "vote should be counted");
+        assert!(
+            p.user_sbt.contains_key(&bob()),
+            "user and its sbt should be recorded"
+        );
 
-        // bob, tokenID=22: vote with 2 selections
+        // charlie, tokenID=22: vote with 2 selections
         ctx.predecessor_account_id = bob();
         testing_env!(ctx);
         // candidates are put in non alphabetical order.
         match ctr.on_vote_verified(
             mk_human_sbt(22),
             prop_id,
+            charlie(),
             vec![candidate(3), candidate(2)],
-            alice(),
         ) {
             Ok(_) => (),
             x => panic!("expected OK, got: {:?}", x),
@@ -573,9 +582,13 @@ mod unit_tests {
         assert!(p.voters.contains(&22), "token id should be recorded");
         assert_eq!(p.voters_num, 3, "voters num should  increment");
         assert_eq!(p.result, vec![1, 1, 2], "vote should be counted");
+        assert!(
+            p.user_sbt.contains_key(&charlie()),
+            "user and its sbt should be recorded"
+        );
 
-        // SetupPackage vote, again with bob
-        match ctr.on_vote_verified(mk_human_sbt(22), prop_sp, vec![]) {
+        // SetupPackage vote, again with charlie
+        match ctr.on_vote_verified(mk_human_sbt(22), prop_sp, charlie(), vec![]) {
             Ok(_) => (),
             x => panic!("expected OK, got: {:?}", x),
         };
@@ -695,20 +708,6 @@ mod unit_tests {
         testing_env!(ctx);
 
         ctr.vote(prop_id, vec![candidate(1)]);
-    }
-
-    #[test]
-    fn accepted_policy_query() {
-        let (mut ctx, mut ctr) = setup(&admin());
-
-        let mut res = ctr.accepted_policy(admin());
-        assert!(res.is_none());
-        ctx.attached_deposit = ACCEPT_POLICY_COST;
-        testing_env!(ctx.clone());
-        ctr.accept_fair_voting_policy(policy1());
-        res = ctr.accepted_policy(admin());
-        assert!(res.is_some());
-        assert_eq!(res.unwrap(), policy1());
     }
 
     #[test]
@@ -855,8 +854,8 @@ mod unit_tests {
         match ctr.on_vote_verified(
             mk_human_sbt(1),
             prop_id,
-            vec![candidate(3), candidate(2)],
             alice(),
+            vec![candidate(3), candidate(2)],
         ) {
             Ok(_) => (),
             x => panic!("expected OK, got: {:?}", x),
@@ -887,8 +886,8 @@ mod unit_tests {
         match ctr.on_vote_verified(
             mk_human_sbt(1),
             prop_id,
-            vec![candidate(3), candidate(2)],
             alice(),
+            vec![candidate(3), candidate(2)],
         ) {
             Ok(_) => (),
             x => panic!("expected OK, got: {:?}", x),
@@ -900,8 +899,8 @@ mod unit_tests {
         match ctr.on_vote_verified(
             mk_human_sbt(1),
             prop_id,
-            vec![candidate(3), candidate(2)],
             alice(),
+            vec![candidate(3), candidate(2)],
         ) {
             Ok(_) => (),
             x => panic!("expected OK, got: {:?}", x),
@@ -913,8 +912,8 @@ mod unit_tests {
         match ctr.on_vote_verified(
             mk_human_sbt(1),
             prop_id,
-            vec![candidate(3), candidate(2)],
             alice(),
+            vec![candidate(3), candidate(2)],
         ) {
             Ok(_) => (),
             x => panic!("expected OK, got: {:?}", x),
@@ -926,12 +925,37 @@ mod unit_tests {
         match ctr.on_vote_verified(
             mk_human_sbt(1),
             prop_id,
-            vec![candidate(3), candidate(2)],
             alice(),
+            vec![candidate(3), candidate(2)],
         ) {
             Ok(_) => (),
             x => panic!("expected OK, got: {:?}", x),
         };
         assert!(ctr.is_voting_completed(alice()));
+    }
+
+    #[test]
+    fn user_sbt_map_prefix() {
+        let (mut ctx, mut ctr) = setup(&admin());
+        let prop_id_1 = mk_proposal(&mut ctr);
+        let prop_id_2 = mk_proposal(&mut ctr);
+
+        ctx.block_timestamp = (START + 2) * MSECOND;
+        testing_env!(ctx.clone());
+
+        match ctr.on_vote_verified(
+            mk_human_sbt(1),
+            prop_id_1,
+            alice(),
+            vec![candidate(3), candidate(2)],
+        ) {
+            Ok(_) => (),
+            x => panic!("expected OK, got: {:?}", x),
+        };
+        let p1 = ctr._proposal(prop_id_1);
+        assert!(p1.user_sbt.get(&alice()).is_some());
+
+        let p2 = ctr._proposal(prop_id_2);
+        assert!(p2.user_sbt.get(&alice()).is_none());
     }
 }

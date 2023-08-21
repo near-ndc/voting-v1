@@ -25,7 +25,7 @@ pub enum ProposalStatus {
     NOT_STARTED,
     ONGOING,
     COOLDOWN,
-    ENDED
+    ENDED,
 }
 
 #[derive(BorshDeserialize, BorshSerialize)]
@@ -143,7 +143,10 @@ impl Proposal {
             if !self.voters.insert(t) {
                 return Err(VoteError::DoubleVote(*t));
             }
-            require!(self.users_sbt.insert(&user, t).is_none(), "user already voted");
+            require!(
+                self.user_sbt.insert(&voter, t).is_none(),
+                "user already voted"
+            );
         }
         let mut indexes = Vec::new();
         self.voters_num += 1;
@@ -265,7 +268,7 @@ mod unit_tests {
             voters: LookupSet::new(StorageKey::ProposalVoters(1)),
             voters_num: 10,
             voters_candidates: LookupMap::new(StorageKey::VotersCandidates(1)),
-            users_sbt: LookupMap::new(StorageKey::UsersSBT(1)),
+            user_sbt: LookupMap::new(StorageKey::UsersSBT(1)),
             policy: policy1(),
         };
         assert_eq!(
@@ -307,7 +310,7 @@ mod unit_tests {
             voters: LookupSet::new(StorageKey::ProposalVoters(1)),
             voters_num: 3,
             voters_candidates: LookupMap::new(StorageKey::VotersCandidates(1)),
-            users_sbt: LookupMap::new(StorageKey::UsersSBT(1)),
+            user_sbt: LookupMap::new(StorageKey::UsersSBT(1)),
             policy: policy1(),
         };
         p.voters.insert(&1);
@@ -349,7 +352,7 @@ mod unit_tests {
             voters: LookupSet::new(StorageKey::ProposalVoters(1)),
             voters_num: 1,
             voters_candidates: LookupMap::new(StorageKey::VotersCandidates(1)),
-            users_sbt: LookupMap::new(StorageKey::UsersSBT(1)),
+            user_sbt: LookupMap::new(StorageKey::UsersSBT(1)),
             policy: policy1(),
         };
         p.voters.insert(&1);
@@ -381,7 +384,7 @@ mod unit_tests {
             voters: LookupSet::new(StorageKey::ProposalVoters(1)),
             voters_num: 1,
             voters_candidates: LookupMap::new(StorageKey::VotersCandidates(1)),
-            users_sbt: LookupMap::new(StorageKey::UsersSBT(1)),
+            user_sbt: LookupMap::new(StorageKey::UsersSBT(1)),
             policy: policy1(),
         };
         p.voters.insert(&1);
