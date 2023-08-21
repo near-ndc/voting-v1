@@ -177,7 +177,7 @@ impl Contract {
     /// Method for the authority to revoke votes from blacklisted accounts.
     /// Panics if the proposal doesn't exists or the it's called before the proposal starts or after proposal `end+cooldown`.
     #[handle_result]
-    pub fn revoke_vote(&mut self, prop_id: u32, token_id: TokenId) -> Result<(), VoteError> {
+    pub fn admin_revoke_vote(&mut self, prop_id: u32, token_id: TokenId) -> Result<(), VoteError> {
         // check if the caller is the authority allowed to revoke votes
         self.assert_admin();
         let mut p = self._proposal(prop_id);
@@ -186,9 +186,66 @@ impl Contract {
         Ok(())
     }
 
+    /// Method to revoke votes from blacklisted accounts.
+    /// Anyone can call this method.
+    /// The method makes a cross-contract call to registry to verify the user is blacklisted
+    /// Panics if:
+    /// - the proposal doesn't existst
+    /// - it's called before the proposal starts or after proposal `end+cooldown`
+    /// - the user is not blacklisted
+    /// - the user did not vote on the proposal
+    pub fn revoke_vote(&mut self, prop_id: u32, user: AccountId) -> Promise {
+        // check if the caller is the authority allowed to revoke votes
+        let mut p = self._proposal(prop_id);
+        let token_id = p.user_sbt.get(&user).unwrap();
+        // if !p.is_active_cooldown() {
+        //     return Err(VoteError::RevokeNotActive);
+        // }
+        // if !p.is_used_token(token_id) {
+        //     return Err(VoteError::NotVoted);
+        // }
+        // call SBT registry to verify SBT
+        ext_sbtreg::ext(self.sbt_registry.clone())
+            .is_human(user.clone())
+            .then(
+                ext_self::ext(env::current_account_id())
+                    .with_static_gas(VOTE_GAS_CALLBACK)
+                    .on_revoke_votes_verified(prop_id, user, token_id),
+            )
+
+        // p.revoke_votes(token_id)?;
+        // self.proposals.insert(&prop_id, &p);
+        // Ok(())
+    }
+
     /*****************
      * PRIVATE
      ****************/
+
+    #[private]
+    #[handle_result]
+    pub fn on_revoke_votes_verified(
+        &mut self,
+        #[callback_unwrap] tokens: HumanSBTs,
+        prop_id: u32,
+        user: AccountId,
+        token_id: TokenId,
+    ) -> Result<(), VoteError> {
+        if !tokens.is_empty() {
+            return Err(VoteError::NotBlacklisted);
+        }
+        let mut p = self._proposal(prop_id);
+        for candidate in p
+            .voters_candidates
+            .get(&token_id)
+            .ok_or(VoteError::DoubleRevoke)?
+        {
+            p.result[candidate] -= 1;
+        }
+        p.voters_num -= 1;
+        p.voters_candidates.remove(&token_id);
+        Ok(())
+    }
 
     #[private]
     #[handle_result]
@@ -817,7 +874,7 @@ mod unit_tests {
     fn revoke_vote_not_admin() {
         let (_, mut ctr) = setup(&alice());
         let prop_id = mk_proposal(&mut ctr);
-        let res = ctr.revoke_vote(prop_id, 1);
+        let res = ctr.admin_revoke_vote(prop_id, 1);
         // this will never be checked since the method is panicing not returning an error
         assert!(res.is_err());
     }
@@ -828,7 +885,7 @@ mod unit_tests {
         let prop_id = mk_proposal(&mut ctr);
         ctx.block_timestamp = (START + 100) * MSECOND;
         testing_env!(ctx);
-        match ctr.revoke_vote(prop_id, 1) {
+        match ctr.admin_revoke_vote(prop_id, 1) {
             Err(VoteError::NotVoted) => (),
             x => panic!("expected NotVoted, got: {:?}", x),
         }
@@ -839,7 +896,7 @@ mod unit_tests {
     fn revoke_vote_no_proposal() {
         let (_, mut ctr) = setup(&admin());
         let prop_id = 2;
-        match ctr.revoke_vote(prop_id, 1) {
+        match ctr.admin_revoke_vote(prop_id, 1) {
             x => panic!("{:?}", x),
         }
     }

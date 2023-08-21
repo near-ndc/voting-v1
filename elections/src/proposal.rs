@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use uint::hex;
 
 pub use crate::constants::*;
-use crate::{TokenId, VoteError};
+use crate::{HumanSBTs, TokenId, VoteError};
 
 #[derive(Serialize, Deserialize, BorshDeserialize, BorshSerialize, PartialEq)]
 #[serde(crate = "near_sdk::serde")]

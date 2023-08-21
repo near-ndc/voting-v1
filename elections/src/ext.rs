@@ -15,6 +15,13 @@ pub trait ExtSelf {
         voter: AccountId,
         vote: Vote,
     ) -> Result<(), VoteError>;
+    fn on_revoke_votes_verified(
+        &mut self,
+        #[callback_unwrap] tokens: HumanSBTs,
+        prop_id: u32,
+        user: AccountId,
+        token_id: TokenId,
+    ) -> Result<(), VoteError>;
 }
 
 #[ext_contract(ext_sbtreg)]
