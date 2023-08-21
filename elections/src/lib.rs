@@ -724,10 +724,72 @@ mod unit_tests {
     }
 
     #[test]
-    #[should_panic(expected = "user not found")]
     fn user_votes_no_vote() {
-        let (_, mut ctr) = setup(&admin());
-        mk_proposal(&mut ctr);
-        ctr.user_votes(alice());
+        let (_, ctr) = setup(&admin());
+        let res = ctr.user_votes(alice());
+        assert_eq!(res, vec![]);
+    }
+
+    #[test]
+    fn is_voting_completed() {
+        let (mut ctx, mut ctr) = setup(&admin());
+        let prop1 = mk_proposal(&mut ctr);
+        let prop2 = mk_proposal(&mut ctr);
+        let prop3 = mk_proposal(&mut ctr);
+        let prop4 = mk_proposal(&mut ctr);
+        ctx.block_timestamp = (START + 2) * MSECOND;
+        testing_env!(ctx.clone());
+
+        // first vote (voting not yet completed)
+        let mut prop_id = prop1;
+        match ctr.on_vote_verified(
+            mk_human_sbt(1),
+            prop_id,
+            vec![candidate(3), candidate(2)],
+            alice(),
+        ) {
+            Ok(_) => (),
+            x => panic!("expected OK, got: {:?}", x),
+        };
+        assert!(!ctr.is_voting_completed(alice()));
+
+        // second vote (voting not yet completed)
+        prop_id = prop2;
+        match ctr.on_vote_verified(
+            mk_human_sbt(1),
+            prop_id,
+            vec![candidate(3), candidate(2)],
+            alice(),
+        ) {
+            Ok(_) => (),
+            x => panic!("expected OK, got: {:?}", x),
+        };
+        assert!(!ctr.is_voting_completed(alice()));
+
+        // third vote (voting not yet completed)
+        prop_id = prop3;
+        match ctr.on_vote_verified(
+            mk_human_sbt(1),
+            prop_id,
+            vec![candidate(3), candidate(2)],
+            alice(),
+        ) {
+            Ok(_) => (),
+            x => panic!("expected OK, got: {:?}", x),
+        };
+        assert!(!ctr.is_voting_completed(alice()));
+
+        // fourth vote (voting completed)
+        prop_id = prop4;
+        match ctr.on_vote_verified(
+            mk_human_sbt(1),
+            prop_id,
+            vec![candidate(3), candidate(2)],
+            alice(),
+        ) {
+            Ok(_) => (),
+            x => panic!("expected OK, got: {:?}", x),
+        };
+        assert!(ctr.is_voting_completed(alice()));
     }
 }
