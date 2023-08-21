@@ -4,6 +4,7 @@ use events::emit_vote;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, LookupSet};
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise};
+use near_sdk::json_types::U128;
 
 mod constants;
 mod errors;
@@ -26,6 +27,8 @@ pub struct Contract {
     pub prop_counter: u32,
     pub proposals: LookupMap<u32, Proposal>,
     pub accepted_policy: LookupMap<AccountId, [u8; 32]>,
+    pub bonded: LookupMap<AccountId, u128>,
+    pub total_slashed: u128,
 
     /// address which can pause the contract and make a new proposal. Should be a multisig / DAO;
     pub authority: AccountId,
@@ -42,6 +45,8 @@ impl Contract {
             sbt_registry,
             proposals: LookupMap::new(StorageKey::Proposals),
             accepted_policy: LookupMap::new(StorageKey::AcceptedPolicy),
+            bonded: LookupMap::new(StorageKey::Bonded),
+            total_slashed: 0,
             prop_counter: 0,
         }
     }
@@ -122,18 +127,30 @@ impl Contract {
 
     /// Transaction to record the predecessor account accepting the Fair Voting Policy.
     /// * `policy` is a blake2s-256 hex-encoded hash (must be 64 bytes) of the Fair Voting Policy text.
+    /// User is required to pay bond amount in this step
     #[payable]
-    pub fn accept_fair_voting_policy(&mut self, policy: String) {
-        require!(
-            env::attached_deposit() >= ACCEPT_POLICY_COST,
-            format!(
-                "requires {} yocto deposit for storage fees",
-                ACCEPT_POLICY_COST
+    pub fn accept_fair_voting_policy(&mut self, policy: String) -> Promise {
+        // call SBT registry to check for graylist
+        ext_sbtreg::ext(self.sbt_registry.clone())
+            .is_human(env::predecessor_account_id()) // update to graylist check
+            .then(
+                ext_self::ext(env::current_account_id())
+                    .with_static_gas(VOTE_GAS_CALLBACK)
+                    .on_gray_list_result(env::predecessor_account_id(), policy, U128(env::attached_deposit())),
             )
-        );
-        let policy = assert_hash_hex_string(&policy);
-        self.accepted_policy
-            .insert(&env::predecessor_account_id(), &policy);
+        
+        // require!(
+        //     env::attached_deposit() >= ACCEPT_POLICY_COST + bond_amount,
+        //     format!(
+        //         "requires {} yocto deposit for bond amount and storage fees",
+        //         ACCEPT_POLICY_COST + bond_amount
+        //     )
+        // );
+        // let policy = assert_hash_hex_string(&policy);
+        // self.accepted_policy
+        //     .insert(&env::predecessor_account_id(), &policy);
+
+        // self.bonded.insert(&env::predecessor_account_id());
     }
 
     /// Election vote using a seat-selection mechanism.
@@ -143,6 +160,7 @@ impl Contract {
         let user = env::predecessor_account_id();
         let p = self._proposal(prop_id);
         p.assert_active();
+        self.assert_bonded();
         if p.typ == ProposalType::SetupPackage {
             require!(vote.is_empty(), "setup_package vote must be an empty list");
         }
@@ -179,6 +197,7 @@ impl Contract {
     pub fn revoke_vote(&mut self, prop_id: u32, token_id: TokenId) -> Result<(), VoteError> {
         // check if the caller is the authority allowed to revoke votes
         self.assert_admin();
+        self.slash_bond();
         let mut p = self._proposal(prop_id);
         p.revoke_votes(token_id)?;
         self.proposals.insert(&prop_id, &p);
@@ -212,9 +231,56 @@ impl Contract {
         Ok(())
     }
 
+    #[private]
+    #[handle_result]
+    pub fn on_gray_list_result(
+        &mut self,
+        #[callback_unwrap] is_gray: bool,
+        sender: AccountId,
+        policy: String,
+        deposit_amount: U128
+    ) -> Result<(), bool> {
+        let bond_amount;
+        if is_gray {
+            bond_amount = GRAY_BOND_AMOUNT;
+        } else {
+            bond_amount = BOND_AMOUNT;
+        }
+
+        if deposit_amount < U128(ACCEPT_POLICY_COST + bond_amount) {
+            return Err(false)
+        }
+
+        // require!(
+        //     deposit_amount >= U128(ACCEPT_POLICY_COST + bond_amount),
+        //     format!(
+        //         "requires {} yocto deposit for bond amount and storage fees",
+        //         ACCEPT_POLICY_COST + bond_amount
+        //     )
+        // );
+        let policy = assert_hash_hex_string(&policy);
+        self.accepted_policy
+            .insert(&env::predecessor_account_id(), &policy);
+
+        self.bonded.insert(&sender, &bond_amount);
+
+        Ok(())
+    }
+
+    /// USe sbts from registry to check if someone has voted, if they have voted and are not slashed, 
+    /// mint I_VOTED
+
     /*****************
      * INTERNAL
      ****************/
+
+    pub fn slash_bond(&mut self) {
+        let bond_amount = self.bonded.get(&env::predecessor_account_id()).expect("Bond doesn't exist");
+        self.total_slashed += bond_amount;
+
+        // Get account from token id
+        self.bonded.remove(&env::predecessor_account_id());
+    }
 
     #[inline]
     fn assert_admin(&self) {
@@ -222,6 +288,11 @@ impl Contract {
             self.authority == env::predecessor_account_id(),
             "not an admin"
         );
+    }
+
+    #[inline]
+    fn assert_bonded(&self) {
+        self.bonded.get(&env::predecessor_account_id()).expect("voter has not deposited bond amount");
     }
 }
 
@@ -688,20 +759,6 @@ mod unit_tests {
         testing_env!(ctx);
 
         ctr.vote(prop_id, vec![candidate(1)]);
-    }
-
-    #[test]
-    fn accepted_policy_query() {
-        let (mut ctx, mut ctr) = setup(&admin());
-
-        let mut res = ctr.accepted_policy(admin());
-        assert!(res.is_none());
-        ctx.attached_deposit = ACCEPT_POLICY_COST;
-        testing_env!(ctx.clone());
-        ctr.accept_fair_voting_policy(policy1());
-        res = ctr.accepted_policy(admin());
-        assert!(res.is_some());
-        assert_eq!(res.unwrap(), policy1());
     }
 
     #[test]
