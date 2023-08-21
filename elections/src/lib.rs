@@ -69,6 +69,7 @@ impl Contract {
         seats: u16,
         #[allow(unused_mut)] mut candidates: Vec<AccountId>,
         policy: String,
+        min_candidate_support: u32,
     ) -> u32 {
         self.assert_admin();
         let min_start = env::block_timestamp_ms();
@@ -114,6 +115,7 @@ impl Contract {
             voters_num: 0,
             voters_candidates: LookupMap::new(StorageKey::VotersCandidates(self.prop_counter)),
             policy,
+            min_candidate_support,
         };
 
         self.proposals.insert(&self.prop_counter, &p);
@@ -283,6 +285,7 @@ mod unit_tests {
             2,
             vec![candidate(1), candidate(2), candidate(3)],
             policy1(),
+            2,
         )
     }
 
@@ -297,6 +300,7 @@ mod unit_tests {
             0,
             vec![],
             policy1(),
+            2,
         )
     }
 
@@ -364,6 +368,7 @@ mod unit_tests {
             2,
             vec![candidate(1)],
             policy1(),
+            2,
         );
     }
 
@@ -382,6 +387,7 @@ mod unit_tests {
             2,
             vec![candidate(1)],
             policy1(),
+            2,
         );
     }
 
@@ -400,6 +406,7 @@ mod unit_tests {
             2,
             vec![candidate(1)],
             policy1(),
+            2,
         );
     }
 
@@ -418,6 +425,7 @@ mod unit_tests {
             2,
             vec![candidate(1), candidate(1)],
             policy1(),
+            2,
         );
     }
 
@@ -436,6 +444,7 @@ mod unit_tests {
             0,
             vec![],
             policy1(),
+            2,
         );
         assert_eq!(n, 1);
 
@@ -450,6 +459,7 @@ mod unit_tests {
             2,
             vec![candidate(1)],
             policy1(),
+            2,
         );
     }
 

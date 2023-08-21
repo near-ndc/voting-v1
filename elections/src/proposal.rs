@@ -22,10 +22,11 @@ pub enum ProposalType {
 #[serde(crate = "near_sdk::serde")]
 #[cfg_attr(test, derive(Debug, PartialEq))]
 pub enum ProposalStatus {
+    #[allow(non_camel_case_types)]
     NOT_STARTED,
     ONGOING,
     COOLDOWN,
-    ENDED
+    ENDED,
 }
 
 #[derive(BorshDeserialize, BorshSerialize)]
@@ -56,6 +57,8 @@ pub struct Proposal {
     pub voters_candidates: LookupMap<TokenId, Vec<usize>>,
     /// blake2s-256 hash of the Fair Voting Policy text.
     pub policy: [u8; 32],
+    /// min amount of votes for a candidate to be considered a "winner".
+    pub min_candidate_support: u32,
 }
 
 #[derive(Serialize)]
@@ -258,6 +261,7 @@ mod unit_tests {
             voters_num: 10,
             voters_candidates: LookupMap::new(StorageKey::VotersCandidates(1)),
             policy: policy1(),
+            min_candidate_support: 2,
         };
         assert_eq!(
             ProposalView {
@@ -299,6 +303,7 @@ mod unit_tests {
             voters_num: 3,
             voters_candidates: LookupMap::new(StorageKey::VotersCandidates(1)),
             policy: policy1(),
+            min_candidate_support: 2,
         };
         p.voters.insert(&1);
         p.voters.insert(&2);
@@ -340,6 +345,7 @@ mod unit_tests {
             voters_num: 1,
             voters_candidates: LookupMap::new(StorageKey::VotersCandidates(1)),
             policy: policy1(),
+            min_candidate_support: 2,
         };
         p.voters.insert(&1);
         p.voters_candidates.insert(&1, &vec![0, 1]);
@@ -371,6 +377,7 @@ mod unit_tests {
             voters_num: 1,
             voters_candidates: LookupMap::new(StorageKey::VotersCandidates(1)),
             policy: policy1(),
+            min_candidate_support: 2,
         };
         p.voters.insert(&1);
         p.voters_candidates.insert(&1, &vec![0, 1]);
