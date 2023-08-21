@@ -29,7 +29,7 @@ impl FunctionError for VoteError {
 }
 
 /// Contract errors
-#[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq))]
+#[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq, Debug))]
 pub enum RevokeVoteError {
     NotActive,
     NotVoted,

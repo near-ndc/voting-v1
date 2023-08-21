@@ -285,7 +285,6 @@ mod unit_tests {
             2,
             2,
             vec![candidate(1), candidate(2), candidate(3)],
-            policy1(),
             2,
         )
     }
@@ -300,7 +299,6 @@ mod unit_tests {
             2,
             0,
             vec![],
-            policy1(),
             2,
         )
     }
@@ -336,7 +334,7 @@ mod unit_tests {
             .is_view(false)
             .build();
         testing_env!(ctx.clone());
-        let ctr = Contract::new(admin(), sbt_registry());
+        let ctr = Contract::new(admin(), sbt_registry(), policy1());
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
         (ctx, ctr)
@@ -368,7 +366,6 @@ mod unit_tests {
             2,
             2,
             vec![candidate(1)],
-            policy1(),
             2,
         );
     }
@@ -387,7 +384,6 @@ mod unit_tests {
             2,
             2,
             vec![candidate(1)],
-            policy1(),
             2,
         );
     }
@@ -406,7 +402,6 @@ mod unit_tests {
             2,
             2,
             vec![candidate(1)],
-            policy1(),
             2,
         );
     }
@@ -425,7 +420,6 @@ mod unit_tests {
             2,
             2,
             vec![candidate(1), candidate(1)],
-            policy1(),
             2,
         );
     }
@@ -444,7 +438,6 @@ mod unit_tests {
             2,
             0,
             vec![],
-            policy1(),
             2,
         );
         assert_eq!(n, 1);
@@ -459,7 +452,6 @@ mod unit_tests {
             2,
             2,
             vec![candidate(1)],
-            policy1(),
             2,
         );
     }
@@ -511,7 +503,7 @@ mod unit_tests {
             x => panic!("expected OK, got: {:?}", x),
         };
         let p = ctr._proposal(prop_id);
-        assert!(p.voters.contains(&1));
+        assert!(p.voters.contains_key(&1));
         assert_eq!(p.voters_num, 1, "voters num should increment");
         assert_eq!(p.result, vec![1, 0, 0], "vote should be counted");
 
@@ -524,7 +516,7 @@ mod unit_tests {
         assert_eq!(p.result, vec![1, 0, 0], "vote result should not change");
 
         //set sbt=4 and attempt double vote
-        ctr._proposal(prop_id).voters.insert(&4);
+        ctr._proposal(prop_id).voters.insert(&4, &vec![1]);
         match ctr.on_vote_verified(mk_human_sbt(4), prop_id, vote.clone()) {
             Err(VoteError::DoubleVote(4)) => (),
             x => panic!("expected DoubleVote(4), got: {:?}", x),
@@ -565,7 +557,7 @@ mod unit_tests {
             x => panic!("expected OK, got: {:?}", x),
         };
         let p = ctr._proposal(prop_id);
-        assert!(p.voters.contains(&20), "token id should be recorded");
+        assert!(p.voters.contains_key(&20), "token id should be recorded");
         assert_eq!(p.voters_num, 2, "voters num should  increment");
         assert_eq!(p.result, vec![1, 0, 1], "vote should be counted");
 
@@ -578,7 +570,7 @@ mod unit_tests {
             x => panic!("expected OK, got: {:?}", x),
         };
         let p = ctr._proposal(prop_id);
-        assert!(p.voters.contains(&22), "token id should be recorded");
+        assert!(p.voters.contains_key(&22), "token id should be recorded");
         assert_eq!(p.voters_num, 3, "voters num should  increment");
         assert_eq!(p.result, vec![1, 1, 2], "vote should be counted");
 
@@ -588,7 +580,7 @@ mod unit_tests {
             x => panic!("expected OK, got: {:?}", x),
         };
         let p = ctr._proposal(prop_sp);
-        assert!(p.voters.contains(&22), "token id should be recorded");
+        assert!(p.voters.contains_key(&22), "token id should be recorded");
         assert_eq!(p.voters_num, 1, "voters num should  increment");
         assert!(p.result.is_empty(), "vote should be counted");
     }
@@ -824,7 +816,7 @@ mod unit_tests {
         ctx.block_timestamp = (START + 100) * MSECOND;
         testing_env!(ctx);
         match ctr.revoke_vote(prop_id, 1) {
-            Err(VoteError::NotVoted) => (),
+            Err(RevokeVoteError::NotVoted) => (),
             x => panic!("expected NotVoted, got: {:?}", x),
         }
         assert!(test_utils::get_logs().len() == 0);

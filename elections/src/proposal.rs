@@ -243,10 +243,8 @@ mod unit_tests {
             seats: 2,
             candidates: vec![mk_account(2), mk_account(1), mk_account(3), mk_account(4)],
             result: vec![10000, 5, 321, 121],
-            voters: LookupSet::new(StorageKey::ProposalVoters(1)),
+            voters: LookupMap::new(StorageKey::ProposalVoters(1)),
             voters_num: 10,
-            voters_candidates: LookupMap::new(StorageKey::VotersCandidates(1)),
-            policy: policy1(),
             min_candidate_support: 2,
         };
         assert_eq!(
@@ -266,8 +264,6 @@ mod unit_tests {
                     (mk_account(3), 321),
                     (mk_account(4), 121)
                 ],
-                policy: "f1c09f8686fe7d0d798517111a66675da0012d8ad1693a47e0e2a7d3ae1c69d4"
-                    .to_owned()
             },
             p.to_view(12)
         )
@@ -285,18 +281,13 @@ mod unit_tests {
             seats: 2,
             candidates: vec![mk_account(1), mk_account(2)],
             result: vec![3, 1],
-            voters: LookupSet::new(StorageKey::ProposalVoters(1)),
+            voters: LookupMap::new(StorageKey::ProposalVoters(1)),
             voters_num: 3,
-            voters_candidates: LookupMap::new(StorageKey::VotersCandidates(1)),
-            policy: policy1(),
             min_candidate_support: 2,
         };
-        p.voters.insert(&1);
-        p.voters.insert(&2);
-        p.voters.insert(&3);
-        p.voters_candidates.insert(&1, &vec![0, 1]);
-        p.voters_candidates.insert(&2, &vec![0]);
-        p.voters_candidates.insert(&3, &vec![0]);
+        p.voters.insert(&1, &vec![0, 1]);
+        p.voters.insert(&2, &vec![0]);
+        p.voters.insert(&3, &vec![0]);
 
         match p.revoke_votes(1) {
             Ok(_) => (),
@@ -327,14 +318,11 @@ mod unit_tests {
             seats: 2,
             candidates: vec![mk_account(1), mk_account(2)],
             result: vec![1, 1],
-            voters: LookupSet::new(StorageKey::ProposalVoters(1)),
+            voters: LookupMap::new(StorageKey::ProposalVoters(1)),
             voters_num: 1,
-            voters_candidates: LookupMap::new(StorageKey::VotersCandidates(1)),
-            policy: policy1(),
             min_candidate_support: 2,
         };
-        p.voters.insert(&1);
-        p.voters_candidates.insert(&1, &vec![0, 1]);
+        p.voters.insert(&1, &vec![0, 1]);
 
         match p.revoke_votes(1) {
             Ok(_) => (),
@@ -342,7 +330,7 @@ mod unit_tests {
         }
         assert_eq!(p.result, vec![0, 0]);
         match p.revoke_votes(1) {
-            Err(VoteError::DoubleRevoke) => (),
+            Err(RevokeVoteError::DoubleRevoke) => (),
             x => panic!("expected DoubleRevoke, got: {:?}", x),
         }
     }
@@ -359,17 +347,14 @@ mod unit_tests {
             seats: 2,
             candidates: vec![mk_account(1), mk_account(2)],
             result: vec![1, 1],
-            voters: LookupSet::new(StorageKey::ProposalVoters(1)),
+            voters: LookupMap::new(StorageKey::ProposalVoters(1)),
             voters_num: 1,
-            voters_candidates: LookupMap::new(StorageKey::VotersCandidates(1)),
-            policy: policy1(),
             min_candidate_support: 2,
         };
-        p.voters.insert(&1);
-        p.voters_candidates.insert(&1, &vec![0, 1]);
+        p.voters.insert(&1, &vec![0, 1]);
 
         match p.revoke_votes(2) {
-            Err(VoteError::NotVoted) => (),
+            Err(RevokeVoteError::NotVoted) => (),
             x => panic!("expected NotVoted, got: {:?}", x),
         }
     }
