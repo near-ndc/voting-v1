@@ -13,6 +13,8 @@
   - `ref_link`: string (can't be empty) - a link to external resource with more details (eg near social post). Max length is 120 characters.
   - `quorum`: minimum amount of legit accounts to vote to legitimize the elections.
   - `seats`: max number of candidates to elect, also max number of credits each user has when casting a vote.
+  - `policy`: fair voting policy that must be accepted before voting on the proposal.
+  - `min_candidate_support`: minimum amount of votes a candidate needs to recive to be considered a winner.
 
 ## Flow
 
@@ -35,7 +37,7 @@ REGISTRY=registry-1.i-am-human.testnet
 # create proposal
 # note: start time, end time and cooldown must be in milliseconds
 
-near call $CTR create_proposal '{"start": 1686221747000, "end": 1686653747000, "cooldown": 604800000  "ref_link": "example.com", "quorum": 10, "candidates": ["candidate1.testnet", "candidate2.testnet", "candidate3.testnet", "candidate4.testnet"], "typ": "HouseOfMerit", "seats": 3, "policy": "f1c09f8686fe7d0d798517111a66675da0012d8ad1693a47e0e2a7d3ae1c69d4"}' --accountId $CTR
+near call $CTR create_proposal '{"start": 1686221747000, "end": 1686653747000, "cooldown": 604800000  "ref_link": "example.com", "quorum": 10, "candidates": ["candidate1.testnet", "candidate2.testnet", "candidate3.testnet", "candidate4.testnet"], "typ": "HouseOfMerit", "seats": 3, "policy": "f1c09f8686fe7d0d798517111a66675da0012d8ad1693a47e0e2a7d3ae1c69d4", "min_candidate_support": 5}' --accountId $CTR
 
 # fetch all proposal
 near view $CTR proposals ''

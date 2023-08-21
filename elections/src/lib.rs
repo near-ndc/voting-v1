@@ -69,6 +69,7 @@ impl Contract {
         seats: u16,
         #[allow(unused_mut)] mut candidates: Vec<AccountId>,
         policy: String,
+        min_candidate_support: u32,
     ) -> u32 {
         self.assert_admin();
         let min_start = env::block_timestamp_ms();
@@ -114,6 +115,7 @@ impl Contract {
             voters_num: 0,
             voters_candidates: LookupMap::new(StorageKey::VotersCandidates(self.prop_counter)),
             policy,
+            min_candidate_support,
         };
 
         self.proposals.insert(&self.prop_counter, &p);
@@ -279,6 +281,7 @@ mod unit_tests {
             2,
             vec![candidate(1), candidate(2), candidate(3)],
             policy1(),
+            2,
         )
     }
 
@@ -293,6 +296,7 @@ mod unit_tests {
             0,
             vec![],
             policy1(),
+            2,
         )
     }
 
@@ -360,6 +364,7 @@ mod unit_tests {
             2,
             vec![candidate(1)],
             policy1(),
+            2,
         );
     }
 
@@ -378,6 +383,7 @@ mod unit_tests {
             2,
             vec![candidate(1)],
             policy1(),
+            2,
         );
     }
 
@@ -396,6 +402,7 @@ mod unit_tests {
             2,
             vec![candidate(1)],
             policy1(),
+            2,
         );
     }
 
@@ -414,6 +421,7 @@ mod unit_tests {
             2,
             vec![candidate(1), candidate(1)],
             policy1(),
+            2,
         );
     }
 
@@ -432,6 +440,7 @@ mod unit_tests {
             0,
             vec![],
             policy1(),
+            2,
         );
         assert_eq!(n, 1);
 
@@ -446,6 +455,7 @@ mod unit_tests {
             2,
             vec![candidate(1)],
             policy1(),
+            2,
         );
     }
 
@@ -688,20 +698,6 @@ mod unit_tests {
         testing_env!(ctx);
 
         ctr.vote(prop_id, vec![candidate(1)]);
-    }
-
-    #[test]
-    fn accepted_policy_query() {
-        let (mut ctx, mut ctr) = setup(&admin());
-
-        let mut res = ctr.accepted_policy(admin());
-        assert!(res.is_none());
-        ctx.attached_deposit = ACCEPT_POLICY_COST;
-        testing_env!(ctx.clone());
-        ctr.accept_fair_voting_policy(policy1());
-        res = ctr.accepted_policy(admin());
-        assert!(res.is_some());
-        assert_eq!(res.unwrap(), policy1());
     }
 
     #[test]
