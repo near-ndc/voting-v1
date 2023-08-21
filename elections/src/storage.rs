@@ -6,6 +6,5 @@ use near_sdk::BorshStorageKey;
 pub enum StorageKey {
     Proposals,
     ProposalVoters(u32),
-    VotersCandidates(u32),
     AcceptedPolicy,
 }
