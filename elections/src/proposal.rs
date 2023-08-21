@@ -18,6 +18,16 @@ pub enum ProposalType {
     SetupPackage,
 }
 
+#[derive(Serialize)]
+#[serde(crate = "near_sdk::serde")]
+#[cfg_attr(test, derive(Debug, PartialEq))]
+pub enum ProposalStatus {
+    NOT_STARTED,
+    ONGOING,
+    COOLDOWN,
+    ENDED
+}
+
 #[derive(BorshDeserialize, BorshSerialize)]
 #[cfg_attr(test, derive(Debug))]
 pub struct Proposal {
@@ -156,6 +166,20 @@ impl Proposal {
         self.voters_num -= 1;
         self.voters_candidates.remove(&token_id);
         Ok(())
+    }
+
+    /// returns proposal status
+    /// now: time in miliseconds
+    pub fn status(&self, now: u64) -> ProposalStatus {
+        if now < self.start {
+            return ProposalStatus::NOT_STARTED;
+        } else if now <= self.end {
+            return ProposalStatus::ONGOING;
+        } else if now <= self.cooldown + self.end {
+            return ProposalStatus::COOLDOWN;
+        } else {
+            return ProposalStatus::ENDED;
+        }
     }
 }
 

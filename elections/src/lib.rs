@@ -691,6 +691,47 @@ mod unit_tests {
     }
 
     #[test]
+    fn accepted_policy_query() {
+        let (mut ctx, mut ctr) = setup(&admin());
+
+        let mut res = ctr.accepted_policy(admin());
+        assert!(res.is_none());
+        ctx.attached_deposit = ACCEPT_POLICY_COST;
+        testing_env!(ctx.clone());
+        ctr.accept_fair_voting_policy(policy1());
+        res = ctr.accepted_policy(admin());
+        assert!(res.is_some());
+        assert_eq!(res.unwrap(), policy1());
+    }
+
+    #[test]
+    fn proposal_status_query() {
+        let (mut ctx, mut ctr) = setup(&admin());
+
+        let prop_id = mk_proposal(&mut ctr);
+        let mut res = ctr.proposal_status(prop_id);
+        assert_eq!(res, Some(ProposalStatus::NOT_STARTED));
+
+        ctx.block_timestamp = (START + 2) * MSECOND;
+        testing_env!(ctx.clone());
+
+        res = ctr.proposal_status(prop_id);
+        assert_eq!(res, Some(ProposalStatus::ONGOING));
+
+        ctx.block_timestamp = (START + 11) * MSECOND;
+        testing_env!(ctx.clone());
+
+        res = ctr.proposal_status(prop_id);
+        assert_eq!(res, Some(ProposalStatus::COOLDOWN));
+
+        ctx.block_timestamp = (START + 111) * MSECOND;
+        testing_env!(ctx.clone());
+
+        res = ctr.proposal_status(prop_id);
+        assert_eq!(res, Some(ProposalStatus::ENDED));
+    }
+
+    #[test]
     #[should_panic(expected = "double vote for the same candidate")]
     fn vote_double_vote_same_candidate() {
         let (mut ctx, mut ctr) = setup(&admin());
