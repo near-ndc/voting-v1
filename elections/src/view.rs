@@ -1,4 +1,4 @@
-use near_sdk::{near_bindgen, AccountId, env};
+use near_sdk::{env, near_bindgen, AccountId};
 use uint::hex;
 
 use crate::proposal::*;
@@ -26,6 +26,12 @@ impl Contract {
         self._proposal(prop_id).to_view(prop_id)
     }
 
+    /// Returns the proposal status
+    pub fn proposal_status(&self, prop_id: u32) -> Option<ProposalStatus> {
+        let now = env::block_timestamp_ms();
+        return self.proposals.get(&prop_id).map(|p| p.status(now));
+    }
+
     /// Returns the policy if user has accepted it otherwise returns None
     pub fn accepted_policy(&self, user: AccountId) -> Option<String> {
         self.accepted_policy
@@ -33,9 +39,7 @@ impl Contract {
             .map(|policy| hex::encode(policy))
     }
 
-    /// Returns the proposal status
-    pub fn proposal_status(&self, prop_id: u32) -> Option<ProposalStatus> {
-        let now = env::block_timestamp_ms();
-        return self.proposals.get(&prop_id).map(|p| p.status(now))
+    pub fn policy(&self) -> String {
+        hex::encode(self.policy)
     }
 }

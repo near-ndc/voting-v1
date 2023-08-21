@@ -27,11 +27,31 @@ impl FunctionError for VoteError {
             VoteError::DoubleVote(sbt) => {
                 panic_str(&format!("user already voted with sbt={}", sbt))
             }
-            VoteError::RevokeNotActive => panic_str(
-                "can only revoke votes between proposal start and (end time + cooldown)"
-            ),
+            VoteError::RevokeNotActive => {
+                panic_str("can only revoke votes between proposal start and (end time + cooldown)")
+            }
             VoteError::NotVoted => panic_str("voter did not vote on this proposal"),
             VoteError::DoubleRevoke => panic_str("vote already revoked"),
+        }
+    }
+}
+
+/// Contract errors
+#[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq))]
+pub enum RevokeVoteError {
+    NotActive,
+    NotVoted,
+    DoubleRevoke,
+}
+
+impl FunctionError for RevokeVoteError {
+    fn panic(&self) -> ! {
+        match self {
+            RevokeVoteError::NotActive => {
+                panic_str("can only revoke votes between proposal start and (end time + cooldown)")
+            }
+            RevokeVoteError::NotVoted => panic_str("voter did not vote on this proposal"),
+            RevokeVoteError::DoubleRevoke => panic_str("vote already revoked"),
         }
     }
 }

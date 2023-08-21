@@ -1,5 +1,5 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::{LookupMap, LookupSet};
+use near_sdk::collections::LookupMap;
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{env, require, AccountId};
 use std::collections::HashSet;
@@ -50,13 +50,9 @@ pub struct Proposal {
     /// running result (ongoing sum of votes per candidate), in the same order as `candidates`.
     /// result[i] = sum of votes for candidates[i]
     pub result: Vec<u64>,
-    /// set of tokenIDs, which were used for voting, as a proof of personhood
-    pub voters: LookupSet<TokenId>,
-    pub voters_num: u32,
     /// map of voter SBT -> candidates they voted for (token IDs used for voting -> candidates index)
-    pub voters_candidates: LookupMap<TokenId, Vec<usize>>,
-    /// blake2s-256 hash of the Fair Voting Policy text.
-    pub policy: [u8; 32],
+    pub voters: LookupMap<TokenId, Vec<usize>>,
+    pub voters_num: u32,
     /// min amount of votes for a candidate to be considered a "winner".
     pub min_candidate_support: u32,
 }
@@ -82,8 +78,6 @@ pub struct ProposalView {
     pub seats: u16,
     /// list of candidates with sum of votes.
     pub result: Vec<(AccountId, u64)>,
-    /// blake2s-256 hex-encoded hash of the Fair Voting Policy text.
-    pub policy: String,
 }
 
 impl Proposal {
@@ -105,7 +99,6 @@ impl Proposal {
             voters_num: self.voters_num,
             seats: self.seats,
             result,
-            policy: hex::encode(self.policy),
         }
     }
 
@@ -117,16 +110,9 @@ impl Proposal {
         )
     }
 
-    pub fn is_active_cooldown(&self) -> bool {
+    pub fn is_active_or_cooldown(&self) -> bool {
         let now = env::block_timestamp_ms();
         if self.start <= now && now <= (self.end + self.cooldown) {
-            return true;
-        }
-        false
-    }
-
-    pub fn is_used_token(&self, token_id: TokenId) -> bool {
-        if self.voters.contains(&token_id) {
             return true;
         }
         false
@@ -135,11 +121,6 @@ impl Proposal {
     /// once vote proof has been verified, we call this function to register a vote.
     pub fn vote_on_verified(&mut self, sbts: &Vec<TokenId>, vote: Vote) -> Result<(), VoteError> {
         self.assert_active();
-        for t in sbts {
-            if !self.voters.insert(t) {
-                return Err(VoteError::DoubleVote(*t));
-            }
-        }
         let mut indexes = Vec::new();
         self.voters_num += 1;
         for candidate in vote {
@@ -148,26 +129,27 @@ impl Proposal {
             indexes.push(idx);
         }
         // TODO: this logic needs to be updated once we use more tokens per user to vote
-        self.voters_candidates.insert(&sbts[0], &indexes);
+        // now we require that sbts length is 1 (it's checked in the contract.on_vote_verified)
+        for t in sbts {
+            if self.voters.insert(t, &indexes).is_some() {
+                return Err(VoteError::DoubleVote(*t));
+            }
+        }
         Ok(())
     }
 
     pub fn revoke_votes(&mut self, token_id: TokenId) -> Result<(), VoteError> {
-        if !self.is_active_cooldown() {
+        if !self.is_active_or_cooldown() {
             return Err(VoteError::RevokeNotActive);
         }
-        if !self.is_used_token(token_id) {
+        if !self.voters.contains_key(&token_id) {
             return Err(VoteError::NotVoted);
         }
-        for candidate in self
-            .voters_candidates
-            .get(&token_id)
-            .ok_or(VoteError::DoubleRevoke)?
-        {
+        for candidate in self.voters.get(&token_id).ok_or(VoteError::DoubleRevoke)? {
             self.result[candidate] -= 1;
         }
         self.voters_num -= 1;
-        self.voters_candidates.remove(&token_id);
+        self.voters.remove(&token_id);
         Ok(())
     }
 
