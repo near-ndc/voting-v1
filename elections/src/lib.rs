@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use events::emit_vote;
+use events::{emit_revoke_vote, emit_vote};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, LookupSet};
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise};
@@ -184,6 +184,7 @@ impl Contract {
         let mut p = self._proposal(prop_id);
         p.revoke_votes(token_id)?;
         self.proposals.insert(&prop_id, &p);
+        emit_revoke_vote(prop_id);
         Ok(())
     }
 
@@ -229,7 +230,10 @@ impl Contract {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod unit_tests {
-    use near_sdk::{test_utils::VMContextBuilder, testing_env, Gas, VMContext};
+    use near_sdk::{
+        test_utils::{self, VMContextBuilder},
+        testing_env, Gas, VMContext,
+    };
 
     use crate::*;
 
@@ -822,6 +826,7 @@ mod unit_tests {
             Err(VoteError::NotVoted) => (),
             x => panic!("expected NotVoted, got: {:?}", x),
         }
+        assert!(test_utils::get_logs().len() == 0);
     }
 
     #[test]
@@ -832,5 +837,37 @@ mod unit_tests {
         match ctr.revoke_vote(prop_id, 1) {
             x => panic!("{:?}", x),
         }
+    }
+
+    #[test]
+    fn revoke_vote() {
+        let (mut ctx, mut ctr) = setup(&admin());
+
+        let prop_id = mk_proposal(&mut ctr);
+        let vote = vec![candidate(1)];
+        ctx.block_timestamp = (START + 2) * MSECOND;
+        testing_env!(ctx.clone());
+
+        // successful vote
+        match ctr.on_vote_verified(mk_human_sbt(1), prop_id, vote.clone()) {
+            Ok(_) => (),
+            x => panic!("expected OK, got: {:?}", x),
+        };
+        let p = ctr._proposal(1);
+        assert_eq!(p.voters_num, 1);
+        assert_eq!(p.result, vec![1, 0, 0]);
+
+        // revoke vote
+        match ctr.revoke_vote(prop_id, 1) {
+            Ok(_) => (),
+            x => panic!("expected OK, got: {:?}", x),
+        }
+        let p = ctr._proposal(1);
+        assert_eq!(p.voters_num, 0, "vote should be revoked");
+        assert_eq!(p.result, vec![0, 0, 0], "vote should be revoked");
+
+        let expected_event = r#"EVENT_JSON:{"standard":"ndc-elections","version":"1.0.0","event":"revoke_vote","data":{"prop_id":1}}"#;
+        assert!(test_utils::get_logs().len() == 2);
+        assert_eq!(test_utils::get_logs()[1], expected_event);
     }
 }
