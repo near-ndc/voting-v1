@@ -196,8 +196,8 @@ impl Contract {
         &mut self,
         #[callback_unwrap] tokens: HumanSBTs,
         prop_id: u32,
+        voter: AccountId,
         vote: Vote,
-        user: AccountId,
     ) -> Result<(), VoteError> {
         if tokens.is_empty() || tokens[0].1.is_empty() {
             return Err(VoteError::NoSBTs);
@@ -208,7 +208,7 @@ impl Contract {
             return Err(VoteError::WrongIssuer);
         }
         let mut p = self._proposal(prop_id);
-        p.vote_on_verified(&tokens[0].1, vote, user)?;
+        p.vote_on_verified(&tokens[0].1, user, vote)?;
         self.proposals.insert(&prop_id, &p);
         emit_vote(prop_id);
         Ok(())

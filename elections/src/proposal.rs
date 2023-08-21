@@ -55,7 +55,7 @@ pub struct Proposal {
     /// map of voter SBT -> candidates they voted for (token IDs used for voting -> candidates index)
     pub voters_candidates: LookupMap<TokenId, Vec<usize>>,
     /// map of users -> SBT they voted with
-    pub users_sbt: LookupMap<AccountId, TokenId>,
+    pub user_sbt: LookupMap<AccountId, TokenId>,
     /// blake2s-256 hash of the Fair Voting Policy text.
     pub policy: [u8; 32],
 }
@@ -135,15 +135,15 @@ impl Proposal {
     pub fn vote_on_verified(
         &mut self,
         sbts: &Vec<TokenId>,
+        voter: AccountId,
         vote: Vote,
-        user: AccountId,
     ) -> Result<(), VoteError> {
         self.assert_active();
         for t in sbts {
             if !self.voters.insert(t) {
                 return Err(VoteError::DoubleVote(*t));
             }
-            self.users_sbt.insert(&user, t);
+            require!(self.users_sbt.insert(&user, t).is_none(), "user already voted");
         }
         let mut indexes = Vec::new();
         self.voters_num += 1;

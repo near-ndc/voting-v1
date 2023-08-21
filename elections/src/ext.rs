@@ -12,8 +12,8 @@ pub trait ExtSelf {
     fn on_vote_verified(
         &mut self,
         prop_id: u32,
+        voter: AccountId,
         vote: Vote,
-        user: AccountId,
     ) -> Result<(), VoteError>;
 }
 
