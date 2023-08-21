@@ -14,7 +14,7 @@
   - `quorum`: minimum amount of legit accounts to vote to legitimize the elections.
   - `seats`: max number of candidates to elect, also max number of credits each user has when casting a vote.
   - `policy`: fair voting policy that must be accepted before voting on the proposal.
-  - `min_candidate_support`: minimum amount of votes a candidate needs to recive to be considered a winner.
+  - `min_candidate_support`: minimum amount of votes a candidate needs to receive to be considered a winner.
 
 ## Flow
 
