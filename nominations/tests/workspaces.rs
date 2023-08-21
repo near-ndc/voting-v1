@@ -15,25 +15,32 @@ async fn init(
         .dev_deploy(include_bytes!("../../res/ndc_nominations.wasm"))
         .await?;
 
-    let authority_acc = worker.dev_create_account().await?;
+    let admin = worker.dev_create_account().await?;
+    let auth_flagger = worker.dev_create_account().await?;
     let iah_issuer = worker.dev_create_account().await?;
-    let alice_acc = worker.dev_create_account().await?;
-    let bob_acc = worker.dev_create_account().await?;
-    let john_acc = worker.dev_create_account().await?;
-    let elon_acc = worker.dev_create_account().await?;
+    let alice = worker.dev_create_account().await?;
+    let bob = worker.dev_create_account().await?;
+    let john = worker.dev_create_account().await?;
+    let elon = worker.dev_create_account().await?;
 
     // get current block time
     let block_info = worker.view_block().await?;
     let current_timestamp_ms = block_info.timestamp() / MSECOND;
     let end_time = current_timestamp_ms + (60 * SEC_TO_MS);
 
-    let registry_contract =
-        setup_registry(worker, authority_acc.clone(), iah_issuer.clone(), None).await?;
+    let registry_contract = setup_registry(
+        worker,
+        admin.clone(),
+        auth_flagger,
+        iah_issuer.clone(),
+        None,
+    )
+    .await?;
 
     // initialize contracts
     let res  = ndc_nominations_contract
         .call("new")
-        .args_json(json!({"sbt_registry": registry_contract.id(),"og_sbt": (iah_issuer.id(),2), "admins": [authority_acc.id()], "start_time": 0, "end_time": end_time}))
+        .args_json(json!({"sbt_registry": registry_contract.id(),"og_sbt": (iah_issuer.id(),2), "admins": [admin.id()], "start_time": 0, "end_time": end_time}))
         .max_gas()
         .transact()
         .await?;
@@ -94,10 +101,10 @@ async fn init(
     ];
 
     let token_spec = vec![
-        (alice_acc.id(), alice_tokens),
-        (bob_acc.id(), bob_tokens),
-        (john_acc.id(), john_tokens),
-        (elon_acc.id(), elon_tokens),
+        (alice.id(), alice_tokens),
+        (bob.id(), bob_tokens),
+        (john.id(), john_tokens),
+        (elon.id(), elon_tokens),
     ];
 
     let res = iah_issuer
@@ -109,13 +116,7 @@ async fn init(
         .await?;
     assert!(res.is_success());
 
-    Ok((
-        ndc_nominations_contract,
-        alice_acc,
-        bob_acc,
-        john_acc,
-        elon_acc,
-    ))
+    Ok((ndc_nominations_contract, alice, bob, john, elon))
 }
 
 #[tokio::test]

@@ -27,18 +27,13 @@ In NDC v1, Voting Body can't make proposal for budget management. They can only 
 ### General voting rules
 
 - user can only vote for active proposals
-- user can overwrite his vote
+- user can not overwrite his vote
 
 ### Elections
 
 Elections for NDC v1 Houses.
-Candidates can only be submitted by the Voting Committee, following the process approved by the community.
 
-- recast vote: not possible. Each voter can only vote once in each round (proposal).
-- tie break:
-  - only matters if there is a tie at the very tail
-  - options: extend or reduce seats, tie break session - elections only for people at tie.
-  - robert: tie break session with reduced voting period (eg 2 days)
+👉 [**Voting Process**](https://github.com/near-ndc/gov/blob/main/framework-v1/elections-voting.md)
 
 ### Voting Body
 
