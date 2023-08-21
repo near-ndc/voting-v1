@@ -3,7 +3,8 @@ use workspaces::{Account, AccountId, Contract, DevNetwork, Worker};
 
 pub async fn setup_registry(
     worker: &Worker<impl DevNetwork>,
-    authority_acc: Account,
+    authority: Account,
+    auth_flagger: Account,
     iah_issuer: Account,
     issuers: Option<Vec<AccountId>>,
 ) -> anyhow::Result<Contract> {
@@ -12,17 +13,19 @@ pub async fn setup_registry(
         .await?;
 
     let res = registry_contract
-    .call("new")
-    .args_json(json!({"authority": authority_acc.id(),"iah_issuer": iah_issuer.id(), "iah_classes": [1],}))
-    .max_gas()
-    .transact()
-    .await?;
+        .call("new")
+        .args_json(json!({"authority": authority.id(),
+                          "iah_issuer": iah_issuer.id(), "iah_classes": [1],
+                          "authorized_flaggers": vec![auth_flagger.id()] }))
+        .max_gas()
+        .transact()
+        .await?;
     assert!(res.is_success());
 
     // if any issuers passed add them to the registry
     if issuers.is_some() {
         for issuer in issuers.unwrap() {
-            let res = authority_acc
+            let res = authority
                 .call(registry_contract.id(), "admin_add_sbt_issuer")
                 .args_json(json!({ "issuer": issuer }))
                 .max_gas()

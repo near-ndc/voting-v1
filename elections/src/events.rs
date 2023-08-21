@@ -1,4 +1,4 @@
-use near_sdk::{serde::Serialize};
+use near_sdk::serde::Serialize;
 use serde_json::json;
 
 use common::{EventPayload, NearEvent};
