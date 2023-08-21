@@ -142,14 +142,11 @@ impl Proposal {
         if !self.is_active_or_cooldown() {
             return Err(RevokeVoteError::NotActive);
         }
-        if !self.voters.contains_key(&token_id) {
-            return Err(RevokeVoteError::NotVoted);
-        }
-        for candidate in self
+        let vote = self
             .voters
             .get(&token_id)
-            .ok_or(RevokeVoteError::DoubleRevoke)?
-        {
+            .ok_or(RevokeVoteError::NotVoted)?;
+        for candidate in vote {
             self.result[candidate] -= 1;
         }
         self.voters_num -= 1;
@@ -203,17 +200,11 @@ pub fn assert_hash_hex_string(s: &str) -> [u8; 32] {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod unit_tests {
-    use near_sdk::collections::LookupSet;
-
     use super::*;
     use crate::{storage::StorageKey, ProposalType, ProposalView};
 
     fn mk_account(i: u16) -> AccountId {
         AccountId::new_unchecked(format!("acc{}", i))
-    }
-
-    fn policy1() -> [u8; 32] {
-        assert_hash_hex_string("f1c09f8686fe7d0d798517111a66675da0012d8ad1693a47e0e2a7d3ae1c69d4")
     }
 
     #[test]
@@ -330,8 +321,8 @@ mod unit_tests {
         }
         assert_eq!(p.result, vec![0, 0]);
         match p.revoke_votes(1) {
-            Err(RevokeVoteError::DoubleRevoke) => (),
-            x => panic!("expected DoubleRevoke, got: {:?}", x),
+            Err(RevokeVoteError::NotVoted) => (),
+            x => panic!("expected NotVoted, got: {:?}", x),
         }
     }
 

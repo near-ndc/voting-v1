@@ -4,8 +4,7 @@ use near_sdk::FunctionError;
 use crate::TokenId;
 
 /// Contract errors
-#[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq))]
-#[derive(Debug)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq, Debug))]
 pub enum VoteError {
     WrongIssuer,
     NoSBTs,
@@ -33,7 +32,6 @@ impl FunctionError for VoteError {
 pub enum RevokeVoteError {
     NotActive,
     NotVoted,
-    DoubleRevoke,
 }
 
 impl FunctionError for RevokeVoteError {
@@ -42,8 +40,9 @@ impl FunctionError for RevokeVoteError {
             RevokeVoteError::NotActive => {
                 panic_str("can only revoke votes between proposal start and (end time + cooldown)")
             }
-            RevokeVoteError::NotVoted => panic_str("voter did not vote on this proposal"),
-            RevokeVoteError::DoubleRevoke => panic_str("vote already revoked"),
+            RevokeVoteError::NotVoted => panic_str(
+                "voter did not vote on this proposal or the vote has been already revoked",
+            ),
         }
     }
 }
