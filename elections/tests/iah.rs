@@ -20,20 +20,27 @@ async fn init(
     let ndc_elections_contract = worker.dev_deploy(include_bytes!("../../res/elections.wasm"));
     let ndc_elections_contract = ndc_elections_contract.await?;
 
-    let authority_acc = worker.dev_create_account().await?;
+    let admin = worker.dev_create_account().await?;
+    let auth_flagger = worker.dev_create_account().await?;
     let iah_issuer = worker.dev_create_account().await?;
-    let alice_acc = worker.dev_create_account().await?;
-    let bob_acc = worker.dev_create_account().await?;
-    let john_acc = worker.dev_create_account().await?;
+    let alice = worker.dev_create_account().await?;
+    let bob = worker.dev_create_account().await?;
+    let john = worker.dev_create_account().await?;
 
-    let registry_contract =
-        setup_registry(worker, authority_acc.clone(), iah_issuer.clone(), None).await?;
+    let registry_contract = setup_registry(
+        worker,
+        admin.clone(),
+        auth_flagger,
+        iah_issuer.clone(),
+        None,
+    )
+    .await?;
 
     // initialize contracts
     let res1 = ndc_elections_contract
         .call("new")
         .args_json(json!({
-            "authority": authority_acc.id(),
+            "authority": admin.id(),
             "sbt_registry": registry_contract.id(),
         }))
         .max_gas()
@@ -64,8 +71,8 @@ async fn init(
         reference_hash: None,
     };
     let token_spec = vec![
-        (alice_acc.id(), vec![token_metadata]),
-        (john_acc.id(), vec![token_metadata_short_expire_at]),
+        (alice.id(), vec![token_metadata]),
+        (john.id(), vec![token_metadata_short_expire_at]),
     ];
 
     let res1 = iah_issuer
@@ -77,29 +84,29 @@ async fn init(
         .await?;
 
     // create a proposal
-    let res2 = authority_acc
+    let res2 = admin
         .call(ndc_elections_contract.id(), "create_proposal")
         .args_json(json!({
             "typ": ProposalType::HouseOfMerit, "start": start_time,
             "end": u64::MAX, "cooldown": 604800000, "ref_link": "test.io", "quorum": 10,
-            "credits": 5, "seats": 1, "candidates": [john_acc.id(), alice_acc.id()],
+            "credits": 5, "seats": 1, "candidates": [john.id(), alice.id()],
             "policy": policy1(),
         }))
         .max_gas()
         .transact();
 
-    accept_policy(ndc_elections_contract.clone(), alice_acc.clone(), policy1()).await?;
-    accept_policy(ndc_elections_contract.clone(), bob_acc.clone(), policy1()).await?;
-    accept_policy(ndc_elections_contract.clone(), john_acc.clone(), policy1()).await?;
+    accept_policy(ndc_elections_contract.clone(), alice.clone(), policy1()).await?;
+    accept_policy(ndc_elections_contract.clone(), bob.clone(), policy1()).await?;
+    accept_policy(ndc_elections_contract.clone(), john.clone(), policy1()).await?;
 
     assert!(res1.is_success(), "{:?}", res1);
     let proposal_id: u32 = res2.await?.json()?;
 
     Ok((
         ndc_elections_contract.to_owned(),
-        alice_acc,
-        bob_acc,
-        john_acc,
+        alice,
+        bob,
+        john,
         proposal_id,
     ))
 }
