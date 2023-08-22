@@ -394,9 +394,11 @@ impl Contract {
      ****************/
 
     pub fn slash_bond(&mut self, token_id: TokenId) {
-        let bond_amount = self.bonded.get(&token_id).expect("Bond doesn't exist");
-        self.total_slashed += bond_amount;
-        self.bonded.remove(&token_id);
+        let bond_amount = self.bonded.get(&token_id);
+        if let Some(value) = bond_amount {
+            self.total_slashed += value;
+            self.bonded.remove(&token_id);
+        }  
     }
 
     #[inline]
@@ -499,7 +501,7 @@ mod unit_tests {
         ctx.predecessor_account_id = alice();
         ctx.attached_deposit = ACCEPT_POLICY_COST;
         testing_env!(ctx.clone());
-        ctr.accept_fair_voting_policy(policy1());
+        ctr.on_community_verified(Ok(mk_human_sbt(1)), alice(), policy1(), U128(BOND_AMOUNT));
 
         ctx.attached_deposit = VOTE_COST;
         ctx.block_timestamp = (START + 2) * MSECOND;
@@ -671,6 +673,7 @@ mod unit_tests {
         let vote = vec![candidate(1)];
         ctx.block_timestamp = (START + 2) * MSECOND;
         testing_env!(ctx.clone());
+        ctr.on_community_verified(Ok(mk_human_sbt(1)), admin(), policy1(), U128(BOND_AMOUNT));
 
         // check initial state
         let p = ctr._proposal(prop_id);
@@ -696,6 +699,7 @@ mod unit_tests {
         assert_eq!(p.result, vec![1, 0, 0], "vote result should not change");
 
         //set sbt=4 and attempt double vote
+        ctr.on_community_verified(Ok(mk_human_sbt(4)), admin(), policy1(), U128(BOND_AMOUNT));
         ctr._proposal(prop_id).voters.insert(&4, &vec![1]);
         match ctr.on_vote_verified(mk_human_sbt(4), prop_id, vote.clone()) {
             Err(VoteError::DoubleVote(4)) => (),
@@ -711,6 +715,7 @@ mod unit_tests {
         assert_eq!(p.result, vec![1, 0, 0], "vote result should not change");
 
         // wrong issuer
+        ctr.on_community_verified(Ok(mk_human_sbt(3)), admin(), policy1(), U128(BOND_AMOUNT));
         match ctr.on_vote_verified(mk_nohuman_sbt(3), prop_id, vote.clone()) {
             Err(VoteError::WrongIssuer) => (),
             x => panic!("expected WrongIssuer, got: {:?}", x),
@@ -732,6 +737,8 @@ mod unit_tests {
         // alice, tokenID=20: successful vote with single selection
         ctx.predecessor_account_id = alice();
         testing_env!(ctx.clone());
+        ctr.on_community_verified(Ok(mk_human_sbt(20)), alice(), policy1(), U128(BOND_AMOUNT));
+
         match ctr.on_vote_verified(mk_human_sbt(20), prop_id, vec![candidate(3)]) {
             Ok(_) => (),
             x => panic!("expected OK, got: {:?}", x),
@@ -744,6 +751,8 @@ mod unit_tests {
         // bob, tokenID=22: vote with 2 selections
         ctx.predecessor_account_id = bob();
         testing_env!(ctx);
+        ctr.on_community_verified(Ok(mk_human_sbt(22)), bob(), policy1(), U128(BOND_AMOUNT));
+
         // candidates are put in non alphabetical order.
         match ctr.on_vote_verified(mk_human_sbt(22), prop_id, vec![candidate(3), candidate(2)]) {
             Ok(_) => (),
@@ -796,7 +805,8 @@ mod unit_tests {
         assert!(res.is_none());
         ctx.attached_deposit = ACCEPT_POLICY_COST;
         testing_env!(ctx.clone());
-        ctr.accept_fair_voting_policy(policy1());
+        ctr.on_community_verified(Ok(mk_human_sbt(1)), admin(), policy1(), U128(BOND_AMOUNT));
+
         res = ctr.accepted_policy(admin());
         assert!(res.is_some());
         assert_eq!(res.unwrap(), policy1());
@@ -911,7 +921,7 @@ mod unit_tests {
 
         ctx.attached_deposit = ACCEPT_POLICY_COST;
         testing_env!(ctx.clone());
-        ctr.accept_fair_voting_policy(policy1());
+        ctr.on_community_verified(Ok(mk_human_sbt(1)), admin(), policy1(), U128(BOND_AMOUNT));
 
         let prop_id = mk_proposal(&mut ctr);
         ctx.attached_deposit = VOTE_COST;
@@ -1020,6 +1030,7 @@ mod unit_tests {
         let vote = vec![candidate(1)];
         ctx.block_timestamp = (START + 2) * MSECOND;
         testing_env!(ctx.clone());
+        ctr.on_community_verified(Ok(mk_human_sbt(1)), alice(), policy1(), U128(BOND_AMOUNT));
 
         // successful vote
         match ctr.on_vote_verified(mk_human_sbt(1), prop_id, vote.clone()) {
