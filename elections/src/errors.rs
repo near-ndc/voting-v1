@@ -10,7 +10,7 @@ pub enum VoteError {
     NoSBTs,
     DuplicateCandidate,
     DoubleVote(TokenId),
-    NoBond,
+    MinBond(u128, u128),
 }
 
 impl FunctionError for VoteError {
@@ -24,7 +24,7 @@ impl FunctionError for VoteError {
             VoteError::DoubleVote(sbt) => {
                 panic_str(&format!("user already voted with sbt={}", sbt))
             },
-            VoteError::NoBond => panic_str("bond doesn't exist"),
+            VoteError::MinBond(req, amt) => panic_str(&format!("required bond amount={}, Deposited={}", req, amt))
         }
     }
 }

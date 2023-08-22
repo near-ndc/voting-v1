@@ -139,11 +139,11 @@ impl Contract {
         );
         // call SBT registry to check for graylist
         ext_sbtreg::ext(self.sbt_registry.clone())
-            .is_gray(env::predecessor_account_id())
+            .is_community_verified(env::predecessor_account_id())
             .then(
                 ext_self::ext(env::current_account_id())
-                    .with_static_gas(IS_GRAY_RESULT_CALLBACK)
-                    .on_gray_list_result(env::predecessor_account_id(), policy, U128(env::attached_deposit())),
+                    .with_static_gas(ACCEPT_POLICY_GAS_CALLBACK)
+                    .on_community_verified(env::predecessor_account_id(), policy, U128(env::attached_deposit())),
             )
     }
 
@@ -206,117 +206,115 @@ impl Contract {
     #[handle_result]
     pub fn on_vote_verified(
         &mut self,
-        #[callback_unwrap] tokens: HumanSBTs,
+        #[callback_unwrap] tokens: (HumanSBTs, HumanSBTs),
         prop_id: u32,
         vote: Vote,
     ) -> Result<(), VoteError> {
-        if tokens.is_empty() || tokens[0].1.is_empty() {
+        if tokens.1.is_empty() || tokens.1[0].1.is_empty() {
             return Err(VoteError::NoSBTs);
         }
-        if !(tokens.len() == 1 && tokens[0].1.len() == 1) {
+        if !(tokens.1.len() == 1 && tokens.1[0].1.len() == 1) {
             // in current version we support only one proof of personhood issuer: Fractal, so here
             // we simplify by requiring that the result contains tokens only from one issuer.
             return Err(VoteError::WrongIssuer);
         }
-        if !self.bonded.contains_key(&tokens[0].1.get(0).unwrap()) {
-            return Err(VoteError::NoBond);
+
+        let required_bond;
+        if tokens.0.is_empty() {
+            required_bond = GRAY_BOND_AMOUNT;
+        } else {
+            required_bond = BOND_AMOUNT;
         }
+
+        let bond_deposited = self.bonded.get(&tokens.1[0].1.get(0).unwrap()).expect("Bond doesn't exist");
+        if bond_deposited < required_bond {
+            return Err(VoteError::MinBond(required_bond, bond_deposited));
+        }
+
         let mut p = self._proposal(prop_id);
-        p.vote_on_verified(&tokens[0].1, vote)?;
+        p.vote_on_verified(&tokens.1[0].1, vote)?;
         self.proposals.insert(&prop_id, &p);
         emit_vote(prop_id);
         Ok(())
     }
 
     #[private]
-    pub fn on_gray_list_result(
+    pub fn on_community_verified(
         &mut self,
-        #[callback_result] callback_result: Result<bool, PromiseError>,
-        sender: AccountId,
-        policy: String,
-        deposit_amount: U128
-    ) -> Promise {
-
-        let result = callback_result
-            .map_err(|e| format!("IAHRegistry::is_gray() call failure: {e:?}"))
-            .and_then(|is_gray| {
-                let bond_amount;
-                if is_gray {
-                    bond_amount = GRAY_BOND_AMOUNT;
-                } else {
-                    bond_amount = BOND_AMOUNT;
-                }
-
-                if deposit_amount < U128(ACCEPT_POLICY_COST + bond_amount) {
-                    return Err(
-                    format!(
-                        "requires {} yocto deposit for bond amount and storage fees",
-                        ACCEPT_POLICY_COST + bond_amount
-                    ));
-                }
-
-                Ok( ext_sbtreg::ext(self.sbt_registry.clone())
-                    .is_human(sender.clone())
-                    .then(
-                        ext_self::ext(env::current_account_id())
-                            .with_static_gas(ACCEPT_POLICY_GAS_CALLBACK)
-                            .on_gray_verified(sender.clone(), policy, deposit_amount, U128(bond_amount)),
-                ))
-            });
-
-        result.unwrap_or_else(|e| {
-            Promise::new(sender)
-                .transfer(deposit_amount.0)
-                .then(
-                    Self::ext(env::current_account_id())
-                        .with_static_gas(FAILURE_CALLBACK_GAS)
-                        .on_failure(e),
-                )
-        })
-    }
-
-    #[private]
-    pub fn on_gray_verified(
-        &mut self,
-        #[callback_result] callback_result: Result<Vec<(AccountId, Vec<TokenId>)>, PromiseError>,
+        #[callback_result] callback_result: Result<(HumanSBTs, HumanSBTs), PromiseError>,
         sender: AccountId,
         policy: String,
         deposit_amount: U128,
-        bond_amount: U128,
     ) -> PromiseOrValue<TokenId> {
         let attached_deposit = deposit_amount.0;
 
         let result = callback_result
-            .map_err(|e| format!("IAHRegistry::is_human() call failure: {e:?}"))
+            .map_err(|e| format!("IAHRegistry::is_community_verified() call failure: {e:?}"))
             .and_then(|tokens| {
-                if tokens.is_empty() || !(tokens.len() == 1 && tokens[0].1.len() == 1) {
-                    return Err("IAHRegistry::is_human() returns result: Not a human".to_owned());
+                if tokens.1.is_empty() || !(tokens.1.len() == 1 && tokens.1[0].1.len() == 1) {
+                    return Err("IAHRegistry::is_community_verified() returns result: Not a human".to_owned());
                 }
 
-                let token_id = tokens[0].1.get(0).unwrap();
+                let token_id = tokens.1[0].1.get(0).unwrap();
                 let policy = assert_hash_hex_string(&policy);
                 self.accepted_policy
                     .insert(&sender, &policy);
 
-                self.bonded.insert(token_id, &bond_amount.0);
+                self.bonded.insert(token_id, &deposit_amount.0);
 
                 Ok(token_id.clone())
             });
 
         match result {
-        Ok(token) => PromiseOrValue::Value(token),
-        Err(e) => {
-            // Return deposit back to sender if accept policy failure
-            Promise::new(sender)
-                .transfer(attached_deposit)
-                .then(
-                    Self::ext(env::current_account_id())
-                        .with_static_gas(FAILURE_CALLBACK_GAS)
-                        .on_failure(format!("IAHRegistry::is_human(), Accept policy failure: {e:?}")),
-                )
-                .into()
+            Ok(token) => PromiseOrValue::Value(token),
+            Err(e) => {
+                // Return deposit back to sender if accept policy failure
+                Promise::new(sender)
+                    .transfer(attached_deposit)
+                    .then(
+                        Self::ext(env::current_account_id())
+                            .with_static_gas(FAILURE_CALLBACK_GAS)
+                            .on_failure(format!("IAHRegistry::is_community_verified(), Accept policy failure: {e:?}")),
+                    )
+                    .into()
+            }
         }
     }
+
+    #[private]
+    pub fn on_community_verified_bond(
+        &mut self,
+        #[callback_result] callback_result: Result<(HumanSBTs, HumanSBTs), PromiseError>,
+        sender: AccountId,
+        deposit_amount: U128,
+    ) -> PromiseOrValue<TokenId> {
+        let attached_deposit = deposit_amount.0;
+
+        let result = callback_result
+            .map_err(|e| format!("IAHRegistry::is_community_verified() call failure: {e:?}"))
+            .and_then(|tokens| {
+                if tokens.1.is_empty() || !(tokens.1.len() == 1 && tokens.1[0].1.len() == 1) {
+                    return Err("IAHRegistry::is_community_verified() returns result: Not a human".to_owned());
+                }
+                let token_id = tokens.1[0].1.get(0).unwrap();
+                self.bonded.insert(token_id, &deposit_amount.0);
+                Ok(token_id.clone())
+            });
+
+        match result {
+            Ok(token) => PromiseOrValue::Value(token),
+            Err(e) => {
+                // Return deposit back to sender if accept policy failure
+                Promise::new(sender)
+                    .transfer(attached_deposit)
+                    .then(
+                        Self::ext(env::current_account_id())
+                            .with_static_gas(FAILURE_CALLBACK_GAS)
+                            .on_failure(format!("IAHRegistry::is_community_verified(), Accept policy failure: {e:?}")),
+                    )
+                    .into()
+            }
+        }
     }
 
     #[private]
@@ -417,16 +415,17 @@ mod unit_tests {
         )
     }
 
-    fn mk_human_sbt(sbt: TokenId) -> HumanSBTs {
-        vec![(human_issuer(), vec![sbt])]
+    fn mk_human_sbt(sbt: TokenId) -> (HumanSBTs, HumanSBTs) {
+        (vec![(human_issuer(), vec![sbt])], vec![(human_issuer(), vec![sbt])])
     }
 
-    fn mk_human_sbts(sbt: Vec<TokenId>) -> HumanSBTs {
-        vec![(human_issuer(), sbt)]
+    fn mk_human_sbts(sbt: Vec<TokenId>) -> (HumanSBTs, HumanSBTs) {
+        (vec![(human_issuer(), sbt.clone())], vec![(human_issuer(), sbt)])
     }
 
-    fn mk_nohuman_sbt(sbt: TokenId) -> HumanSBTs {
-        vec![(human_issuer(), vec![sbt]), (admin(), vec![sbt])]
+    fn mk_nohuman_sbt(sbt: TokenId) -> (HumanSBTs, HumanSBTs) {
+        (vec![(human_issuer(), vec![sbt]), (admin(), vec![sbt])],
+        vec![(human_issuer(), vec![sbt]), (admin(), vec![sbt])])
     }
 
     fn alice_voting_context(ctx: &mut VMContext, ctr: &mut Contract) {
@@ -649,11 +648,11 @@ mod unit_tests {
             Err(VoteError::WrongIssuer) => (),
             x => panic!("expected WrongIssuer, got: {:?}", x),
         };
-        match ctr.on_vote_verified(vec![], prop_id, vote.clone()) {
+        match ctr.on_vote_verified((vec![], vec![]), prop_id, vote.clone()) {
             Err(VoteError::NoSBTs) => (),
             x => panic!("expected WrongIssuer, got: {:?}", x),
         };
-        match ctr.on_vote_verified(vec![(human_issuer(), vec![])], prop_id, vote) {
+        match ctr.on_vote_verified((vec![(human_issuer(), vec![])], vec![(human_issuer(), vec![])]), prop_id, vote) {
             Err(VoteError::NoSBTs) => (),
             x => panic!("expected NoSBTs, got: {:?}", x),
         };
