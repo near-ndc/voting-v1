@@ -884,13 +884,8 @@ mod unit_tests {
             res,
             vec![(1, Some(vec![2, 1])), (2, None), (3, Some(vec![1]))]
         );
-    }
 
-    #[test]
-    fn user_votes_no_vote() {
-        let (_, ctr) = setup(&admin());
-        let res = ctr.user_votes(alice());
-        assert_eq!(res, vec![]);
+        assert_eq!(ctr.user_votes(bob()), vec![], "bob didn't vote");
     }
 
     #[test]

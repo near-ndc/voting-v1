@@ -40,6 +40,8 @@ impl Contract {
     }
 
     /// Returns all the users votes for all the proposals. If user has not voted yet on any proposal empty vector will be returned.
+    /// NOTE: the response may not be consistent with the registry. If user will do a soul_transfer, then technically votes should be associated
+    /// with other user. Here we return votes from the original account that voted for the given user.
     pub fn user_votes(&self, user: AccountId) -> Vec<(u32, Option<Vec<usize>>)> {
         let mut to_return = Vec::new();
 
