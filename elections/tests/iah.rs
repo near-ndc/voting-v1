@@ -71,8 +71,19 @@ async fn init(
         reference: None,
         reference_hash: None,
     };
+
+     // mint IAH sbt to bob
+     let token_metadata_bob = TokenMetadata {
+        class: 1,
+        issued_at: Some(0),
+        expires_at: Some(expires_at),
+        reference: None,
+        reference_hash: None,
+    };
+
     let token_spec = vec![
         (alice.id(), vec![token_metadata]),
+        (bob.id(), vec![token_metadata_bob]),
         (john.id(), vec![token_metadata_short_expire_at]),
     ];
 
@@ -98,7 +109,7 @@ async fn init(
 
     accept_policy(ndc_elections_contract.clone(), alice.clone(), policy1()).await?;
     accept_policy(ndc_elections_contract.clone(), bob.clone(), policy1()).await?;
-    accept_policy(ndc_elections_contract.clone(), john.clone(), policy1()).await?;
+    //accept_policy(ndc_elections_contract.clone(), john.clone(), policy1()).await?;
 
     assert!(res1.is_success(), "{:?}", res1);
     let proposal_id: u32 = res2.await?.json()?;

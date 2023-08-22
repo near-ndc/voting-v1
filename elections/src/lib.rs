@@ -150,7 +150,7 @@ impl Contract {
             .is_community_verified(env::predecessor_account_id(), true)
             .then(
                 ext_self::ext(env::current_account_id())
-                    .with_static_gas(ACCEPT_POLICY_GAS_CALLBACK)
+                    .with_static_gas(RECORD_BOND_GAS)
                     .on_community_verified(env::predecessor_account_id(), policy, U128(env::attached_deposit())),
             )
     }
@@ -162,7 +162,7 @@ impl Contract {
             .is_community_verified(env::predecessor_account_id(), true)
             .then(
                 ext_self::ext(env::current_account_id())
-                    .with_static_gas(ACCEPT_POLICY_GAS_CALLBACK)
+                    .with_static_gas(RECORD_BOND_GAS)
                     .on_community_verified_bond(env::predecessor_account_id(), U128(env::attached_deposit())),
             )
     }
@@ -174,7 +174,7 @@ impl Contract {
         );
         // call SBT registry to check for graylist
         ext_sbtreg::ext(self.sbt_registry.clone())
-            .is_community_verified(env::predecessor_account_id())
+            .is_community_verified(env::predecessor_account_id(), true)
             .then(
                 ext_self::ext(env::current_account_id())
                     .with_static_gas(UNBOND_GAS_CALLBACK)
@@ -211,7 +211,7 @@ impl Contract {
         validate_vote(&vote, p.seats, &p.candidates);
         // call SBT registry to verify SBT
         ext_sbtreg::ext(self.sbt_registry.clone())
-            .is_human(user)
+            .is_community_verified(user, true)
             .then(
                 ext_self::ext(env::current_account_id())
                     .with_static_gas(VOTE_GAS_CALLBACK)

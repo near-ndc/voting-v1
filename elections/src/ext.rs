@@ -26,7 +26,7 @@ pub trait ExtSelf {
 #[ext_contract(ext_sbtreg)]
 pub trait ExtSbtRegistry {
     fn is_human(&self, account: AccountId) -> HumanSBTs;
-    fn is_community_verified(&self, account: AccountId) -> (HumanSBTs, HumanSBTs);
+    fn is_community_verified(&self, account: AccountId, is_human: bool) -> (HumanSBTs, HumanSBTs);
 }
 
 // TODO: use SBT crate once it is published

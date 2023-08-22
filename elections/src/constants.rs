@@ -11,6 +11,7 @@ pub const VOTE_COST: Balance = MILI_NEAR / 2;
 pub const ACCEPT_POLICY_COST: Balance = MILI_NEAR;
 pub const ACCEPT_POLICY_GAS: Gas = Gas(70 * Gas::ONE_TERA.0);
 pub const RECORD_BOND_GAS: Gas = Gas(6 * Gas::ONE_TERA.0);
+pub const RECORD_BOND_GAS_CALLBACK: Gas = Gas(6 * Gas::ONE_TERA.0);
 
 pub const BOND_AMOUNT: Balance = 3 * ONE_NEAR;
 pub const GRAY_BOND_AMOUNT: Balance = 300 * ONE_NEAR;
@@ -22,7 +23,7 @@ pub const MIN_REF_LINK_LEN: usize = 6;
 pub const MAX_REF_LINK_LEN: usize = 120;
 
 /// Gas reserved for final failure callback which panics if one of the callback fails.
-pub const FAILURE_CALLBACK_GAS: Gas = Gas(5 * Gas::ONE_TERA.0);
+pub const FAILURE_CALLBACK_GAS: Gas = Gas(3 * Gas::ONE_TERA.0);
 
 pub const UNBOND_GAS: Gas = Gas(20 * Gas::ONE_TERA.0);
 pub const UNBOND_GAS_CALLBACK: Gas = Gas(5 * Gas::ONE_TERA.0);
