@@ -9,3 +9,10 @@ pub enum StorageKey {
     AcceptedPolicy,
     UserSBT(u32),
 }
+
+#[derive(PartialEq)]
+pub enum AccountFlag {
+    /// Account is "blacklisted" when it was marked as a scam or breaking the IAH rules.
+    Blacklisted,
+    Verified,
+}

@@ -14,6 +14,7 @@ pub const ACCEPT_POLICY_COST: Balance = MILI_NEAR;
 
 pub const VOTE_GAS: Gas = Gas(70 * Gas::ONE_TERA.0);
 pub const VOTE_GAS_CALLBACK: Gas = Gas(5 * Gas::ONE_TERA.0);
+pub const REVOKE_VOTE_GAS_CALLBACK: Gas = Gas(5 * Gas::ONE_TERA.0);
 
 pub const MIN_REF_LINK_LEN: usize = 6;
 pub const MAX_REF_LINK_LEN: usize = 120;
