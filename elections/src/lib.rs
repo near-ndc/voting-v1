@@ -147,7 +147,7 @@ impl Contract {
         );
         // call SBT registry to check for graylist
         ext_sbtreg::ext(self.sbt_registry.clone())
-            .is_community_verified(env::predecessor_account_id())
+            .is_community_verified(env::predecessor_account_id(), true)
             .then(
                 ext_self::ext(env::current_account_id())
                     .with_static_gas(ACCEPT_POLICY_GAS_CALLBACK)
@@ -159,7 +159,7 @@ impl Contract {
     pub fn deposit_bond_amount(&mut self) -> Promise {
         // call SBT registry to check for graylist
         ext_sbtreg::ext(self.sbt_registry.clone())
-            .is_community_verified(env::predecessor_account_id())
+            .is_community_verified(env::predecessor_account_id(), true)
             .then(
                 ext_self::ext(env::current_account_id())
                     .with_static_gas(ACCEPT_POLICY_GAS_CALLBACK)
