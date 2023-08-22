@@ -1,3 +1,4 @@
+use std::cmp::max;
 use std::collections::HashSet;
 
 use events::{emit_revoke_vote, emit_vote};
@@ -33,6 +34,7 @@ pub struct Contract {
     // we assume that each account has at most one IAH token.
     pub bonded: LookupMap<TokenId, u128>,
     pub total_slashed: u128,
+    pub finish_time: u64,
 
     /// address which can pause the contract and make a new proposal. Should be a multisig / DAO;
     pub authority: AccountId,
@@ -56,6 +58,7 @@ impl Contract {
             total_slashed: 0,
             prop_counter: 0,
             policy: policy,
+            finish_time: 0
         }
     }
 
@@ -125,6 +128,7 @@ impl Contract {
             min_candidate_support,
         };
 
+        self.finish_time = max(self.finish_time, end + cooldown);
         self.proposals.insert(&self.prop_counter, &p);
         self.prop_counter
     }
@@ -171,6 +175,10 @@ impl Contract {
         require!(
             env::prepaid_gas() >= UNBOND_GAS,
             format!("not enough gas, min: {:?}", UNBOND_GAS)
+        );
+        require!(
+            env::block_timestamp_ms() > self.finish_time,
+            format!("Voting hasn't finished yet: {:?}", self.finish_time)
         );
         // call SBT registry to check for graylist
         ext_sbtreg::ext(self.sbt_registry.clone())
