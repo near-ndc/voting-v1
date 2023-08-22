@@ -117,6 +117,7 @@ impl Contract {
             voters: LookupMap::new(StorageKey::ProposalVoters(self.prop_counter)),
             voters_num: 0,
             min_candidate_support,
+            user_sbt: LookupMap::new(StorageKey::UserSBT(self.prop_counter)),
         };
 
         self.proposals.insert(&self.prop_counter, &p);
@@ -523,7 +524,7 @@ mod unit_tests {
 
         //set sbt=4 and attempt double vote
         ctr._proposal(prop_id).voters.insert(&4, &vec![1]);
-        match ctr.on_vote_verified(mk_human_sbt(4), prop_id, vote.clone()) {
+        match ctr.on_vote_verified(mk_human_sbt(4), prop_id, alice(), vote.clone()) {
             Err(VoteError::DoubleVote(4)) => (),
             x => panic!("expected DoubleVote(4), got: {:?}", x),
         };
@@ -667,7 +668,7 @@ mod unit_tests {
 
     #[test]
     #[should_panic(
-        expected = "requires 500000000000000000000 yocto deposit for storage fees for every new vote"
+        expected = "requires 1000000000000000000000 yocto deposit for storage fees for every new vote"
     )]
     fn vote_wrong_deposit() {
         let (mut ctx, mut ctr) = setup(&admin());
@@ -893,69 +894,6 @@ mod unit_tests {
     }
 
     #[test]
-    fn is_voting_completed() {
-        let (mut ctx, mut ctr) = setup(&admin());
-        let prop1 = mk_proposal(&mut ctr);
-        let prop2 = mk_proposal(&mut ctr);
-        let prop3 = mk_proposal(&mut ctr);
-        let prop4 = mk_proposal(&mut ctr);
-        ctx.block_timestamp = (START + 2) * MSECOND;
-        testing_env!(ctx.clone());
-
-        // first vote (voting not yet completed)
-        let mut prop_id = prop1;
-        match ctr.on_vote_verified(
-            mk_human_sbt(1),
-            prop_id,
-            alice(),
-            vec![candidate(3), candidate(2)],
-        ) {
-            Ok(_) => (),
-            x => panic!("expected OK, got: {:?}", x),
-        };
-        assert!(!ctr.is_voting_completed(alice()));
-
-        // second vote (voting not yet completed)
-        prop_id = prop2;
-        match ctr.on_vote_verified(
-            mk_human_sbt(1),
-            prop_id,
-            alice(),
-            vec![candidate(3), candidate(2)],
-        ) {
-            Ok(_) => (),
-            x => panic!("expected OK, got: {:?}", x),
-        };
-        assert!(!ctr.is_voting_completed(alice()));
-
-        // third vote (voting not yet completed)
-        prop_id = prop3;
-        match ctr.on_vote_verified(
-            mk_human_sbt(1),
-            prop_id,
-            alice(),
-            vec![candidate(3), candidate(2)],
-        ) {
-            Ok(_) => (),
-            x => panic!("expected OK, got: {:?}", x),
-        };
-        assert!(!ctr.is_voting_completed(alice()));
-
-        // fourth vote (voting completed)
-        prop_id = prop4;
-        match ctr.on_vote_verified(
-            mk_human_sbt(1),
-            prop_id,
-            alice(),
-            vec![candidate(3), candidate(2)],
-        ) {
-            Ok(_) => (),
-            x => panic!("expected OK, got: {:?}", x),
-        };
-        assert!(ctr.is_voting_completed(alice()));
-    }
-
-    #[test]
     fn user_sbt_map_prefix() {
         let (mut ctx, mut ctr) = setup(&admin());
         let prop_id_1 = mk_proposal(&mut ctr);
@@ -979,7 +917,7 @@ mod unit_tests {
         let p2 = ctr._proposal(prop_id_2);
         assert!(p2.user_sbt.get(&alice()).is_none());
     }
-  
+
     #[test]
     fn revoke_vote() {
         let (mut ctx, mut ctr) = setup(&admin());
@@ -990,7 +928,7 @@ mod unit_tests {
         testing_env!(ctx.clone());
 
         // successful vote
-        match ctr.on_vote_verified(mk_human_sbt(1), prop_id, vote.clone()) {
+        match ctr.on_vote_verified(mk_human_sbt(1), prop_id, alice(), vote.clone()) {
             Ok(_) => (),
             x => panic!("expected OK, got: {:?}", x),
         };

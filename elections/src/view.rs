@@ -46,7 +46,7 @@ impl Contract {
         for p in 0..=self.prop_counter {
             if let Some(proposal) = self.proposals.get(&p) {
                 if let Some(user_vote_key) = proposal.user_sbt.get(&user) {
-                    let user_vote = proposal.voters_candidates.get(&user_vote_key);
+                    let user_vote = proposal.voters.get(&user_vote_key);
                     to_return.push((p, user_vote));
                 } else {
                     to_return.push((p, None));
@@ -56,17 +56,7 @@ impl Contract {
         to_return
     }
 
-    /// Post-vote endpoind that returns true if the user has voted on all 4 proposals otherwise returns false.
-    pub fn is_voting_completed(&self, user: AccountId) -> bool {
-        return self.user_votes(user).len() == 4;
-    }
-
-    /// Returns the proposal status
-    pub fn proposal_status(&self, prop_id: u32) -> Option<ProposalStatus> {
-        let now = env::block_timestamp_ms();
-        return self.proposals.get(&prop_id).map(|p| p.status(now));
-    }
-  
+    /// Returns the required policy
     pub fn policy(&self) -> String {
         hex::encode(self.policy)
     }
