@@ -179,7 +179,7 @@ impl Contract {
         );
         require!(
             env::block_timestamp_ms() > self.finish_time,
-            format!("Voting hasn't finished yet: {:?}", self.finish_time)
+            format!("Elections hasn't finished yet: {:?}", self.finish_time)
         );
         // call SBT registry to check for graylist
         ext_sbtreg::ext(self.sbt_registry.clone())
@@ -255,7 +255,8 @@ impl Contract {
         voter: AccountId,
         vote: Vote,
     ) -> Result<(), VoteError> {
-        if tokens.1.is_empty() || tokens.1[0].1.is_empty() {
+        let (communityProof, iahProof) = tokens;
+        if iahProof.is_empty() || iahProof[0].1.is_empty() {
             return Err(VoteError::NoSBTs);
         }
         if !(tokens.1.len() == 1 && tokens.1[0].1.len() == 1) {
@@ -265,6 +266,7 @@ impl Contract {
         }
 
         let required_bond;
+        let iahSBT = iahProof[0].1[0]
         if tokens.0.is_empty() {
             required_bond = GRAY_BOND_AMOUNT;
         } else {
