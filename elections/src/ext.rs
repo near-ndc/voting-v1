@@ -18,6 +18,9 @@ pub trait ExtSelf {
     fn on_community_verified_bond(&mut self,
         sender: AccountId,
         deposit_amount: U128) -> Promise;
+    fn on_community_verified_unbond(&mut self,
+        sender: AccountId,
+    ) -> Promise;
 }
 
 #[ext_contract(ext_sbtreg)]

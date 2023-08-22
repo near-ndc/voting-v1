@@ -134,6 +134,13 @@ impl Contract {
     #[payable]
     pub fn accept_fair_voting_policy(&mut self, policy: String) -> Promise {
         require!(
+            env::attached_deposit() >= ACCEPT_POLICY_COST,
+            format!(
+                "requires {} yocto deposit for storage fees",
+                ACCEPT_POLICY_COST
+            )
+        );
+        require!(
             env::prepaid_gas() >= ACCEPT_POLICY_GAS,
             format!("not enough gas, min: {:?}", ACCEPT_POLICY_GAS)
         );
@@ -144,6 +151,33 @@ impl Contract {
                 ext_self::ext(env::current_account_id())
                     .with_static_gas(ACCEPT_POLICY_GAS_CALLBACK)
                     .on_community_verified(env::predecessor_account_id(), policy, U128(env::attached_deposit())),
+            )
+    }
+
+    #[payable]
+    pub fn deposit_bond_amount(&mut self) -> Promise {
+        // call SBT registry to check for graylist
+        ext_sbtreg::ext(self.sbt_registry.clone())
+            .is_community_verified(env::predecessor_account_id())
+            .then(
+                ext_self::ext(env::current_account_id())
+                    .with_static_gas(ACCEPT_POLICY_GAS_CALLBACK)
+                    .on_community_verified_bond(env::predecessor_account_id(), U128(env::attached_deposit())),
+            )
+    }
+
+    pub fn unbond(&mut self) -> Promise {
+        require!(
+            env::prepaid_gas() >= UNBOND_GAS,
+            format!("not enough gas, min: {:?}", UNBOND_GAS)
+        );
+        // call SBT registry to check for graylist
+        ext_sbtreg::ext(self.sbt_registry.clone())
+            .is_community_verified(env::predecessor_account_id())
+            .then(
+                ext_self::ext(env::current_account_id())
+                    .with_static_gas(UNBOND_GAS_CALLBACK)
+                    .on_community_verified_unbond(env::predecessor_account_id()),
             )
     }
 
@@ -313,6 +347,38 @@ impl Contract {
                             .on_failure(format!("IAHRegistry::is_community_verified(), Accept policy failure: {e:?}")),
                     )
                     .into()
+            }
+        }
+    }
+
+    #[private]
+    pub fn on_community_verified_unbond(
+        &mut self,
+        #[callback_result] callback_result: Result<(HumanSBTs, HumanSBTs), PromiseError>,
+        sender: AccountId,
+    ) -> PromiseOrValue<TokenId> {
+
+        let result = callback_result
+            .map_err(|e| format!("IAHRegistry::is_community_verified() call failure: {e:?}"))
+            .and_then(|tokens| {
+                if tokens.1.is_empty() || !(tokens.1.len() == 1 && tokens.1[0].1.len() == 1) {
+                    return Err("IAHRegistry::is_community_verified() returns result: Not a human".to_owned());
+                }
+                let token_id = tokens.1[0].1.get(0).unwrap();
+
+                let bonded_amount = self.bonded.get(token_id).expect("bond doesn't exist");
+                let unbond_amount = bonded_amount - ACCEPT_POLICY_COST - VOTE_COST;
+                self.bonded.remove(token_id);
+                Ok(
+                    Promise::new(sender)
+                    .transfer(unbond_amount)
+                )
+            });
+
+        match result {
+            Ok(transfer) => PromiseOrValue::Promise(transfer),
+            Err(_e) => {
+                PromiseOrValue::Value(0)
             }
         }
     }

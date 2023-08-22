@@ -23,3 +23,6 @@ pub const MAX_REF_LINK_LEN: usize = 120;
 
 /// Gas reserved for final failure callback which panics if one of the callback fails.
 pub const FAILURE_CALLBACK_GAS: Gas = Gas(5 * Gas::ONE_TERA.0);
+
+pub const UNBOND_GAS: Gas = Gas(20 * Gas::ONE_TERA.0);
+pub const UNBOND_GAS_CALLBACK: Gas = Gas(5 * Gas::ONE_TERA.0);
