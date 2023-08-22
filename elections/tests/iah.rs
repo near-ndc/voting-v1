@@ -67,7 +67,7 @@ async fn init(
     let token_metadata_short_expire_at = TokenMetadata {
         class: 1,
         issued_at: Some(0),
-        expires_at: Some(block.timestamp() + 5000),
+        expires_at: Some(now + 7000),
         reference: None,
         reference_hash: None,
     };
@@ -143,16 +143,15 @@ async fn vote_by_human() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[ignore]
 #[tokio::test]
 async fn vote_by_non_human() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
-    let (ndc_elections_contract, _, bob_acc, john_acc, proposal_id) = init(&worker).await?;
-
+    let (ndc_elections_contract, _, _, john_acc, proposal_id) = init(&worker).await?;
+    let non_human = worker.dev_create_account().await?;
     // fast forward to the voting period
-    worker.fast_forward(60).await?;
+    worker.fast_forward(12).await?;
 
-    let res = bob_acc
+    let res = non_human
         .call(ndc_elections_contract.id(), "vote")
         .args_json(json!({"prop_id": proposal_id, "vote": [john_acc.id()],}))
         .deposit(VOTE_COST)
@@ -162,7 +161,7 @@ async fn vote_by_non_human() -> anyhow::Result<()> {
     assert!(res.is_failure(), "resp should be a failure {:?}", res);
     let res_str = format!("{:?}", res);
     assert!(
-        res_str.contains("voter is not a verified human"),
+        res_str.contains("user didn't accept the voting policy"),
         "{}",
         res_str
     );
@@ -170,14 +169,13 @@ async fn vote_by_non_human() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[ignore]
 #[tokio::test]
 async fn vote_expired_iah_token() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
     let (ndc_elections_contract, alice_acc, _, john_acc, proposal_id) = init(&worker).await?;
 
     // fast forward to the voting period
-    worker.fast_forward(150).await?;
+    worker.fast_forward(100).await?;
 
     let res = john_acc
         .call(ndc_elections_contract.id(), "vote")
