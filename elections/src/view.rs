@@ -59,6 +59,11 @@ impl Contract {
         to_return
     }
 
+    /// Returns true if user has voted on all 4 proposals, otherwise false.
+    pub fn is_voting_completed(&self, user: AccountId) -> bool {
+        self.user_votes(user).iter().all(|vote| vote.is_some())
+    }
+
     /// Returns the required policy
     pub fn policy(&self) -> String {
         hex::encode(self.policy)

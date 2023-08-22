@@ -941,4 +941,67 @@ mod unit_tests {
         assert!(test_utils::get_logs().len() == 2);
         assert_eq!(test_utils::get_logs()[1], expected_event);
     }
+
+    #[test]
+    fn is_voting_completed() {
+        let (mut ctx, mut ctr) = setup(&admin());
+        let prop1 = mk_proposal(&mut ctr);
+        let prop2 = mk_proposal(&mut ctr);
+        let prop3 = mk_proposal(&mut ctr);
+        let prop4 = mk_proposal(&mut ctr);
+        ctx.block_timestamp = (START + 2) * MSECOND;
+        testing_env!(ctx.clone());
+
+        // first vote (voting not yet completed)
+        let mut prop_id = prop1;
+        match ctr.on_vote_verified(
+            mk_human_sbt(1),
+            prop_id,
+            alice(),
+            vec![candidate(3), candidate(2)],
+        ) {
+            Ok(_) => (),
+            x => panic!("expected OK, got: {:?}", x),
+        };
+        assert!(!ctr.is_voting_completed(alice()));
+
+        // second vote (voting not yet completed)
+        prop_id = prop2;
+        match ctr.on_vote_verified(
+            mk_human_sbt(1),
+            prop_id,
+            alice(),
+            vec![candidate(3), candidate(2)],
+        ) {
+            Ok(_) => (),
+            x => panic!("expected OK, got: {:?}", x),
+        };
+        assert!(!ctr.is_voting_completed(alice()));
+
+        // third vote (voting not yet completed)
+        prop_id = prop3;
+        match ctr.on_vote_verified(
+            mk_human_sbt(1),
+            prop_id,
+            alice(),
+            vec![candidate(3), candidate(2)],
+        ) {
+            Ok(_) => (),
+            x => panic!("expected OK, got: {:?}", x),
+        };
+        assert!(!ctr.is_voting_completed(alice()));
+
+        // fourth vote (voting completed)
+        prop_id = prop4;
+        match ctr.on_vote_verified(
+            mk_human_sbt(1),
+            prop_id,
+            alice(),
+            vec![candidate(3), candidate(2)],
+        ) {
+            Ok(_) => (),
+            x => panic!("expected OK, got: {:?}", x),
+        };
+        assert!(ctr.is_voting_completed(alice()));
+    }
 }
