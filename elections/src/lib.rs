@@ -30,6 +30,7 @@ pub struct Contract {
     /// blake2s-256 hash of the Fair Voting Policy text.
     pub policy: [u8; 32],
     pub accepted_policy: LookupMap<AccountId, [u8; 32]>,
+    // we assume that each account has at most one IAH token.
     pub bonded: LookupMap<TokenId, u128>,
     pub total_slashed: u128,
 
