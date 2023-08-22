@@ -9,7 +9,12 @@ use crate::{Vote, VoteError};
 
 #[ext_contract(ext_self)]
 pub trait ExtSelf {
-    fn on_vote_verified(&mut self, prop_id: u32, vote: Vote) -> Result<(), VoteError>;
+    fn on_vote_verified(
+        &mut self,
+        prop_id: u32,
+        voter: AccountId,
+        vote: Vote,
+    ) -> Result<(), VoteError>;
 }
 
 #[ext_contract(ext_sbtreg)]

@@ -55,6 +55,8 @@ pub struct Proposal {
     pub voters_num: u32,
     /// min amount of votes for a candidate to be considered a "winner".
     pub min_candidate_support: u32,
+    /// Map of user -> sbt they voted with
+    pub user_sbt: LookupMap<AccountId, TokenId>,
 }
 
 #[derive(Serialize)]
@@ -119,7 +121,12 @@ impl Proposal {
     }
 
     /// once vote proof has been verified, we call this function to register a vote.
-    pub fn vote_on_verified(&mut self, sbts: &Vec<TokenId>, vote: Vote) -> Result<(), VoteError> {
+    pub fn vote_on_verified(
+        &mut self,
+        sbts: &Vec<TokenId>,
+        voter: AccountId,
+        vote: Vote,
+    ) -> Result<(), VoteError> {
         self.assert_active();
         let mut indexes = Vec::new();
         self.voters_num += 1;
@@ -134,6 +141,7 @@ impl Proposal {
             if self.voters.insert(t, &indexes).is_some() {
                 return Err(VoteError::DoubleVote(*t));
             }
+            self.user_sbt.insert(&voter, t);
         }
         Ok(())
     }
@@ -237,6 +245,7 @@ mod unit_tests {
             voters: LookupMap::new(StorageKey::ProposalVoters(1)),
             voters_num: 10,
             min_candidate_support: 2,
+            user_sbt: LookupMap::new(StorageKey::UserSBT(1)),
         };
         assert_eq!(
             ProposalView {
@@ -275,6 +284,7 @@ mod unit_tests {
             voters: LookupMap::new(StorageKey::ProposalVoters(1)),
             voters_num: 3,
             min_candidate_support: 2,
+            user_sbt: LookupMap::new(StorageKey::UserSBT(1)),
         };
         p.voters.insert(&1, &vec![0, 1]);
         p.voters.insert(&2, &vec![0]);
@@ -312,6 +322,7 @@ mod unit_tests {
             voters: LookupMap::new(StorageKey::ProposalVoters(1)),
             voters_num: 1,
             min_candidate_support: 2,
+            user_sbt: LookupMap::new(StorageKey::UserSBT(1)),
         };
         p.voters.insert(&1, &vec![0, 1]);
 
@@ -341,6 +352,7 @@ mod unit_tests {
             voters: LookupMap::new(StorageKey::ProposalVoters(1)),
             voters_num: 1,
             min_candidate_support: 2,
+            user_sbt: LookupMap::new(StorageKey::UserSBT(1)),
         };
         p.voters.insert(&1, &vec![0, 1]);
 
