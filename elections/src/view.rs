@@ -39,19 +39,20 @@ impl Contract {
             .map(|policy| hex::encode(policy))
     }
 
-    /// Returns all the users votes for all the proposals. If user has not voted yet on any proposal empty vector will be returned.
+    /// Returns all the users votes for all the proposals. If user has not voted yet a vector with None values will be returned.
+    /// Eg. if we have 3 porposals and user only voted on first one then the return value will look like [Some([1,2]), None, None]
     /// NOTE: the response may not be consistent with the registry. If user will do a soul_transfer, then technically votes should be associated
     /// with other user. Here we return votes from the original account that voted for the given user.
-    pub fn user_votes(&self, user: AccountId) -> Vec<(u32, Option<Vec<usize>>)> {
+    pub fn user_votes(&self, user: AccountId) -> Vec<Option<Vec<usize>>> {
         let mut to_return = Vec::new();
 
         for p in 0..=self.prop_counter {
             if let Some(proposal) = self.proposals.get(&p) {
                 if let Some(user_vote_key) = proposal.user_sbt.get(&user) {
                     let user_vote = proposal.voters.get(&user_vote_key);
-                    to_return.push((p, user_vote));
+                    to_return.push(user_vote);
                 } else {
-                    to_return.push((p, None));
+                    to_return.push(None);
                 }
             }
         }

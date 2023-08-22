@@ -872,7 +872,7 @@ mod unit_tests {
             x => panic!("expected OK, got: {:?}", x),
         };
         let res = ctr.user_votes(alice());
-        assert_eq!(res, vec![(1, Some(vec![2, 1])), (2, None), (3, None)]);
+        assert_eq!(res, vec![Some(vec![2, 1]), None, None]);
 
         // vote on proposal 3
         match ctr.on_vote_verified(mk_human_sbt(1), prop_id_3, alice(), vec![candidate(2)]) {
@@ -880,12 +880,9 @@ mod unit_tests {
             x => panic!("expected OK, got: {:?}", x),
         };
         let res = ctr.user_votes(alice());
-        assert_eq!(
-            res,
-            vec![(1, Some(vec![2, 1])), (2, None), (3, Some(vec![1]))]
-        );
+        assert_eq!(res, vec![Some(vec![2, 1]), None, Some(vec![1])]);
 
-        assert_eq!(ctr.user_votes(bob()), vec![], "bob didn't vote");
+        assert_eq!(ctr.user_votes(bob()), vec![None, None, None]); // bob did not vote yet
     }
 
     #[test]
