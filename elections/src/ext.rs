@@ -1,5 +1,5 @@
 use near_sdk::serde::Deserialize;
-use near_sdk::{ext_contract, AccountId};
+use near_sdk::{ext_contract, AccountId, Promise, PromiseOrValue};
 use near_sdk::json_types::U128;
 
 // imports needed for conditional derive (required for tests)
@@ -14,12 +14,19 @@ pub trait ExtSelf {
     fn on_gray_list_result(&mut self,
         sender: AccountId,
         policy: String,
-        deposit_amount: U128) -> Result<(), bool>;
+        deposit_amount: U128) -> Promise;
+    fn on_gray_verified(&mut self,
+        sender: AccountId,
+        policy: String,
+        deposit_amount: U128,
+        bond_amount: U128,
+    ) -> PromiseOrValue<TokenId>;
 }
 
 #[ext_contract(ext_sbtreg)]
 pub trait ExtSbtRegistry {
     fn is_human(&self, account: AccountId) -> HumanSBTs;
+    fn is_gray(&self, account: AccountId) -> bool;
 }
 
 // TODO: use SBT crate once it is published

@@ -14,6 +14,7 @@ pub enum VoteError {
     RevokeNotActive,
     NotVoted,
     DoubleRevoke,
+    NoBond,
 }
 
 impl FunctionError for VoteError {
@@ -32,6 +33,7 @@ impl FunctionError for VoteError {
             ),
             VoteError::NotVoted => panic_str("voter did not vote on this proposal"),
             VoteError::DoubleRevoke => panic_str("vote already revoked"),
+            VoteError::NoBond => panic_str("bond doesn't exist"),
         }
     }
 }

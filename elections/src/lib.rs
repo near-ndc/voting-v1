@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use events::emit_vote;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LookupMap, LookupSet};
-use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise};
+use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise, PromiseError, PromiseOrValue};
 use near_sdk::json_types::U128;
 
 mod constants;
@@ -27,7 +27,7 @@ pub struct Contract {
     pub prop_counter: u32,
     pub proposals: LookupMap<u32, Proposal>,
     pub accepted_policy: LookupMap<AccountId, [u8; 32]>,
-    pub bonded: LookupMap<AccountId, u128>,
+    pub bonded: LookupMap<TokenId, u128>,
     pub total_slashed: u128,
 
     /// address which can pause the contract and make a new proposal. Should be a multisig / DAO;
@@ -130,27 +130,18 @@ impl Contract {
     /// User is required to pay bond amount in this step
     #[payable]
     pub fn accept_fair_voting_policy(&mut self, policy: String) -> Promise {
+        require!(
+            env::prepaid_gas() >= ACCEPT_POLICY_GAS,
+            format!("not enough gas, min: {:?}", ACCEPT_POLICY_GAS)
+        );
         // call SBT registry to check for graylist
         ext_sbtreg::ext(self.sbt_registry.clone())
-            .is_human(env::predecessor_account_id()) // update to graylist check
+            .is_gray(env::predecessor_account_id())
             .then(
                 ext_self::ext(env::current_account_id())
-                    .with_static_gas(VOTE_GAS_CALLBACK)
+                    .with_static_gas(IS_GRAY_RESULT_CALLBACK)
                     .on_gray_list_result(env::predecessor_account_id(), policy, U128(env::attached_deposit())),
             )
-        
-        // require!(
-        //     env::attached_deposit() >= ACCEPT_POLICY_COST + bond_amount,
-        //     format!(
-        //         "requires {} yocto deposit for bond amount and storage fees",
-        //         ACCEPT_POLICY_COST + bond_amount
-        //     )
-        // );
-        // let policy = assert_hash_hex_string(&policy);
-        // self.accepted_policy
-        //     .insert(&env::predecessor_account_id(), &policy);
-
-        // self.bonded.insert(&env::predecessor_account_id());
     }
 
     /// Election vote using a seat-selection mechanism.
@@ -160,7 +151,6 @@ impl Contract {
         let user = env::predecessor_account_id();
         let p = self._proposal(prop_id);
         p.assert_active();
-        self.assert_bonded();
         if p.typ == ProposalType::SetupPackage {
             require!(vote.is_empty(), "setup_package vote must be an empty list");
         }
@@ -197,7 +187,7 @@ impl Contract {
     pub fn revoke_vote(&mut self, prop_id: u32, token_id: TokenId) -> Result<(), VoteError> {
         // check if the caller is the authority allowed to revoke votes
         self.assert_admin();
-        self.slash_bond();
+        self.slash_bond(token_id);
         let mut p = self._proposal(prop_id);
         p.revoke_votes(token_id)?;
         self.proposals.insert(&prop_id, &p);
@@ -224,6 +214,9 @@ impl Contract {
             // we simplify by requiring that the result contains tokens only from one issuer.
             return Err(VoteError::WrongIssuer);
         }
+        if !self.bonded.contains_key(&tokens[0].1.get(0).unwrap()) {
+            return Err(VoteError::NoBond);
+        }
         let mut p = self._proposal(prop_id);
         p.vote_on_verified(&tokens[0].1, vote)?;
         self.proposals.insert(&prop_id, &p);
@@ -232,54 +225,109 @@ impl Contract {
     }
 
     #[private]
-    #[handle_result]
     pub fn on_gray_list_result(
         &mut self,
-        #[callback_unwrap] is_gray: bool,
+        #[callback_result] callback_result: Result<bool, PromiseError>,
         sender: AccountId,
         policy: String,
         deposit_amount: U128
-    ) -> Result<(), bool> {
-        let bond_amount;
-        if is_gray {
-            bond_amount = GRAY_BOND_AMOUNT;
-        } else {
-            bond_amount = BOND_AMOUNT;
-        }
+    ) -> Promise {
 
-        if deposit_amount < U128(ACCEPT_POLICY_COST + bond_amount) {
-            return Err(false)
-        }
+        let result = callback_result
+            .map_err(|e| format!("IAHRegistry::is_gray() call failure: {e:?}"))
+            .and_then(|is_gray| {
+                let bond_amount;
+                if is_gray {
+                    bond_amount = GRAY_BOND_AMOUNT;
+                } else {
+                    bond_amount = BOND_AMOUNT;
+                }
 
-        // require!(
-        //     deposit_amount >= U128(ACCEPT_POLICY_COST + bond_amount),
-        //     format!(
-        //         "requires {} yocto deposit for bond amount and storage fees",
-        //         ACCEPT_POLICY_COST + bond_amount
-        //     )
-        // );
-        let policy = assert_hash_hex_string(&policy);
-        self.accepted_policy
-            .insert(&env::predecessor_account_id(), &policy);
+                if deposit_amount < U128(ACCEPT_POLICY_COST + bond_amount) {
+                    return Err(
+                    format!(
+                        "requires {} yocto deposit for bond amount and storage fees",
+                        ACCEPT_POLICY_COST + bond_amount
+                    ));
+                }
 
-        self.bonded.insert(&sender, &bond_amount);
+                Ok( ext_sbtreg::ext(self.sbt_registry.clone())
+                    .is_human(sender.clone())
+                    .then(
+                        ext_self::ext(env::current_account_id())
+                            .with_static_gas(ACCEPT_POLICY_GAS_CALLBACK)
+                            .on_gray_verified(sender.clone(), policy, deposit_amount, U128(bond_amount)),
+                ))
+            });
 
-        Ok(())
+        result.unwrap_or_else(|e| {
+            Promise::new(sender)
+                .transfer(deposit_amount.0)
+                .then(
+                    Self::ext(env::current_account_id())
+                        .with_static_gas(FAILURE_CALLBACK_GAS)
+                        .on_failure(e),
+                )
+        })
     }
 
-    /// USe sbts from registry to check if someone has voted, if they have voted and are not slashed, 
-    /// mint I_VOTED
+    #[private]
+    pub fn on_gray_verified(
+        &mut self,
+        #[callback_result] callback_result: Result<Vec<(AccountId, Vec<TokenId>)>, PromiseError>,
+        sender: AccountId,
+        policy: String,
+        deposit_amount: U128,
+        bond_amount: U128,
+    ) -> PromiseOrValue<TokenId> {
+        let attached_deposit = deposit_amount.0;
+
+        let result = callback_result
+            .map_err(|e| format!("IAHRegistry::is_human() call failure: {e:?}"))
+            .and_then(|tokens| {
+                if tokens.is_empty() || !(tokens.len() == 1 && tokens[0].1.len() == 1) {
+                    return Err("IAHRegistry::is_human() returns result: Not a human".to_owned());
+                }
+
+                let token_id = tokens[0].1.get(0).unwrap();
+                let policy = assert_hash_hex_string(&policy);
+                self.accepted_policy
+                    .insert(&sender, &policy);
+
+                self.bonded.insert(token_id, &bond_amount.0);
+
+                Ok(token_id.clone())
+            });
+
+        match result {
+        Ok(token) => PromiseOrValue::Value(token),
+        Err(e) => {
+            // Return deposit back to sender if accept policy failure
+            Promise::new(sender)
+                .transfer(attached_deposit)
+                .then(
+                    Self::ext(env::current_account_id())
+                        .with_static_gas(FAILURE_CALLBACK_GAS)
+                        .on_failure(format!("IAHRegistry::is_human(), Accept policy failure: {e:?}")),
+                )
+                .into()
+        }
+    }
+    }
+
+    #[private]
+    pub fn on_failure(&mut self, error: String) {
+        env::panic_str(&error)
+    }
 
     /*****************
      * INTERNAL
      ****************/
 
-    pub fn slash_bond(&mut self) {
-        let bond_amount = self.bonded.get(&env::predecessor_account_id()).expect("Bond doesn't exist");
+    pub fn slash_bond(&mut self, token_id: TokenId) {
+        let bond_amount = self.bonded.get(&token_id).expect("Bond doesn't exist");
         self.total_slashed += bond_amount;
-
-        // Get account from token id
-        self.bonded.remove(&env::predecessor_account_id());
+        self.bonded.remove(&token_id);
     }
 
     #[inline]
@@ -288,11 +336,6 @@ impl Contract {
             self.authority == env::predecessor_account_id(),
             "not an admin"
         );
-    }
-
-    #[inline]
-    fn assert_bonded(&self) {
-        self.bonded.get(&env::predecessor_account_id()).expect("voter has not deposited bond amount");
     }
 }
 
