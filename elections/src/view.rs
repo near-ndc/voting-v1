@@ -42,6 +42,8 @@ impl Contract {
                 if let Some(user_vote_key) = proposal.user_sbt.get(&user) {
                     let user_vote = proposal.voters_candidates.get(&user_vote_key);
                     to_return.push((p, user_vote));
+                } else {
+                    to_return.push((p, None));
                 }
             }
         }
@@ -50,7 +52,7 @@ impl Contract {
 
     /// Post-vote endpoind that returns true if the user has voted on all 4 proposals otherwise returns false.
     pub fn is_voting_completed(&self, user: AccountId) -> bool {
-        return self.user_votes(user).len() == 4
+        return self.user_votes(user).len() == 4;
     }
 
     /// Returns the proposal status

@@ -113,7 +113,7 @@ impl Contract {
             voters: LookupSet::new(StorageKey::ProposalVoters(self.prop_counter)),
             voters_num: 0,
             voters_candidates: LookupMap::new(StorageKey::VotersCandidates(self.prop_counter)),
-            user_sbt: LookupMap::new(StorageKey::UsersSBT(self.prop_counter)),
+            user_sbt: LookupMap::new(StorageKey::UserSBT(self.prop_counter)),
             policy,
         };
 
@@ -847,13 +847,16 @@ mod unit_tests {
     #[test]
     fn user_votes() {
         let (mut ctx, mut ctr) = setup(&admin());
-        let prop_id = mk_proposal(&mut ctr);
+        let prop_id_1 = mk_proposal(&mut ctr);
+        mk_proposal(&mut ctr);
+        let prop_id_3 = mk_proposal(&mut ctr);
         ctx.block_timestamp = (START + 2) * MSECOND;
         testing_env!(ctx.clone());
 
+        // vote on proposal 1
         match ctr.on_vote_verified(
             mk_human_sbt(1),
-            prop_id,
+            prop_id_1,
             alice(),
             vec![candidate(3), candidate(2)],
         ) {
@@ -861,7 +864,18 @@ mod unit_tests {
             x => panic!("expected OK, got: {:?}", x),
         };
         let res = ctr.user_votes(alice());
-        assert_eq!(res, vec![(1, Some(vec![2, 1]))]);
+        assert_eq!(res, vec![(1, Some(vec![2, 1])), (2, None), (3, None)]);
+
+        // vote on proposal 3
+        match ctr.on_vote_verified(mk_human_sbt(1), prop_id_3, alice(), vec![candidate(2)]) {
+            Ok(_) => (),
+            x => panic!("expected OK, got: {:?}", x),
+        };
+        let res = ctr.user_votes(alice());
+        assert_eq!(
+            res,
+            vec![(1, Some(vec![2, 1])), (2, None), (3, Some(vec![1]))]
+        );
     }
 
     #[test]

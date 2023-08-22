@@ -268,7 +268,7 @@ mod unit_tests {
             voters: LookupSet::new(StorageKey::ProposalVoters(1)),
             voters_num: 10,
             voters_candidates: LookupMap::new(StorageKey::VotersCandidates(1)),
-            user_sbt: LookupMap::new(StorageKey::UsersSBT(1)),
+            user_sbt: LookupMap::new(StorageKey::UserSBT(1)),
             policy: policy1(),
         };
         assert_eq!(
@@ -310,7 +310,7 @@ mod unit_tests {
             voters: LookupSet::new(StorageKey::ProposalVoters(1)),
             voters_num: 3,
             voters_candidates: LookupMap::new(StorageKey::VotersCandidates(1)),
-            user_sbt: LookupMap::new(StorageKey::UsersSBT(1)),
+            user_sbt: LookupMap::new(StorageKey::UserSBT(1)),
             policy: policy1(),
         };
         p.voters.insert(&1);
@@ -352,7 +352,7 @@ mod unit_tests {
             voters: LookupSet::new(StorageKey::ProposalVoters(1)),
             voters_num: 1,
             voters_candidates: LookupMap::new(StorageKey::VotersCandidates(1)),
-            user_sbt: LookupMap::new(StorageKey::UsersSBT(1)),
+            user_sbt: LookupMap::new(StorageKey::UserSBT(1)),
             policy: policy1(),
         };
         p.voters.insert(&1);
@@ -384,7 +384,7 @@ mod unit_tests {
             voters: LookupSet::new(StorageKey::ProposalVoters(1)),
             voters_num: 1,
             voters_candidates: LookupMap::new(StorageKey::VotersCandidates(1)),
-            user_sbt: LookupMap::new(StorageKey::UsersSBT(1)),
+            user_sbt: LookupMap::new(StorageKey::UserSBT(1)),
             policy: policy1(),
         };
         p.voters.insert(&1);
