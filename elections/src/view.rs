@@ -59,8 +59,8 @@ impl Contract {
         to_return
     }
 
-    /// Returns true if user has voted on all 4 proposals, otherwise false.
-    pub fn is_voting_completed(&self, user: AccountId) -> bool {
+    /// Returns true if user has voted on all proposals, otherwise false.
+    pub fn has_voted_on_all_proposals(&self, user: AccountId) -> bool {
         self.user_votes(user).iter().all(|vote| vote.is_some())
     }
 

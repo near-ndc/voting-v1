@@ -943,7 +943,7 @@ mod unit_tests {
     }
 
     #[test]
-    fn is_voting_completed() {
+    fn has_voted_on_all_proposals() {
         let (mut ctx, mut ctr) = setup(&admin());
         let prop1 = mk_proposal(&mut ctr);
         let prop2 = mk_proposal(&mut ctr);
@@ -963,7 +963,7 @@ mod unit_tests {
             Ok(_) => (),
             x => panic!("expected OK, got: {:?}", x),
         };
-        assert!(!ctr.is_voting_completed(alice()));
+        assert!(!ctr.has_voted_on_all_proposals(alice()));
 
         // second vote (voting not yet completed)
         prop_id = prop2;
@@ -976,7 +976,7 @@ mod unit_tests {
             Ok(_) => (),
             x => panic!("expected OK, got: {:?}", x),
         };
-        assert!(!ctr.is_voting_completed(alice()));
+        assert!(!ctr.has_voted_on_all_proposals(alice()));
 
         // third vote (voting not yet completed)
         prop_id = prop3;
@@ -989,7 +989,7 @@ mod unit_tests {
             Ok(_) => (),
             x => panic!("expected OK, got: {:?}", x),
         };
-        assert!(!ctr.is_voting_completed(alice()));
+        assert!(!ctr.has_voted_on_all_proposals(alice()));
 
         // fourth vote (voting completed)
         prop_id = prop4;
@@ -1002,6 +1002,6 @@ mod unit_tests {
             Ok(_) => (),
             x => panic!("expected OK, got: {:?}", x),
         };
-        assert!(ctr.is_voting_completed(alice()));
+        assert!(ctr.has_voted_on_all_proposals(alice()));
     }
 }
