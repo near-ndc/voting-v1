@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 
-use events::emit_vote;
+use events::{emit_revoke_vote, emit_vote};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::{LookupMap, LookupSet};
+use near_sdk::collections::LookupMap;
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise};
 
 mod constants;
@@ -25,6 +25,9 @@ pub struct Contract {
     pub pause: bool,
     pub prop_counter: u32,
     pub proposals: LookupMap<u32, Proposal>,
+
+    /// blake2s-256 hash of the Fair Voting Policy text.
+    pub policy: [u8; 32],
     pub accepted_policy: LookupMap<AccountId, [u8; 32]>,
 
     /// address which can pause the contract and make a new proposal. Should be a multisig / DAO;
@@ -35,7 +38,10 @@ pub struct Contract {
 #[near_bindgen]
 impl Contract {
     #[init]
-    pub fn new(authority: AccountId, sbt_registry: AccountId) -> Self {
+    /// * `policy` is a blake2s-256 hex-encoded hash of the Fair Voting Policy text.
+    pub fn new(authority: AccountId, sbt_registry: AccountId, policy: String) -> Self {
+        let policy = assert_hash_hex_string(&policy);
+
         Self {
             pause: false,
             authority,
@@ -43,6 +49,7 @@ impl Contract {
             proposals: LookupMap::new(StorageKey::Proposals),
             accepted_policy: LookupMap::new(StorageKey::AcceptedPolicy),
             prop_counter: 0,
+            policy,
         }
     }
 
@@ -55,7 +62,6 @@ impl Contract {
      **********/
 
     /// Creates a new empty proposal. `start` and `end`are timestamps in milliseconds.
-    /// * `policy` is a blake2s-256 hex-encoded hash of the Fair Voting Policy text.
     /// Returns the new proposal ID.
     /// NOTE: storage is paid from the account state
     pub fn create_proposal(
@@ -68,7 +74,7 @@ impl Contract {
         quorum: u32,
         seats: u16,
         #[allow(unused_mut)] mut candidates: Vec<AccountId>,
-        policy: String,
+        min_candidate_support: u32,
     ) -> u32 {
         self.assert_admin();
         let min_start = env::block_timestamp_ms();
@@ -92,8 +98,6 @@ impl Contract {
             require!(seats == 0, "setup_package seats must be 0");
         }
 
-        let policy = assert_hash_hex_string(&policy);
-
         let cs: HashSet<&AccountId> = HashSet::from_iter(candidates.iter());
         require!(cs.len() == candidates.len(), "duplicated candidates");
         candidates.sort();
@@ -110,11 +114,9 @@ impl Contract {
             seats,
             candidates,
             result: vec![0; l],
-            voters: LookupSet::new(StorageKey::ProposalVoters(self.prop_counter)),
+            voters: LookupMap::new(StorageKey::ProposalVoters(self.prop_counter)),
             voters_num: 0,
-            voters_candidates: LookupMap::new(StorageKey::VotersCandidates(self.prop_counter)),
-            user_sbt: LookupMap::new(StorageKey::UserSBT(self.prop_counter)),
-            policy,
+            min_candidate_support,
         };
 
         self.proposals.insert(&self.prop_counter, &p);
@@ -159,7 +161,7 @@ impl Contract {
             format!("not enough gas, min: {:?}", VOTE_GAS)
         );
         require!(
-            p.policy == self.accepted_policy.get(&user).unwrap_or_default(),
+            self.policy == self.accepted_policy.get(&user).unwrap_or_default(),
             "user didn't accept the voting policy, or the accepted voting policy doesn't match the required one"
         );
 
@@ -177,12 +179,13 @@ impl Contract {
     /// Method for the authority to revoke votes from blacklisted accounts.
     /// Panics if the proposal doesn't exists or the it's called before the proposal starts or after proposal `end+cooldown`.
     #[handle_result]
-    pub fn revoke_vote(&mut self, prop_id: u32, token_id: TokenId) -> Result<(), VoteError> {
+    pub fn revoke_vote(&mut self, prop_id: u32, token_id: TokenId) -> Result<(), RevokeVoteError> {
         // check if the caller is the authority allowed to revoke votes
         self.assert_admin();
         let mut p = self._proposal(prop_id);
         p.revoke_votes(token_id)?;
         self.proposals.insert(&prop_id, &p);
+        emit_revoke_vote(prop_id);
         Ok(())
     }
 
@@ -229,7 +232,10 @@ impl Contract {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod unit_tests {
-    use near_sdk::{test_utils::VMContextBuilder, testing_env, Gas, VMContext};
+    use near_sdk::{
+        test_utils::{self, VMContextBuilder},
+        testing_env, Gas, VMContext,
+    };
 
     use crate::*;
 
@@ -284,7 +290,7 @@ mod unit_tests {
             2,
             2,
             vec![candidate(1), candidate(2), candidate(3)],
-            policy1(),
+            2,
         )
     }
 
@@ -298,7 +304,7 @@ mod unit_tests {
             2,
             0,
             vec![],
-            policy1(),
+            2,
         )
     }
 
@@ -333,7 +339,7 @@ mod unit_tests {
             .is_view(false)
             .build();
         testing_env!(ctx.clone());
-        let ctr = Contract::new(admin(), sbt_registry());
+        let ctr = Contract::new(admin(), sbt_registry(), policy1());
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
         (ctx, ctr)
@@ -365,7 +371,7 @@ mod unit_tests {
             2,
             2,
             vec![candidate(1)],
-            policy1(),
+            2,
         );
     }
 
@@ -383,7 +389,7 @@ mod unit_tests {
             2,
             2,
             vec![candidate(1)],
-            policy1(),
+            2,
         );
     }
 
@@ -401,7 +407,7 @@ mod unit_tests {
             2,
             2,
             vec![candidate(1)],
-            policy1(),
+            2,
         );
     }
 
@@ -419,7 +425,7 @@ mod unit_tests {
             2,
             2,
             vec![candidate(1), candidate(1)],
-            policy1(),
+            2,
         );
     }
 
@@ -437,7 +443,7 @@ mod unit_tests {
             2,
             0,
             vec![],
-            policy1(),
+            2,
         );
         assert_eq!(n, 1);
 
@@ -451,7 +457,7 @@ mod unit_tests {
             2,
             2,
             vec![candidate(1)],
-            policy1(),
+            2,
         );
     }
 
@@ -502,7 +508,7 @@ mod unit_tests {
             x => panic!("expected OK, got: {:?}", x),
         };
         let p = ctr._proposal(prop_id);
-        assert!(p.voters.contains(&1));
+        assert!(p.voters.contains_key(&1));
         assert_eq!(p.voters_num, 1, "voters num should increment");
         assert_eq!(p.result, vec![1, 0, 0], "vote should be counted");
         assert!(p.user_sbt.contains_key(&alice()));
@@ -516,8 +522,8 @@ mod unit_tests {
         assert_eq!(p.result, vec![1, 0, 0], "vote result should not change");
 
         //set sbt=4 and attempt double vote
-        ctr._proposal(prop_id).voters.insert(&4);
-        match ctr.on_vote_verified(mk_human_sbt(4), prop_id, alice(), vote.clone()) {
+        ctr._proposal(prop_id).voters.insert(&4, &vec![1]);
+        match ctr.on_vote_verified(mk_human_sbt(4), prop_id, vote.clone()) {
             Err(VoteError::DoubleVote(4)) => (),
             x => panic!("expected DoubleVote(4), got: {:?}", x),
         };
@@ -557,7 +563,7 @@ mod unit_tests {
             x => panic!("expected OK, got: {:?}", x),
         };
         let p = ctr._proposal(prop_id);
-        assert!(p.voters.contains(&20), "token id should be recorded");
+        assert!(p.voters.contains_key(&20), "token id should be recorded");
         assert_eq!(p.voters_num, 2, "voters num should  increment");
         assert_eq!(p.result, vec![1, 0, 1], "vote should be counted");
         assert!(
@@ -579,7 +585,7 @@ mod unit_tests {
             x => panic!("expected OK, got: {:?}", x),
         };
         let p = ctr._proposal(prop_id);
-        assert!(p.voters.contains(&22), "token id should be recorded");
+        assert!(p.voters.contains_key(&22), "token id should be recorded");
         assert_eq!(p.voters_num, 3, "voters num should  increment");
         assert_eq!(p.result, vec![1, 1, 2], "vote should be counted");
         assert!(
@@ -593,7 +599,7 @@ mod unit_tests {
             x => panic!("expected OK, got: {:?}", x),
         };
         let p = ctr._proposal(prop_sp);
-        assert!(p.voters.contains(&22), "token id should be recorded");
+        assert!(p.voters.contains_key(&22), "token id should be recorded");
         assert_eq!(p.voters_num, 1, "voters num should  increment");
         assert!(p.result.is_empty(), "vote should be counted");
     }
@@ -829,9 +835,10 @@ mod unit_tests {
         ctx.block_timestamp = (START + 100) * MSECOND;
         testing_env!(ctx);
         match ctr.revoke_vote(prop_id, 1) {
-            Err(VoteError::NotVoted) => (),
+            Err(RevokeVoteError::NotVoted) => (),
             x => panic!("expected NotVoted, got: {:?}", x),
         }
+        assert!(test_utils::get_logs().len() == 0);
     }
 
     #[test]
@@ -971,5 +978,37 @@ mod unit_tests {
 
         let p2 = ctr._proposal(prop_id_2);
         assert!(p2.user_sbt.get(&alice()).is_none());
+    }
+  
+    #[test]
+    fn revoke_vote() {
+        let (mut ctx, mut ctr) = setup(&admin());
+
+        let prop_id = mk_proposal(&mut ctr);
+        let vote = vec![candidate(1)];
+        ctx.block_timestamp = (START + 2) * MSECOND;
+        testing_env!(ctx.clone());
+
+        // successful vote
+        match ctr.on_vote_verified(mk_human_sbt(1), prop_id, vote.clone()) {
+            Ok(_) => (),
+            x => panic!("expected OK, got: {:?}", x),
+        };
+        let p = ctr._proposal(1);
+        assert_eq!(p.voters_num, 1);
+        assert_eq!(p.result, vec![1, 0, 0]);
+
+        // revoke vote
+        match ctr.revoke_vote(prop_id, 1) {
+            Ok(_) => (),
+            x => panic!("expected OK, got: {:?}", x),
+        }
+        let p = ctr._proposal(1);
+        assert_eq!(p.voters_num, 0, "vote should be revoked");
+        assert_eq!(p.result, vec![0, 0, 0], "vote should be revoked");
+
+        let expected_event = r#"EVENT_JSON:{"standard":"ndc-elections","version":"1.0.0","event":"revoke_vote","data":{"prop_id":1}}"#;
+        assert!(test_utils::get_logs().len() == 2);
+        assert_eq!(test_utils::get_logs()[1], expected_event);
     }
 }

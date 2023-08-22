@@ -42,6 +42,7 @@ async fn init(
         .args_json(json!({
             "authority": admin.id(),
             "sbt_registry": registry_contract.id(),
+            "policy": policy1(),
         }))
         .max_gas()
         .transact();
@@ -90,7 +91,7 @@ async fn init(
             "typ": ProposalType::HouseOfMerit, "start": start_time,
             "end": u64::MAX, "cooldown": 604800000, "ref_link": "test.io", "quorum": 10,
             "credits": 5, "seats": 1, "candidates": [john.id(), alice.id()],
-            "policy": policy1(),
+            "min_candidate_support": 2,
         }))
         .max_gas()
         .transact();

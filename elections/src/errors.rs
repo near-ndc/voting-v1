@@ -4,16 +4,12 @@ use near_sdk::FunctionError;
 use crate::TokenId;
 
 /// Contract errors
-#[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq))]
-#[derive(Debug)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq, Debug))]
 pub enum VoteError {
     WrongIssuer,
     NoSBTs,
     DuplicateCandidate,
     DoubleVote(TokenId),
-    RevokeNotActive,
-    NotVoted,
-    DoubleRevoke,
 }
 
 impl FunctionError for VoteError {
@@ -27,11 +23,26 @@ impl FunctionError for VoteError {
             VoteError::DoubleVote(sbt) => {
                 panic_str(&format!("user already voted with sbt={}", sbt))
             }
-            VoteError::RevokeNotActive => panic_str(
-                "can only revoke votes between proposal start and (end time + cooldown)"
+        }
+    }
+}
+
+/// Contract errors
+#[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq, Debug))]
+pub enum RevokeVoteError {
+    NotActive,
+    NotVoted,
+}
+
+impl FunctionError for RevokeVoteError {
+    fn panic(&self) -> ! {
+        match self {
+            RevokeVoteError::NotActive => {
+                panic_str("can only revoke votes between proposal start and (end time + cooldown)")
+            }
+            RevokeVoteError::NotVoted => panic_str(
+                "voter did not vote on this proposal or the vote has been already revoked",
             ),
-            VoteError::NotVoted => panic_str("voter did not vote on this proposal"),
-            VoteError::DoubleRevoke => panic_str("vote already revoked"),
         }
     }
 }
