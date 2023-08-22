@@ -50,10 +50,7 @@ impl Contract {
 
     /// Post-vote endpoind that returns true if the user has voted on all 4 proposals otherwise returns false.
     pub fn is_voting_completed(&self, user: AccountId) -> bool {
-        if self.user_votes(user).len() == 4 {
-            return true;
-        }
-        false
+        return self.user_votes(user).len() == 4
     }
 
     /// Returns the proposal status
