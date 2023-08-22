@@ -7,7 +7,7 @@ use workspaces::{Account, Contract, DevNetwork, Worker};
 //extern crate elections;
 use elections::{
     proposal::{ProposalType, VOTE_COST},
-    ProposalView, TokenMetadata, ACCEPT_POLICY_COST,
+    ProposalView, TokenMetadata, BOND_AMOUNT,
 };
 
 /// 1ms in seconds
@@ -67,7 +67,7 @@ async fn init(
     let token_metadata_short_expire_at = TokenMetadata {
         class: 1,
         issued_at: Some(0),
-        expires_at: Some(now),
+        expires_at: Some(block.timestamp() + 5000),
         reference: None,
         reference_hash: None,
     };
@@ -107,9 +107,9 @@ async fn init(
         .max_gas()
         .transact();
 
+    accept_policy(ndc_elections_contract.clone(), john.clone(), policy1()).await?;
     accept_policy(ndc_elections_contract.clone(), alice.clone(), policy1()).await?;
     accept_policy(ndc_elections_contract.clone(), bob.clone(), policy1()).await?;
-    //accept_policy(ndc_elections_contract.clone(), john.clone(), policy1()).await?;
 
     assert!(res1.is_success(), "{:?}", res1);
     let proposal_id: u32 = res2.await?.json()?;
@@ -143,121 +143,123 @@ async fn vote_by_human() -> anyhow::Result<()> {
     Ok(())
 }
 
-// #[tokio::test]
-// async fn vote_by_non_human() -> anyhow::Result<()> {
-//     let worker = workspaces::sandbox().await?;
-//     let (ndc_elections_contract, _, bob_acc, john_acc, proposal_id) = init(&worker).await?;
+#[ignore]
+#[tokio::test]
+async fn vote_by_non_human() -> anyhow::Result<()> {
+    let worker = workspaces::sandbox().await?;
+    let (ndc_elections_contract, _, bob_acc, john_acc, proposal_id) = init(&worker).await?;
 
-//     // fast forward to the voting period
-//     worker.fast_forward(12).await?;
+    // fast forward to the voting period
+    worker.fast_forward(60).await?;
 
-//     let res = bob_acc
-//         .call(ndc_elections_contract.id(), "vote")
-//         .args_json(json!({"prop_id": proposal_id, "vote": [john_acc.id()],}))
-//         .deposit(VOTE_COST)
-//         .max_gas()
-//         .transact()
-//         .await?;
-//     assert!(res.is_failure(), "resp should be a failure {:?}", res);
-//     let res_str = format!("{:?}", res);
-//     assert!(
-//         res_str.contains("voter is not a verified human"),
-//         "{}",
-//         res_str
-//     );
+    let res = bob_acc
+        .call(ndc_elections_contract.id(), "vote")
+        .args_json(json!({"prop_id": proposal_id, "vote": [john_acc.id()],}))
+        .deposit(VOTE_COST)
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_failure(), "resp should be a failure {:?}", res);
+    let res_str = format!("{:?}", res);
+    assert!(
+        res_str.contains("voter is not a verified human"),
+        "{}",
+        res_str
+    );
 
-//     Ok(())
-// }
+    Ok(())
+}
 
-// #[tokio::test]
-// async fn vote_expired_iah_token() -> anyhow::Result<()> {
-//     let worker = workspaces::sandbox().await?;
-//     let (ndc_elections_contract, alice_acc, _, john_acc, proposal_id) = init(&worker).await?;
+#[ignore]
+#[tokio::test]
+async fn vote_expired_iah_token() -> anyhow::Result<()> {
+    let worker = workspaces::sandbox().await?;
+    let (ndc_elections_contract, alice_acc, _, john_acc, proposal_id) = init(&worker).await?;
 
-//     // fast forward to the voting period
-//     worker.fast_forward(100).await?;
+    // fast forward to the voting period
+    worker.fast_forward(150).await?;
 
-//     let res = john_acc
-//         .call(ndc_elections_contract.id(), "vote")
-//         .args_json(json!({"prop_id": proposal_id, "vote": [alice_acc.id()],}))
-//         .deposit(VOTE_COST)
-//         .max_gas()
-//         .transact()
-//         .await?;
-//     assert!(res.is_failure(), "resp should be a failure {:?}", res);
-//     let failures = format!("{:?}", res.receipt_failures());
-//     assert!(
-//         failures.contains("voter is not a verified human"),
-//         "{}",
-//         failures
-//     );
+    let res = john_acc
+        .call(ndc_elections_contract.id(), "vote")
+        .args_json(json!({"prop_id": proposal_id, "vote": [alice_acc.id()],}))
+        .deposit(VOTE_COST)
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_failure(), "resp should be a failure {:?}", res);
+    let failures = format!("{:?}", res.receipt_failures());
+    assert!(
+        failures.contains("voter is not a verified human"),
+        "{}",
+        failures
+    );
 
-//     Ok(())
-// }
+    Ok(())
+}
 
-// #[tokio::test]
-// async fn vote_without_accepting_policy() -> anyhow::Result<()> {
-//     let worker = workspaces::sandbox().await?;
-//     let (ndc_elections_contract, _, _, john_acc, proposal_id) = init(&worker).await?;
-//     let zen_acc = worker.dev_create_account().await?;
-//     // fast forward to the voting period
-//     worker.fast_forward(10).await?;
+#[tokio::test]
+async fn vote_without_accepting_policy() -> anyhow::Result<()> {
+    let worker = workspaces::sandbox().await?;
+    let (ndc_elections_contract, _, _, john_acc, proposal_id) = init(&worker).await?;
+    let zen_acc = worker.dev_create_account().await?;
+    // fast forward to the voting period
+    worker.fast_forward(10).await?;
 
-//     let res = zen_acc
-//         .call(ndc_elections_contract.id(), "vote")
-//         .args_json(json!({"prop_id": proposal_id, "vote": [john_acc.id()],}))
-//         .deposit(VOTE_COST)
-//         .max_gas()
-//         .transact()
-//         .await?;
-//     assert!(res.is_failure(), "resp should be a failure {:?}", res);
-//     let failures = format!("{:?}", res.receipt_failures());
-//     assert!(
-//         failures.contains("user didn't accept the voting policy, or the accepted voting policy doesn't match the required one"),
-//         "{}",
-//         failures
-//     );
+    let res = zen_acc
+        .call(ndc_elections_contract.id(), "vote")
+        .args_json(json!({"prop_id": proposal_id, "vote": [john_acc.id()],}))
+        .deposit(VOTE_COST)
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_failure(), "resp should be a failure {:?}", res);
+    let failures = format!("{:?}", res.receipt_failures());
+    assert!(
+        failures.contains("user didn't accept the voting policy, or the accepted voting policy doesn't match the required one"),
+        "{}",
+        failures
+    );
 
-//     Ok(())
-// }
+    Ok(())
+}
 
-// #[tokio::test]
-// async fn state_change() -> anyhow::Result<()> {
-//     let worker = workspaces::sandbox().await?;
-//     let (ndc_elections_contract, alice_acc, _, john_acc, proposal_id) = init(&worker).await?;
+#[tokio::test]
+async fn state_change() -> anyhow::Result<()> {
+    let worker = workspaces::sandbox().await?;
+    let (ndc_elections_contract, alice_acc, _, john_acc, proposal_id) = init(&worker).await?;
 
-//     // fast forward to the voting period
-//     worker.fast_forward(10).await?;
+    // fast forward to the voting period
+    worker.fast_forward(10).await?;
 
-//     let proposal = alice_acc
-//         .call(ndc_elections_contract.id(), "proposal")
-//         .args_json(json!({ "prop_id": proposal_id }))
-//         .view()
-//         .await?
-//         .json::<ProposalView>()?;
-//     assert_eq!(proposal.voters_num, 0);
+    let proposal = alice_acc
+        .call(ndc_elections_contract.id(), "proposal")
+        .args_json(json!({ "prop_id": proposal_id }))
+        .view()
+        .await?
+        .json::<ProposalView>()?;
+    assert_eq!(proposal.voters_num, 0);
 
-//     let res = alice_acc
-//         .call(ndc_elections_contract.id(), "vote")
-//         .args_json(json!({"prop_id": proposal_id, "vote": [john_acc.id()],}))
-//         .deposit(VOTE_COST)
-//         .max_gas()
-//         .transact()
-//         .await?;
-//     assert!(res.is_success(), "{:?}", res);
+    let res = alice_acc
+        .call(ndc_elections_contract.id(), "vote")
+        .args_json(json!({"prop_id": proposal_id, "vote": [john_acc.id()],}))
+        .deposit(VOTE_COST)
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success(), "{:?}", res);
 
-//     let proposal = alice_acc
-//         .call(ndc_elections_contract.id(), "proposal")
-//         .args_json(json!({ "prop_id": proposal_id }))
-//         .view()
-//         .await?
-//         .json::<ProposalView>()?;
-//     assert_eq!(proposal.voters_num, 1);
-//     assert_eq!(proposal.result[0].1, 0); // votes for alice
-//     assert_eq!(proposal.result[1].1, 1); // votes for john
+    let proposal = alice_acc
+        .call(ndc_elections_contract.id(), "proposal")
+        .args_json(json!({ "prop_id": proposal_id }))
+        .view()
+        .await?
+        .json::<ProposalView>()?;
+    assert_eq!(proposal.voters_num, 1);
+    assert_eq!(proposal.result[0].1, 0); // votes for alice
+    assert_eq!(proposal.result[1].1, 1); // votes for john
 
-//     Ok(())
-// }
+    Ok(())
+}
 
 async fn accept_policy(election: Contract, user: Account, policy: String) -> anyhow::Result<()> {
     let call_from = user.clone();
@@ -266,7 +268,7 @@ async fn accept_policy(election: Contract, user: Account, policy: String) -> any
         .args_json(json!({
             "policy": policy,
         }))
-        .deposit(ACCEPT_POLICY_COST)
+        .deposit(BOND_AMOUNT)
         .max_gas()
         .transact()
         .await?;
