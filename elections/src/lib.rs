@@ -735,7 +735,7 @@ mod unit_tests {
             Err(VoteError::WrongIssuer) => (),
             x => panic!("expected WrongIssuer, got: {:?}", x),
         };
-        match ctr.on_vote_verified((vec![], vec![]), prop_id, vote.clone()) {
+        match ctr.on_vote_verified((vec![], vec![]), prop_id, alice(), vote.clone()) {
             Err(VoteError::NoSBTs) => (),
             x => panic!("expected WrongIssuer, got: {:?}", x),
         };
@@ -1058,6 +1058,7 @@ mod unit_tests {
         let prop_id_3 = mk_proposal(&mut ctr);
         ctx.block_timestamp = (START + 2) * MSECOND;
         testing_env!(ctx.clone());
+        ctr.on_community_verified(Ok(mk_human_sbt(1)), admin(), policy1(), U128(BOND_AMOUNT));
 
         // vote on proposal 1
         match ctr.on_vote_verified(
@@ -1091,6 +1092,7 @@ mod unit_tests {
 
         ctx.block_timestamp = (START + 2) * MSECOND;
         testing_env!(ctx.clone());
+        ctr.on_community_verified(Ok(mk_human_sbt(1)), admin(), policy1(), U128(BOND_AMOUNT));
 
         match ctr.on_vote_verified(
             mk_human_sbt(1),
@@ -1150,6 +1152,7 @@ mod unit_tests {
         let prop4 = mk_proposal(&mut ctr);
         ctx.block_timestamp = (START + 2) * MSECOND;
         testing_env!(ctx.clone());
+        ctr.on_community_verified(Ok(mk_human_sbt(1)), admin(), policy1(), U128(BOND_AMOUNT));
 
         // first vote (voting not yet completed)
         let mut prop_id = prop1;
