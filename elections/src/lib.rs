@@ -55,7 +55,7 @@ impl Contract {
             bonded: LookupMap::new(StorageKey::Bonded),
             total_slashed: 0,
             prop_counter: 0,
-            policy,
+            policy: policy,
         }
     }
 
