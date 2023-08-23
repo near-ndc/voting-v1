@@ -1398,7 +1398,7 @@ mod unit_tests {
         let (mut ctx, mut ctr) = setup(&admin());
         let prop_id_1 = mk_proposal(&mut ctr);
         ctx.block_timestamp = (START + 2) * MSECOND;
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         ctr.on_accept_policy_callback(
             Ok(mk_human_sbt(1)),
             admin(),
