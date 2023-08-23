@@ -1206,4 +1206,19 @@ mod unit_tests {
         };
         assert!(ctr.has_voted_on_all_proposals(alice()));
     }
+
+    #[test]
+    fn bond_amount() {
+        let (mut ctx, mut ctr) = setup(&admin());
+    }
+
+    #[test]
+    fn vote_without_bond_amount() {
+        let (mut ctx, mut ctr) = setup(&admin());
+    }
+
+    #[test]
+    fn unbond_amount() {
+        let (mut ctx, mut ctr) = setup(&admin());
+    }
 }

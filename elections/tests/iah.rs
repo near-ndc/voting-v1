@@ -222,6 +222,59 @@ async fn vote_without_accepting_policy() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
+async fn vote_without_deposit_bond() -> anyhow::Result<()> {
+    let worker = workspaces::sandbox().await?;
+    let (ndc_elections_contract, _, _, john_acc, proposal_id) = init(&worker).await?;
+    let zen_acc = worker.dev_create_account().await?;
+    // fast forward to the voting period
+    worker.fast_forward(10).await?;
+
+    let res = zen_acc
+        .call(ndc_elections_contract.id(), "vote")
+        .args_json(json!({"prop_id": proposal_id, "vote": [john_acc.id()],}))
+        .deposit(VOTE_COST)
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_failure(), "resp should be a failure {:?}", res);
+    let failures = format!("{:?}", res.receipt_failures());
+    assert!(
+        failures.contains("user didn't accept the voting policy, or the accepted voting policy doesn't match the required one"),
+        "{}",
+        failures
+    );
+
+    Ok(())
+}
+
+#[ignore]
+#[tokio::test]
+async fn unbond_amount() -> anyhow::Result<()> {
+    let worker = workspaces::sandbox().await?;
+    let (ndc_elections_contract, _, _, john_acc, proposal_id) = init(&worker).await?;
+    let zen_acc = worker.dev_create_account().await?;
+    // fast forward to the voting period
+    worker.fast_forward(10).await?;
+
+    let res = zen_acc
+        .call(ndc_elections_contract.id(), "vote")
+        .args_json(json!({"prop_id": proposal_id, "vote": [john_acc.id()],}))
+        .deposit(VOTE_COST)
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_failure(), "resp should be a failure {:?}", res);
+    let failures = format!("{:?}", res.receipt_failures());
+    assert!(
+        failures.contains("user didn't accept the voting policy, or the accepted voting policy doesn't match the required one"),
+        "{}",
+        failures
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn state_change() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
     let (ndc_elections_contract, alice_acc, _, john_acc, proposal_id) = init(&worker).await?;
