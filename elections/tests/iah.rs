@@ -267,7 +267,7 @@ async fn revoke_vote() -> anyhow::Result<()> {
         .max_gas()
         .transact()
         .await?;
-    assert!(res.is_success(), "{:?}", receipt_failures());
+    assert!(res.is_success(), "{:?}", res.receipt_failures());
 
     // try to revoke the vote (alice is not blacklisted)
     let res = john
@@ -276,7 +276,7 @@ async fn revoke_vote() -> anyhow::Result<()> {
         .max_gas()
         .transact()
         .await?;
-    assert!(res.is_failure(), "{:?}", res);
+    assert!(res.is_failure(), "{:?}", res.receipt_outcomes());
 
     // flag alice as blacklisted
     let res = auth_flagger
@@ -285,7 +285,7 @@ async fn revoke_vote() -> anyhow::Result<()> {
         .max_gas()
         .transact()
         .await?;
-    assert!(res.is_success(), "{:?}", res);
+    assert!(res.is_success(), "{:?}", res.receipt_failures());
 
     // try to revoke the vote again (alice is now blacklisted)
     let res = john
@@ -294,7 +294,7 @@ async fn revoke_vote() -> anyhow::Result<()> {
         .max_gas()
         .transact()
         .await?;
-    assert!(res.is_success(), "{:?}", res);
+    assert!(res.is_success(), "{:?}", res.receipt_failures());
 
     Ok(())
 }
