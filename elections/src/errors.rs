@@ -11,7 +11,7 @@ pub enum VoteError {
     DuplicateCandidate,
     DoubleVote(TokenId),
     MinBond(u128, u128),
-    AccountFlag
+    Blacklisted
 }
 
 impl FunctionError for VoteError {
@@ -26,7 +26,7 @@ impl FunctionError for VoteError {
                 panic_str(&format!("user already voted with sbt={}", sbt))
             },
             VoteError::MinBond(req, amt) => panic_str(&format!("required bond amount={}, deposited={}", req, amt)),
-            VoteError::AccountFlag => panic_str("error while calling registry.account_flag")
+            VoteError::Blacklisted => panic_str("user is blacklisted")
         }
     }
 }
