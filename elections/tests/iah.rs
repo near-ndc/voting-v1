@@ -111,7 +111,6 @@ async fn init(
 
     accept_policy(ndc_elections_contract.clone(), john.clone(), policy1()).await?;
     accept_policy(ndc_elections_contract.clone(), alice.clone(), policy1()).await?;
-    accept_policy(ndc_elections_contract.clone(), bob.clone(), policy1()).await?;
 
     let res3 = auth_flagger
         .call(registry_contract.id(), "admin_flag_accounts")
@@ -138,7 +137,7 @@ async fn init(
 #[tokio::test]
 async fn vote_by_human() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
-    let (ndc_elections_contract, _, alice, john, _, _, proposal_id) = init(&worker).await?;
+    let (ndc_elections_contract, _, alice, _, john, _, proposal_id) = init(&worker).await?;
 
     // fast forward to the voting period
     worker.fast_forward(10).await?;
@@ -237,15 +236,26 @@ async fn vote_without_accepting_policy() -> anyhow::Result<()> {
 #[tokio::test]
 async fn vote_without_deposit_bond() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
-    let (ndc_elections_contract, _, _, john_acc, _, _, proposal_id) = init(&worker).await?;
+    let (ndc_elections_contract, _, _, bob, john, _, proposal_id) = init(&worker).await?;
 
-    let zen_acc = worker.dev_create_account().await?;
+    let res = bob
+        .call(ndc_elections_contract.id(), "accept_fair_voting_policy")
+        .args_json(json!({
+            "policy": policy1(),
+        }))
+        .deposit(10 * MILI_NEAR)
+        .max_gas()
+        .transact()
+        .await?;
+
+    assert!(res.is_success(), "{:?}", res);
+
     // fast forward to the voting period
     worker.fast_forward(10).await?;
 
-    let res = zen_acc
+    let res = bob
         .call(ndc_elections_contract.id(), "vote")
-        .args_json(json!({"prop_id": proposal_id, "vote": [john_acc.id()],}))
+        .args_json(json!({"prop_id": proposal_id, "vote": [john.id()],}))
         .deposit(VOTE_COST)
         .max_gas()
         .transact()
@@ -253,7 +263,7 @@ async fn vote_without_deposit_bond() -> anyhow::Result<()> {
     assert!(res.is_failure(), "resp should be a failure {:?}", res);
     let failures = format!("{:?}", res.receipt_failures());
     assert!(
-        failures.contains("user didn't accept the voting policy, or the accepted voting policy doesn't match the required one"),
+        failures.contains("Smart contract panicked: required bond amount=3000000000000000000000000, deposited=10000000000000000000000"),
         "{}",
         failures
     );
@@ -264,7 +274,7 @@ async fn vote_without_deposit_bond() -> anyhow::Result<()> {
 #[tokio::test]
 async fn unbond_amount_before_election_end() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
-    let (ndc_elections_contract, _, alice, john, _, _, proposal_id) = init(&worker).await?;
+    let (ndc_elections_contract, registry_contract, alice, _, john, _, proposal_id) = init(&worker).await?;
 
     // fast forward to the voting period
     worker.fast_forward(12).await?;
@@ -279,15 +289,15 @@ async fn unbond_amount_before_election_end() -> anyhow::Result<()> {
     assert!(res.is_success(), "{:?}", res);
 
     let res1 = alice
-        .call(ndc_elections_contract.id(), "unbond")
-        .args_json(json!({}))
+         .call(registry_contract.id(), "is_human_call")
+        .args_json(json!({"ctr": ndc_elections_contract.id(), "function": "unbond", "payload": "{}"}))
         .max_gas()
         .transact()
         .await?;
     assert!(res1.is_failure(), "resp should be a failure {:?}", res1);
     let failures = format!("{:?}", res1.receipt_failures());
     assert!(
-        failures.contains("Elections hasn't finished yet"),
+        failures.contains("cannot unbond: election is still in progress"),
         "{}",
         failures
     );
@@ -297,7 +307,7 @@ async fn unbond_amount_before_election_end() -> anyhow::Result<()> {
 #[tokio::test]
 async fn unbond_amount() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
-    let (ndc_elections_contract, _, alice, john, _, _, proposal_id) = init(&worker).await?;
+    let (ndc_elections_contract, registry_contract, alice, _, john, _, proposal_id) = init(&worker).await?;
 
     // fast forward to the voting period
     worker.fast_forward(12).await?;
@@ -316,8 +326,8 @@ async fn unbond_amount() -> anyhow::Result<()> {
     worker.fast_forward(200).await?;
 
     let res1 = alice
-        .call(ndc_elections_contract.id(), "unbond")
-        .args_json(json!({}))
+        .call(registry_contract.id(), "is_human_call")
+        .args_json(json!({"ctr": ndc_elections_contract.id(), "function": "unbond", "payload": "{}"}))
         .max_gas()
         .transact()
         .await?;

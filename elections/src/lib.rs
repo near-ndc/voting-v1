@@ -214,7 +214,8 @@ impl Contract {
     }
 
     #[payable]
-    pub fn bond(&mut self, caller: AccountId, iah_proof: HumanSBTs, _payload: String) -> PromiseOrValue<U128> {
+    #[allow(unused_variables)] // `payload` is not used but it needs to be payload so that is_human_call works
+    pub fn bond(&mut self, caller: AccountId, iah_proof: HumanSBTs, payload: String) -> PromiseOrValue<U128> {
         let attached_deposit = env::attached_deposit();
         if env::predecessor_account_id() != self.sbt_registry {
             return PromiseOrValue::Promise(Promise::new(caller)
@@ -247,30 +248,32 @@ impl Contract {
     }
 
     #[payable]
-    pub fn unbond(&mut self, caller: AccountId, iah_proof: HumanSBTs, _payload: String) -> Promise {
-        let attached_deposit = env::attached_deposit();
+    #[allow(unused_variables)] // `payload` is not used but it needs to be payload so that is_human_call works
+    pub fn unbond(&mut self, caller: AccountId, iah_proof: HumanSBTs, payload: serde_json::Value) -> Promise {
         if env::predecessor_account_id() != self.sbt_registry {
-            return Promise::new(caller)
-            .transfer(attached_deposit)
-            .then(
+            return
                 Self::ext(env::current_account_id())
                     .with_static_gas(FAILURE_CALLBACK_GAS)
                     .on_failure(format!(
-                        "Can only be called by registry"
-                    )),
-            );
+                    "Can only be called by registry"
+                ));
         }
 
         if iah_proof.is_empty() || !(iah_proof.len() == 1 && iah_proof[0].1.len() == 1) {
-            return Promise::new(caller)
-            .transfer(attached_deposit)
-            .then(
+            return
                 Self::ext(env::current_account_id())
                     .with_static_gas(FAILURE_CALLBACK_GAS)
                     .on_failure(format!(
                         "Not a human"
-                    )),
-            );
+                ));
+        }
+
+        if env::block_timestamp_ms() <= self.finish_time {
+            return Self::ext(env::current_account_id())
+                    .with_static_gas(FAILURE_CALLBACK_GAS)
+                    .on_failure(format!(
+                        "cannot unbond: election is still in progress"
+                    ));
         }
 
         let token_id = iah_proof[0].1.get(0).unwrap();
@@ -462,6 +465,7 @@ mod unit_tests {
         test_utils::{self, VMContextBuilder},
         testing_env, Gas, VMContext,
     };
+    use serde_json::Value;
 
     use crate::*;
 
@@ -1428,12 +1432,11 @@ mod unit_tests {
         assert_eq!(ctr.bonded_amounts.get(&1), Some(BOND_AMOUNT));
         ctr.vote(prop_sp, vec![]);
 
-        ctx.block_timestamp = ctr.finish_time + 1;
+        ctx.block_timestamp = ctr.finish_time * 1000000000; // in nano
         ctx.predecessor_account_id = sbt_registry();
-        ctx.attached_deposit = BOND_AMOUNT;
-        testing_env!(ctx);
+        testing_env!(ctx.clone());
 
-        ctr.unbond(alice(), mk_human_sbt(1), "".to_string());
+        ctr.unbond(alice(), mk_human_sbt(1), Value::String("".to_string()));
         assert_eq!(ctr.bonded_amounts.get(&1), None);
     }
 
