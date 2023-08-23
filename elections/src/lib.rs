@@ -322,6 +322,14 @@ impl Contract {
             )
     }
 
+    /// Configurable bond amounts for verified and gray users
+    pub fn update_bond_amounts(&mut self, verified_amount: U128, gray_amount: U128) {
+        self.assert_admin();
+        
+        self.bond_amount_verified = verified_amount.0;
+        self.bond_amount_gray = gray_amount.0;
+    }
+
     /*****************
      * PRIVATE
      ****************/
@@ -442,6 +450,7 @@ impl Contract {
      * INTERNAL
      ****************/
 
+    #[private]
     pub fn slash_bond(&mut self, token_id: TokenId) {
         let bond_amount = self.bonded_amounts.get(&token_id);
         if let Some(value) = bond_amount {
