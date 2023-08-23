@@ -1437,6 +1437,7 @@ mod unit_tests {
         assert_eq!(ctr.bonded_amounts.get(&1), None);
     }
 
+    #[test]
     fn revoke_vote() {
         let (mut ctx, mut ctr) = setup(&admin());
 

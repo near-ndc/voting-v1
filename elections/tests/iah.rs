@@ -138,7 +138,7 @@ async fn init(
 #[tokio::test]
 async fn vote_by_human() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
-    let (ndc_elections_contract, _, alice, _, john, _, proposal_id) = init(&worker).await?;
+    let (ndc_elections_contract, _, alice, john, _, _, proposal_id) = init(&worker).await?;
 
     // fast forward to the voting period
     worker.fast_forward(10).await?;
@@ -158,7 +158,8 @@ async fn vote_by_human() -> anyhow::Result<()> {
 #[tokio::test]
 async fn vote_by_non_human() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
-    let (ndc_elections_contract, _, _, john_acc, proposal_id) = init(&worker).await?;
+    let (ndc_elections_contract, _, alice, john, _, _, proposal_id) = init(&worker).await?;
+    
     let non_human = worker.dev_create_account().await?;
     // fast forward to the voting period
     worker.fast_forward(12).await?;
@@ -236,7 +237,8 @@ async fn vote_without_accepting_policy() -> anyhow::Result<()> {
 #[tokio::test]
 async fn vote_without_deposit_bond() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
-    let (ndc_elections_contract, _, _, john_acc, proposal_id) = init(&worker).await?;
+    let (ndc_elections_contract, _, alice, john_acc, _, _, proposal_id) = init(&worker).await?;
+
     let zen_acc = worker.dev_create_account().await?;
     // fast forward to the voting period
     worker.fast_forward(10).await?;
@@ -262,21 +264,21 @@ async fn vote_without_deposit_bond() -> anyhow::Result<()> {
 #[tokio::test]
 async fn unbond_amount_before_election_end() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
-    let (ndc_elections_contract, alice_acc, _, john_acc, proposal_id) = init(&worker).await?;
+    let (ndc_elections_contract, _, alice, john, _, _, proposal_id) = init(&worker).await?;
 
     // fast forward to the voting period
     worker.fast_forward(12).await?;
 
-    let res = alice_acc
+    let res = alice
         .call(ndc_elections_contract.id(), "vote")
-        .args_json(json!({"prop_id": proposal_id, "vote": [john_acc.id()],}))
+        .args_json(json!({"prop_id": proposal_id, "vote": [john.id()],}))
         .deposit(VOTE_COST)
         .max_gas()
         .transact()
         .await?;
     assert!(res.is_success(), "{:?}", res);
 
-    let res1 = alice_acc
+    let res1 = alice
         .call(ndc_elections_contract.id(), "unbond")
         .args_json(json!({}))
         .max_gas()
@@ -295,25 +297,25 @@ async fn unbond_amount_before_election_end() -> anyhow::Result<()> {
 #[tokio::test]
 async fn unbond_amount() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
-    let (ndc_elections_contract, alice_acc, _, john_acc, proposal_id) = init(&worker).await?;
+    let (ndc_elections_contract, _, alice, john, _, _, proposal_id) = init(&worker).await?;
 
     // fast forward to the voting period
     worker.fast_forward(12).await?;
 
-    let res = alice_acc
+    let res = alice
         .call(ndc_elections_contract.id(), "vote")
-        .args_json(json!({"prop_id": proposal_id, "vote": [john_acc.id()],}))
+        .args_json(json!({"prop_id": proposal_id, "vote": [john.id()],}))
         .deposit(VOTE_COST)
         .max_gas()
         .transact()
         .await?;
     assert!(res.is_success(), "{:?}", res);
 
-    let balance_before = alice_acc.view_account().await?;
+    let balance_before = alice.view_account().await?;
     // fast forward to the end of voting + cooldown period
     worker.fast_forward(200).await?;
 
-    let res1 = alice_acc
+    let res1 = alice
         .call(ndc_elections_contract.id(), "unbond")
         .args_json(json!({}))
         .max_gas()
@@ -321,7 +323,7 @@ async fn unbond_amount() -> anyhow::Result<()> {
         .await?;
     assert!(res1.is_success(), "{:?}", res1);
 
-    let balance_after = alice_acc.view_account().await?;
+    let balance_after = alice.view_account().await?;
     // Make sure you get back your NEAR - Some fees - Storage
     assert!(balance_after.balance - balance_before.balance > BOND_AMOUNT - 10 * MILI_NEAR);
 
