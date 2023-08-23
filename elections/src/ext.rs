@@ -7,21 +7,21 @@ use near_sdk::json_types::U128;
 use near_sdk::serde::Serialize;
 
 use crate::storage::AccountFlag;
-use crate::{Vote, VoteError};
+use crate::{RevokeVoteError, Vote, VoteError};
 
 #[ext_contract(ext_self)]
 pub trait ExtSelf {
-    fn on_vote_verified(&mut self, prop_id: u32, voter: AccountId, vote: Vote) -> Result<(), VoteError>;
+    fn on_vote_verified(
+        &mut self,
+        prop_id: u32,
+        voter: AccountId,
+        vote: Vote,
+    ) -> Result<(), VoteError>;
+    fn on_revoke_verified(&mut self, prop_id: u32, user: AccountId) -> Result<(), RevokeVoteError>;
     fn on_accept_policy_callback(&mut self,
         sender: AccountId,
         policy: String,
         deposit_amount: U128) -> Promise;
-    fn on_bond_callback(&mut self,
-        sender: AccountId,
-        deposit_amount: U128) -> Promise;
-    fn on_unbond_callback(&mut self,
-        sender: AccountId,
-    ) -> Promise;
 }
 
 #[ext_contract(ext_sbtreg)]

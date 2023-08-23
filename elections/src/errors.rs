@@ -36,6 +36,7 @@ impl FunctionError for VoteError {
 pub enum RevokeVoteError {
     NotActive,
     NotVoted,
+    NotBlacklisted,
 }
 
 impl FunctionError for RevokeVoteError {
@@ -47,6 +48,9 @@ impl FunctionError for RevokeVoteError {
             RevokeVoteError::NotVoted => panic_str(
                 "voter did not vote on this proposal or the vote has been already revoked",
             ),
+            RevokeVoteError::NotBlacklisted => {
+                panic_str("can not revoke a not blacklisted voter")
+            }
         }
     }
 }
