@@ -43,7 +43,7 @@ pub struct Proposal {
     pub cooldown: u64,
     /// min amount of voters to legitimize the voting.
     pub quorum: u32,
-    /// max amount of seats a voter can allocate candidates for.
+    /// max amount of seats a voter can allocate candidates for. (The number of `seats` equals the number of `credits`)
     pub seats: u16,
     /// list of valid candidates. Must be ordered.
     pub candidates: Vec<AccountId>,
@@ -54,7 +54,7 @@ pub struct Proposal {
     pub voters: LookupMap<TokenId, Vec<usize>>,
     pub voters_num: u32,
     /// min amount of votes for a candidate to be considered a "winner".
-    pub min_candidate_support: u32,
+    pub min_candidate_support: u64,
     /// Map of user -> sbt they voted with
     pub user_sbt: LookupMap<AccountId, TokenId>,
 }
@@ -118,6 +118,10 @@ impl Proposal {
             return true;
         }
         false
+    }
+
+    pub fn is_past_cooldown(&self) -> bool {
+        env::block_timestamp_ms() > self.end + self.cooldown
     }
 
     /// once vote proof has been verified, we call this function to register a vote.

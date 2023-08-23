@@ -46,7 +46,7 @@ impl Contract {
     pub fn user_votes(&self, user: AccountId) -> Vec<Option<Vec<usize>>> {
         let mut to_return = Vec::new();
 
-        for p in 0..=self.prop_counter {
+        for p in 1..=self.prop_counter {
             if let Some(proposal) = self.proposals.get(&p) {
                 if let Some(user_vote_key) = proposal.user_sbt.get(&user) {
                     let user_vote = proposal.voters.get(&user_vote_key);
@@ -67,5 +67,44 @@ impl Contract {
     /// Returns the required policy
     pub fn policy(&self) -> String {
         hex::encode(self.policy)
+    }
+
+    /// Returns a list of winners of the proposal if the elections is over and the quorum has been reached, otherwise returns empty list
+    /// A candidate is considered the winner only if the `min_candidate` support has been reached,
+    /// if the number of returned winners does not match the number of seats it means some of the candiates
+    /// did not reach the reqiured minimun support.
+    pub fn winners_by_house(&self, prop_id: u32) -> Vec<AccountId> {
+        let proposal = self._proposal(prop_id);
+
+        if !proposal.is_past_cooldown() || proposal.voters_num < proposal.quorum {
+            return Vec::new();
+        }
+
+        let mut indexed_results: Vec<(usize, u64)> = proposal
+            .result
+            .iter()
+            .enumerate()
+            .map(|(i, &v)| (i, v))
+            .collect();
+
+        indexed_results.sort_by_key(|&(_, value)| std::cmp::Reverse(value));
+
+        let potential_winners: Vec<(usize, u64)> = indexed_results
+            .into_iter()
+            .take(proposal.seats as usize)
+            .collect();
+
+        let mut winners = Vec::new();
+        for (index, value) in &potential_winners {
+            if *value >= proposal.min_candidate_support {
+                let candidate = proposal
+                    .candidates
+                    .get(*index)
+                    .expect("candidate not found");
+                winners.push(candidate.clone());
+            }
+        }
+
+        winners
     }
 }
