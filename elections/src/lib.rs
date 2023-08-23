@@ -177,10 +177,14 @@ impl Contract {
             )
     }
 
-    /// Method for the authority to revoke votes from blacklisted accounts.
+    /// Method for the authority to revoke any votes
     /// Panics if the proposal doesn't exists or the it's called before the proposal starts or after proposal `end+cooldown`.
     #[handle_result]
-    pub fn revoke_vote(&mut self, prop_id: u32, token_id: TokenId) -> Result<(), RevokeVoteError> {
+    pub fn admin_revoke_vote(
+        &mut self,
+        prop_id: u32,
+        token_id: TokenId,
+    ) -> Result<(), RevokeVoteError> {
         // check if the caller is the authority allowed to revoke votes
         self.assert_admin();
         let mut p = self._proposal(prop_id);
@@ -188,6 +192,23 @@ impl Contract {
         self.proposals.insert(&prop_id, &p);
         emit_revoke_vote(prop_id);
         Ok(())
+    }
+
+    /// Method to revoke votes from blacklisted accounts.
+    /// The method makes a call to the registry to verify the user is blacklisted.
+    /// Panics if:
+    /// - the proposal doesn't exists
+    /// - it's called before the proposal starts or after proposal `end+cooldown`
+    /// - the user is not blacklisted
+    pub fn revoke_vote(&mut self, prop_id: u32, user: AccountId) -> Promise {
+        // call SBT registry to verify user is blacklisted
+        ext_sbtreg::ext(self.sbt_registry.clone())
+            .account_flagged(user.clone())
+            .then(
+                ext_self::ext(env::current_account_id())
+                    .with_static_gas(REVOKE_VOTE_GAS_CALLBACK)
+                    .on_revoke_verified(prop_id, user),
+            )
     }
 
     /*****************
@@ -215,6 +236,26 @@ impl Contract {
         p.vote_on_verified(&tokens[0].1, voter, vote)?;
         self.proposals.insert(&prop_id, &p);
         emit_vote(prop_id);
+        Ok(())
+    }
+
+    #[private]
+    #[handle_result]
+    pub fn on_revoke_verified(
+        &mut self,
+        #[callback_unwrap] flag: AccountFlag,
+        prop_id: u32,
+        user: AccountId,
+    ) -> Result<(), RevokeVoteError> {
+        if flag != AccountFlag::Blacklisted {
+            return Err(RevokeVoteError::NotBlacklisted);
+        }
+        let mut p = self._proposal(prop_id);
+        let token_id = p.user_sbt.get(&user).ok_or(RevokeVoteError::NotVoted)?;
+
+        p.revoke_votes(token_id)?;
+        self.proposals.insert(&prop_id, &p);
+        emit_revoke_vote(prop_id);
         Ok(())
     }
 
@@ -865,21 +906,21 @@ mod unit_tests {
 
     #[test]
     #[should_panic(expected = "not an admin")]
-    fn revoke_vote_not_admin() {
+    fn admin_revoke_vote_not_admin() {
         let (_, mut ctr) = setup(&alice());
         let prop_id = mk_proposal(&mut ctr);
-        let res = ctr.revoke_vote(prop_id, 1);
+        let res = ctr.admin_revoke_vote(prop_id, 1);
         // this will never be checked since the method is panicing not returning an error
         assert!(res.is_err());
     }
 
     #[test]
-    fn revoke_vote_no_votes() {
+    fn admin_revoke_vote_no_votes() {
         let (mut ctx, mut ctr) = setup(&admin());
         let prop_id = mk_proposal(&mut ctr);
         ctx.block_timestamp = (START + 100) * MSECOND;
         testing_env!(ctx);
-        match ctr.revoke_vote(prop_id, 1) {
+        match ctr.admin_revoke_vote(prop_id, 1) {
             Err(RevokeVoteError::NotVoted) => (),
             x => panic!("expected NotVoted, got: {:?}", x),
         }
@@ -888,10 +929,10 @@ mod unit_tests {
 
     #[test]
     #[should_panic(expected = "proposal not found")]
-    fn revoke_vote_no_proposal() {
+    fn admin_revoke_vote_no_proposal() {
         let (_, mut ctr) = setup(&admin());
         let prop_id = 2;
-        match ctr.revoke_vote(prop_id, 1) {
+        match ctr.admin_revoke_vote(prop_id, 1) {
             x => panic!("{:?}", x),
         }
     }
@@ -955,7 +996,7 @@ mod unit_tests {
     }
 
     #[test]
-    fn revoke_vote() {
+    fn admin_revoke_vote() {
         let (mut ctx, mut ctr) = setup(&admin());
 
         let prop_id = mk_proposal(&mut ctr);
@@ -973,7 +1014,7 @@ mod unit_tests {
         assert_eq!(p.result, vec![1, 0, 0]);
 
         // revoke vote
-        match ctr.revoke_vote(prop_id, 1) {
+        match ctr.admin_revoke_vote(prop_id, 1) {
             Ok(_) => (),
             x => panic!("expected OK, got: {:?}", x),
         }
@@ -1047,6 +1088,72 @@ mod unit_tests {
             x => panic!("expected OK, got: {:?}", x),
         };
         assert!(ctr.has_voted_on_all_proposals(alice()));
+    }
+
+    #[test]
+    fn revoke_vote() {
+        let (mut ctx, mut ctr) = setup(&admin());
+
+        let prop_id = mk_proposal(&mut ctr);
+        let vote = vec![candidate(1)];
+        ctx.block_timestamp = (START + 2) * MSECOND;
+        testing_env!(ctx.clone());
+
+        // successful vote
+        match ctr.on_vote_verified(mk_human_sbt(1), prop_id, alice(), vote.clone()) {
+            Ok(_) => (),
+            x => panic!("expected OK, got: {:?}", x),
+        };
+        let p = ctr._proposal(1);
+        assert_eq!(p.voters_num, 1);
+        assert_eq!(p.result, vec![1, 0, 0]);
+
+        // change predecessor non-admin account
+        ctx.predecessor_account_id = bob();
+        testing_env!(ctx.clone());
+
+        // revoke vote (not blacklisted)
+        match ctr.on_revoke_verified(AccountFlag::Verified, prop_id, alice()) {
+            Err(RevokeVoteError::NotBlacklisted) => (),
+            x => panic!("expected NotBlacklisted, got: {:?}", x),
+        }
+
+        // revoke vote
+        match ctr.on_revoke_verified(AccountFlag::Blacklisted, prop_id, alice()) {
+            Ok(_) => (),
+            x => panic!("expected OK, got: {:?}", x),
+        }
+        let p = ctr._proposal(1);
+        assert_eq!(p.voters_num, 0, "vote should be revoked");
+        assert_eq!(p.result, vec![0, 0, 0], "vote should be revoked");
+
+        let expected_event = r#"EVENT_JSON:{"standard":"ndc-elections","version":"1.0.0","event":"revoke_vote","data":{"prop_id":1}}"#;
+        assert!(test_utils::get_logs().len() == 1);
+        assert_eq!(test_utils::get_logs()[0], expected_event);
+    }
+
+    #[test]
+    fn revoke_vote_no_votes() {
+        let (mut ctx, mut ctr) = setup(&admin());
+        let prop_id = mk_proposal(&mut ctr);
+        ctx.block_timestamp = (START + 100) * MSECOND;
+        ctx.predecessor_account_id = bob();
+        testing_env!(ctx);
+        match ctr.on_revoke_verified(AccountFlag::Blacklisted, prop_id, alice()) {
+            Err(RevokeVoteError::NotVoted) => (),
+            x => panic!("expected NotVoted, got: {:?}", x),
+        }
+        assert!(test_utils::get_logs().len() == 0);
+    }
+
+    #[test]
+    #[should_panic(expected = "proposal not found")]
+    fn revoke_vote_no_proposal() {
+        let (_, mut ctr) = setup(&bob());
+        let prop_id = 2;
+        match ctr.on_revoke_verified(AccountFlag::Blacklisted, prop_id, alice()) {
+            x => panic!("{:?}", x),
+        }
     }
 
     #[test]

@@ -5,7 +5,8 @@ use near_sdk::{ext_contract, AccountId};
 #[allow(unused_imports)]
 use near_sdk::serde::Serialize;
 
-use crate::{Vote, VoteError};
+use crate::storage::AccountFlag;
+use crate::{RevokeVoteError, Vote, VoteError};
 
 #[ext_contract(ext_self)]
 pub trait ExtSelf {
@@ -15,11 +16,13 @@ pub trait ExtSelf {
         voter: AccountId,
         vote: Vote,
     ) -> Result<(), VoteError>;
+    fn on_revoke_verified(&mut self, prop_id: u32, user: AccountId) -> Result<(), RevokeVoteError>;
 }
 
 #[ext_contract(ext_sbtreg)]
 pub trait ExtSbtRegistry {
     fn is_human(&self, account: AccountId) -> HumanSBTs;
+    fn account_flagged(&self, account: AccountId) -> Option<AccountFlag>;
 }
 
 // TODO: use SBT crate once it is published
