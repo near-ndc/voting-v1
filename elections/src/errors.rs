@@ -11,6 +11,7 @@ pub enum VoteError {
     DuplicateCandidate,
     DoubleVote(TokenId),
     MinBond(u128, u128),
+    AccountFlag
 }
 
 impl FunctionError for VoteError {
@@ -24,7 +25,8 @@ impl FunctionError for VoteError {
             VoteError::DoubleVote(sbt) => {
                 panic_str(&format!("user already voted with sbt={}", sbt))
             },
-            VoteError::MinBond(req, amt) => panic_str(&format!("required bond amount={}, Deposited={}", req, amt))
+            VoteError::MinBond(req, amt) => panic_str(&format!("required bond amount={}, deposited={}", req, amt)),
+            VoteError::AccountFlag => panic_str("Error while calling account flag!")
         }
     }
 }

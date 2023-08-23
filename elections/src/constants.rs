@@ -12,8 +12,8 @@ pub const VOTE_COST: Balance = MILI_NEAR;
 // 64bytes(accountID) + 1byte (prefix) + 32bytes (hash bytes) = 97B < 100B=1 miliNEAR
 pub const ACCEPT_POLICY_COST: Balance = MILI_NEAR;
 pub const ACCEPT_POLICY_GAS: Gas = Gas(70 * Gas::ONE_TERA.0);
-pub const RECORD_BOND_GAS: Gas = Gas(6 * Gas::ONE_TERA.0);
-pub const RECORD_BOND_GAS_CALLBACK: Gas = Gas(6 * Gas::ONE_TERA.0);
+pub const BOND_GAS: Gas = Gas(6 * Gas::ONE_TERA.0);
+pub const BOND_GAS_CALLBACK: Gas = Gas(6 * Gas::ONE_TERA.0);
 
 pub const BOND_AMOUNT: Balance = 3 * ONE_NEAR;
 pub const GRAY_BOND_AMOUNT: Balance = 300 * ONE_NEAR;

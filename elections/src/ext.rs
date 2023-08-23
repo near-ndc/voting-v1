@@ -6,19 +6,20 @@ use near_sdk::json_types::U128;
 #[allow(unused_imports)]
 use near_sdk::serde::Serialize;
 
+use crate::storage::AccountFlag;
 use crate::{Vote, VoteError};
 
 #[ext_contract(ext_self)]
 pub trait ExtSelf {
     fn on_vote_verified(&mut self, prop_id: u32, voter: AccountId, vote: Vote) -> Result<(), VoteError>;
-    fn on_community_verified(&mut self,
+    fn on_accept_policy_callback(&mut self,
         sender: AccountId,
         policy: String,
         deposit_amount: U128) -> Promise;
-    fn on_community_verified_bond(&mut self,
+    fn on_bond_callback(&mut self,
         sender: AccountId,
         deposit_amount: U128) -> Promise;
-    fn on_community_verified_unbond(&mut self,
+    fn on_unbond_callback(&mut self,
         sender: AccountId,
     ) -> Promise;
 }
@@ -26,7 +27,7 @@ pub trait ExtSelf {
 #[ext_contract(ext_sbtreg)]
 pub trait ExtSbtRegistry {
     fn is_human(&self, account: AccountId) -> HumanSBTs;
-    fn is_community_verified(&self, account: AccountId, is_human: bool) -> (HumanSBTs, HumanSBTs);
+    fn account_flagged(&self, account: AccountId) -> Option<AccountFlag>;
 }
 
 // TODO: use SBT crate once it is published
