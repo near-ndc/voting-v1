@@ -270,6 +270,9 @@ impl Contract {
 
         let required_bond = flag.map_err(|e| format!("IAHRegistry::account_flagged() call failure: {e:?}")).and_then(
             |account_flag| {
+                if account_flag == Some(AccountFlag::Blacklisted) {
+                    return Err("IAHRegistry::is_human() returns result: Blacklisted".to_owned());
+                }
                 if account_flag == Some(AccountFlag::Verified) {
                     return Ok(BOND_AMOUNT);
                 }
