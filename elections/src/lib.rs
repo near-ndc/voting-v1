@@ -1445,6 +1445,12 @@ mod unit_tests {
         let vote = vec![candidate(1)];
         ctx.block_timestamp = (START + 2) * MSECOND;
         testing_env!(ctx.clone());
+        ctr.on_accept_policy_callback(
+            Ok(mk_human_sbt(1)),
+            admin(),
+            policy1(),
+            U128(BOND_AMOUNT),
+        );
 
         // successful vote
         match ctr.on_vote_verified(mk_human_sbt(1), Some(AccountFlag::Verified), prop_id, alice(), vote.clone()) {

@@ -158,7 +158,7 @@ async fn vote_by_human() -> anyhow::Result<()> {
 #[tokio::test]
 async fn vote_by_non_human() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
-    let (ndc_elections_contract, _, alice, john, _, _, proposal_id) = init(&worker).await?;
+    let (ndc_elections_contract, _, _, john, _, _, proposal_id) = init(&worker).await?;
     
     let non_human = worker.dev_create_account().await?;
     // fast forward to the voting period
@@ -237,7 +237,7 @@ async fn vote_without_accepting_policy() -> anyhow::Result<()> {
 #[tokio::test]
 async fn vote_without_deposit_bond() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
-    let (ndc_elections_contract, _, alice, john_acc, _, _, proposal_id) = init(&worker).await?;
+    let (ndc_elections_contract, _, _, john_acc, _, _, proposal_id) = init(&worker).await?;
 
     let zen_acc = worker.dev_create_account().await?;
     // fast forward to the voting period
