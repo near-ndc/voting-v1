@@ -1224,16 +1224,51 @@ mod unit_tests {
 
     #[test]
     fn bond_amount() {
-        let (mut ctx, mut ctr) = setup(&admin());
+        let (_, mut ctr) = setup(&alice());
+
+        ctr.on_accept_policy_callback(Ok(mk_human_sbt(1)),alice(), policy1(), U128(BOND_AMOUNT));
+        assert_eq!(ctr.bonded.get(&1), Some(BOND_AMOUNT));
+
+        ctr.on_bond_callback(Ok(mk_human_sbt(2)),admin(), U128(BOND_AMOUNT));
+        assert_eq!(ctr.bonded.get(&2), Some(BOND_AMOUNT));
     }
 
     #[test]
+    #[should_panic(expected = "Err(MinBond(3000000000000000000000000, 2999000000000000000000000))")]
     fn vote_without_bond_amount() {
         let (mut ctx, mut ctr) = setup(&admin());
+        let prop_id_1 = mk_proposal(&mut ctr);
+        ctx.block_timestamp = (START + 2) * MSECOND;
+        testing_env!(ctx.clone());
+        ctr.on_accept_policy_callback(Ok(mk_human_sbt(1)), admin(), policy1(), U128(BOND_AMOUNT - MILI_NEAR));
+
+        match ctr.on_vote_verified(
+            mk_human_sbt(1),
+            Ok(Some(AccountFlag::Verified)),
+            prop_id_1,
+            alice(),
+            vec![candidate(3), candidate(2)],
+        ) {
+            Ok(_) => (),
+            x => panic!("expected OK, got: {:?}", x),
+        };
+
     }
 
     #[test]
     fn unbond_amount() {
         let (mut ctx, mut ctr) = setup(&admin());
+
+        let prop_sp = mk_proposal_setup_package(&mut ctr);
+        alice_voting_context(&mut ctx, &mut ctr);
+
+        assert_eq!(ctr.bonded.get(&1), Some(BOND_AMOUNT));
+        ctr.vote(prop_sp, vec![]);
+
+        ctx.block_timestamp = ctr.finish_time + 1;
+        testing_env!(ctx.clone());
+
+        ctr.on_unbond_callback(Ok(mk_human_sbt(1)), alice());
+        assert_eq!(ctr.bonded.get(&1), None);
     }
 }

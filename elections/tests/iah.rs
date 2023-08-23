@@ -43,6 +43,7 @@ async fn init(
             "authority": admin.id(),
             "sbt_registry": registry_contract.id(),
             "policy": policy1(),
+            "finish_time": 1,
         }))
         .max_gas()
         .transact();
@@ -54,6 +55,7 @@ async fn init(
     let now = block.timestamp() / MSECOND; // timestamp in seconds
     let start_time = now + 20 * 1000; // below we are executing 5 transactions, first has 3 receipts, so the proposal is roughtly now + 20seconds
     let expires_at: u64 = now + 100 * 1_000;
+    let proposal_expires_at: u64 = expires_at + 25000 * 1000;
 
     // mint IAH sbt to alice and john
     let token_metadata = TokenMetadata {
@@ -100,7 +102,7 @@ async fn init(
         .call(ndc_elections_contract.id(), "create_proposal")
         .args_json(json!({
             "typ": ProposalType::HouseOfMerit, "start": start_time,
-            "end": u64::MAX, "cooldown": 604800000, "ref_link": "test.io", "quorum": 10,
+            "end": proposal_expires_at, "cooldown": 604800000, "ref_link": "test.io", "quorum": 10,
             "credits": 5, "seats": 1, "candidates": [john.id(), alice.id()],
             "min_candidate_support": 2,
         }))
@@ -175,7 +177,7 @@ async fn vote_expired_iah_token() -> anyhow::Result<()> {
     let (ndc_elections_contract, alice_acc, _, john_acc, proposal_id) = init(&worker).await?;
 
     // fast forward to the voting period
-    worker.fast_forward(100).await?;
+    worker.fast_forward(70).await?;
 
     let res = john_acc
         .call(ndc_elections_contract.id(), "vote")
