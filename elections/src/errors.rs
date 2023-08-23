@@ -26,7 +26,7 @@ impl FunctionError for VoteError {
                 panic_str(&format!("user already voted with sbt={}", sbt))
             },
             VoteError::MinBond(req, amt) => panic_str(&format!("required bond amount={}, deposited={}", req, amt)),
-            VoteError::AccountFlag => panic_str("Error while calling account flag!")
+            VoteError::AccountFlag => panic_str("error while calling registry.account_flag")
         }
     }
 }
