@@ -377,7 +377,7 @@ impl Contract {
         &mut self,
         #[callback_result] callback_result: Result<HumanSBTs, PromiseError>,
         sender: AccountId,
-    ) -> PromiseOrValue<TokenId> {
+    ) -> PromiseOrValue<u128> {
 
         let result = callback_result
             .map_err(|e| format!("IAHRegistry::is_human() call failure: {e:?}"))
@@ -390,16 +390,19 @@ impl Contract {
                 let bonded_amount = self.bonded_amounts.get(token_id).expect("bond doesn't exist");
                 let unbond_amount = bonded_amount - ACCEPT_POLICY_COST - VOTE_COST;
                 self.bonded_amounts.remove(token_id);
-                Ok(
-                    Promise::new(sender)
-                    .transfer(unbond_amount)
-                )
+
+                Promise::new(sender).transfer(unbond_amount);
+                Ok(unbond_amount)
             });
 
         match result {
-            Ok(transfer) => PromiseOrValue::Promise(transfer),
-            Err(_e) => {
-                PromiseOrValue::Value(0)
+            Ok(transfer_amount) => PromiseOrValue::Value(transfer_amount),
+            Err(e) => {
+                PromiseOrValue::Promise(
+                    Self::ext(env::current_account_id())
+                    .with_static_gas(FAILURE_CALLBACK_GAS)
+                    .on_failure(format!("unbond call failure: {e:?}"))
+                )
             }
         }
     }

@@ -7,7 +7,7 @@ use workspaces::{Account, Contract, DevNetwork, Worker};
 //extern crate elections;
 use elections::{
     proposal::{ProposalType, VOTE_COST},
-    ProposalView, TokenMetadata, BOND_AMOUNT,
+    ProposalView, TokenMetadata, BOND_AMOUNT, MILI_NEAR,
 };
 
 /// 1ms in seconds
@@ -61,7 +61,7 @@ async fn init(
     let token_metadata = TokenMetadata {
         class: 1,
         issued_at: Some(0),
-        expires_at: Some(expires_at),
+        expires_at: Some(proposal_expires_at * 20),
         reference: None,
         reference_hash: None,
     };
@@ -133,7 +133,6 @@ async fn init(
     ))
 }
 
-#[ignore]
 #[tokio::test]
 async fn vote_by_human() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
@@ -154,7 +153,6 @@ async fn vote_by_human() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[ignore]
 #[tokio::test]
 async fn vote_by_non_human() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
@@ -181,7 +179,6 @@ async fn vote_by_non_human() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[ignore]
 #[tokio::test]
 async fn vote_expired_iah_token() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
@@ -208,7 +205,6 @@ async fn vote_expired_iah_token() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[ignore]
 #[tokio::test]
 async fn vote_without_accepting_policy() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
@@ -235,7 +231,6 @@ async fn vote_without_accepting_policy() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[ignore]
 #[tokio::test]
 async fn vote_without_deposit_bond() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
@@ -262,7 +257,6 @@ async fn vote_without_deposit_bond() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[ignore]
 #[tokio::test]
 async fn unbond_amount_before_election_end() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
@@ -325,16 +319,13 @@ async fn unbond_amount() -> anyhow::Result<()> {
         .await?;
     assert!(res1.is_success(), "{:?}", res1);
 
-    worker.fast_forward(100).await?;
-
     let balance_after = alice_acc.view_account().await?;
-
-    assert_eq!(balance_after.balance - balance_before.balance, 10000);
+    // Make sure you get back your NEAR - Some fees - Storage
+    assert!(balance_after.balance - balance_before.balance > BOND_AMOUNT - 10 * MILI_NEAR);
 
     Ok(())
 }
 
-#[ignore]
 #[tokio::test]
 async fn state_change() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
