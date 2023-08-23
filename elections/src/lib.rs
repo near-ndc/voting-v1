@@ -180,7 +180,7 @@ impl Contract {
         );
         require!(
             env::block_timestamp_ms() > self.finish_time,
-            format!("Elections hasn't finished yet: {:?}", self.finish_time)
+            format!("cannot unbond: election is still in progress: {:?}", self.finish_time)
         );
 
         // is_human call is made to retrieve tokenId -> tokenId is used as a key in bonded_amounts
