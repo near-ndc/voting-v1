@@ -1108,6 +1108,10 @@ mod unit_tests {
         assert_eq!(p.voters_num, 1);
         assert_eq!(p.result, vec![1, 0, 0]);
 
+        // change predecessor non-admin account
+        ctx.predecessor_account_id = bob();
+        testing_env!(ctx.clone());
+
         // revoke vote (not blacklisted)
         match ctr.on_revoke_verified(AccountFlag::Verified, prop_id, alice()) {
             Err(RevokeVoteError::NotBlacklisted) => (),
@@ -1124,8 +1128,8 @@ mod unit_tests {
         assert_eq!(p.result, vec![0, 0, 0], "vote should be revoked");
 
         let expected_event = r#"EVENT_JSON:{"standard":"ndc-elections","version":"1.0.0","event":"revoke_vote","data":{"prop_id":1}}"#;
-        assert!(test_utils::get_logs().len() == 2);
-        assert_eq!(test_utils::get_logs()[1], expected_event);
+        assert!(test_utils::get_logs().len() == 1);
+        assert_eq!(test_utils::get_logs()[0], expected_event);
     }
 
     #[test]
@@ -1133,6 +1137,7 @@ mod unit_tests {
         let (mut ctx, mut ctr) = setup(&admin());
         let prop_id = mk_proposal(&mut ctr);
         ctx.block_timestamp = (START + 100) * MSECOND;
+        ctx.predecessor_account_id = bob();
         testing_env!(ctx);
         match ctr.on_revoke_verified(AccountFlag::Blacklisted, prop_id, alice()) {
             Err(RevokeVoteError::NotVoted) => (),
@@ -1144,13 +1149,13 @@ mod unit_tests {
     #[test]
     #[should_panic(expected = "proposal not found")]
     fn revoke_vote_no_proposal() {
-        let (_, mut ctr) = setup(&admin());
+        let (_, mut ctr) = setup(&bob());
         let prop_id = 2;
         match ctr.on_revoke_verified(AccountFlag::Blacklisted, prop_id, alice()) {
             x => panic!("{:?}", x),
         }
     }
-      
+
     #[test]
     fn winners_by_house() {
         let (mut ctx, mut ctr) = setup(&admin());
