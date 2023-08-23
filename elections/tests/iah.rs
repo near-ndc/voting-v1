@@ -30,7 +30,7 @@ async fn init(
     let registry_contract = setup_registry(
         worker,
         admin.clone(),
-        auth_flagger,
+        auth_flagger.clone(),
         iah_issuer.clone(),
         None,
     )
@@ -112,6 +112,14 @@ async fn init(
     accept_policy(ndc_elections_contract.clone(), john.clone(), policy1()).await?;
     accept_policy(ndc_elections_contract.clone(), alice.clone(), policy1()).await?;
     accept_policy(ndc_elections_contract.clone(), bob.clone(), policy1()).await?;
+
+    let res3 = auth_flagger
+        .call(registry_contract.id(), "admin_flag_accounts")
+        .args_json(json!({ "flag": "Verified", "accounts": [john.id(), alice.id(), bob.id()], "memo": ""}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res3.is_success(), "{:?}", res3);
 
     assert!(res1.is_success(), "{:?}", res1);
     let proposal_id: u32 = res2.await?.json()?;
