@@ -45,7 +45,7 @@ impl FunctionError for RevokeVoteError {
                 "voter did not vote on this proposal or the vote has been already revoked",
             ),
             RevokeVoteError::NotBlacklisted => {
-                panic_str("voter is not blacklisted, cannot revoke their votes")
+                panic_str("can not revoke a not blacklisted voter")
             }
         }
     }

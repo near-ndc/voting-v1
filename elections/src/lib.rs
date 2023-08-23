@@ -251,7 +251,7 @@ impl Contract {
             return Err(RevokeVoteError::NotBlacklisted);
         }
         let mut p = self._proposal(prop_id);
-        let token_id = p.user_sbt.get(&user).expect("user does not exist");
+        let token_id = p.user_sbt.get(&user).expect("account didn't vote");
         p.revoke_votes(token_id)?;
         self.proposals.insert(&prop_id, &p);
         emit_revoke_vote(prop_id);

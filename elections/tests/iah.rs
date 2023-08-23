@@ -267,7 +267,7 @@ async fn revoke_vote() -> anyhow::Result<()> {
         .max_gas()
         .transact()
         .await?;
-    assert!(res.is_success(), "{:?}", res);
+    assert!(res.is_success(), "{:?}", receipt_failures());
 
     // try to revoke the vote (alice is not blacklisted)
     let res = john
