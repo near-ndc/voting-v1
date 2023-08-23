@@ -43,7 +43,7 @@ pub struct Proposal {
     pub cooldown: u64,
     /// min amount of voters to legitimize the voting.
     pub quorum: u32,
-    /// max amount of seats a voter can allocate candidates for. (The number of `seats` equals the number of `credits`)
+    /// max amount of seats a voter can allocate candidates for. (The number of `seats` equals the number of vote credits)
     pub seats: u16,
     /// list of valid candidates. Must be ordered.
     pub candidates: Vec<AccountId>,

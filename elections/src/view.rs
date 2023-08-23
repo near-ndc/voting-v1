@@ -69,10 +69,10 @@ impl Contract {
         hex::encode(self.policy)
     }
 
-    /// Returns a list of winners of the proposal if the elections is over and the quorum has been reached, otherwise returns empty list
-    /// A candidate is considered the winner only if the `min_candidate` support has been reached,
-    /// if the number of returned winners does not match the number of seats it means some of the candiates
-    /// did not reach the reqiured minimun support.
+    /// Returns a list of winners of the proposal if the elections is over and the quorum has been reached, otherwise returns empty list.
+    /// A candidate is considered the winner only if he reached the `min_candidate_support`.
+    /// If the number of returned winners is smaller than the number of seats it means some of the candidates
+    /// did not reach the required minimum support.
     pub fn winners_by_house(&self, prop_id: u32) -> Vec<AccountId> {
         let proposal = self._proposal(prop_id);
 
@@ -89,18 +89,13 @@ impl Contract {
 
         indexed_results.sort_by_key(|&(_, value)| std::cmp::Reverse(value));
 
-        let potential_winners: Vec<(usize, u64)> = indexed_results
-            .into_iter()
-            .take(proposal.seats as usize)
-            .collect();
-
         let mut winners = Vec::new();
-        for (index, value) in &potential_winners {
-            if *value >= proposal.min_candidate_support {
+        for (idx, votes) in indexed_results[0..=proposal.seats as usize] {
+            if votes >= proposal.min_candidate_support {
                 let candidate = proposal
                     .candidates
-                    .get(*index)
-                    .expect("candidate not found");
+                    .get(idx)
+                    .unwrap();
                 winners.push(candidate.clone());
             }
         }
