@@ -84,7 +84,7 @@ impl Contract {
         quorum: u32,
         seats: u16,
         #[allow(unused_mut)] mut candidates: Vec<AccountId>,
-        min_candidate_support: u32,
+        min_candidate_support: u64,
     ) -> u32 {
         self.assert_admin();
         let min_start = env::block_timestamp_ms();
@@ -477,6 +477,52 @@ mod unit_tests {
 
     fn policy2() -> String {
         "21c09f8686fe7d0d798517111a66675da0012d8ad1693a47e0e2a7d3ae1c69d4".to_owned()
+    }
+
+    fn mock_proposal_and_votes(ctx: &mut VMContext, ctr: &mut Contract) -> u32 {
+        let mut candidates = Vec::new();
+        for idx in 0..100 {
+            candidates.push(candidate(idx));
+        }
+        let prop_id = ctr.create_proposal(
+            crate::ProposalType::HouseOfMerit,
+            START + 1,
+            START + 10,
+            100,
+            String::from("ref_link.io"),
+            10,
+            5,
+            candidates,
+            6,
+        );
+        ctx.block_timestamp = (START + 2) * MSECOND;
+        testing_env!(ctx.clone());
+
+        let vote1 = vec![candidate(1), candidate(2), candidate(3)];
+        let vote2 = vec![candidate(2), candidate(3), candidate(4)];
+        let vote3 = vec![candidate(3), candidate(4), candidate(5)];
+        let mut current_vote = &vote1;
+
+        for i in 1..=15u32 {
+            if i == 6 {
+                current_vote = &vote2;
+            } else if i == 11 {
+                current_vote = &vote3;
+            }
+
+            ctr.on_accept_policy_callback(Ok(mk_human_sbt(i as u64)), candidate(i), policy1(), U128(BOND_AMOUNT));
+            match ctr.on_vote_verified(
+                mk_human_sbt(i as u64),
+                Ok(Some(AccountFlag::Verified)),
+                prop_id,
+                candidate(i),
+                current_vote.to_vec(),
+            ) {
+                Ok(_) => (),
+                x => panic!("expected OK, got: {:?}", x),
+            };
+        }
+        prop_id
     }
 
     fn mk_proposal(ctr: &mut Contract) -> u32 {
@@ -1278,5 +1324,38 @@ mod unit_tests {
 
         ctr.on_unbond_callback(Ok(mk_human_sbt(1)), alice());
         assert_eq!(ctr.bonded_amounts.get(&1), None);
+    }
+
+    #[test]
+    fn winners_by_house() {
+        let (mut ctx, mut ctr) = setup(&admin());
+        let prop_id = mock_proposal_and_votes(&mut ctx, &mut ctr);
+
+        // elections not over yet
+        let res = ctr.winners_by_house(prop_id);
+        assert_eq!(res, vec![]);
+
+        // voting over but cooldown not yet
+        ctx.block_timestamp = (START + 11) * MSECOND;
+        testing_env!(ctx.clone());
+        let res = ctr.winners_by_house(prop_id);
+        assert_eq!(res, vec![]);
+
+        // candiate    | votes
+        // -------------------
+        // candiate(1) | 5
+        // candiate(2) | 10
+        // candiate(3) | 15
+        // candiate(4) | 10
+        // candiate(5) | 5
+
+        // min_candidate_support = 6
+        // seats = 5
+        // the method should return only the candiadtes that reach min_candidate support
+        // thats why we have only 3 winners rather than 5
+        ctx.block_timestamp = (START + 111) * MSECOND; // past cooldown
+        testing_env!(ctx.clone());
+        let res = ctr.winners_by_house(prop_id);
+        assert_eq!(res, vec![candidate(3), candidate(2), candidate(4)]);
     }
 }
