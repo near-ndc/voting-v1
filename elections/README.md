@@ -18,7 +18,7 @@
 
 ## Bonding
 
-- Bonding entails a mandatory deposit of NEAR tokens that each user must furnish prior to casting their vote. This mechanism operates as a protective measure. The bonded amount remains inaccessible until the voting cooldown period elapses. In the event that a user violates the fair-voting-policy, their bonded tokens will be slashed by executing vote_revoke.
+- [SPEC](https://github.com/near-ndc/gov/blob/main/framework-v1/elections-voting.md#bonding)
 - Each verified voter must bond 3N to cast their vote.
 - Each Non-verified voter must bond 300N to cast their vote.
 - Bond can be deposited during `accept_policy` operation or `bond` function can be used directly.
