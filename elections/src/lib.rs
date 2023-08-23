@@ -415,7 +415,7 @@ impl Contract {
     pub fn slash_bond(&mut self, token_id: TokenId) {
         let bond_amount = self.bonded_amounts.get(&token_id);
         if let Some(value) = bond_amount {
-            self.total_slashed += value;
+            self.total_slashed += value - ACCEPT_POLICY_COST - VOTE_COST;
             self.bonded_amounts.remove(&token_id);
         }  
     }
@@ -1140,11 +1140,19 @@ mod unit_tests {
         assert_eq!(p.voters_num, 1);
         assert_eq!(p.result, vec![1, 0, 0]);
 
+        // Before revoke bond should be present
+        assert_eq!(ctr.bonded_amounts.get(&1), Some(BOND_AMOUNT));
+
         // revoke vote
         match ctr.revoke_vote(prop_id, 1) {
             Ok(_) => (),
             x => panic!("expected OK, got: {:?}", x),
         }
+        
+        // Bond amount should be slashed
+        assert_eq!(ctr.bonded_amounts.get(&1), None);
+        assert_eq!(ctr.total_slashed, BOND_AMOUNT - ACCEPT_POLICY_COST - VOTE_COST);
+
         let p = ctr._proposal(1);
         assert_eq!(p.voters_num, 0, "vote should be revoked");
         assert_eq!(p.result, vec![0, 0, 0], "vote should be revoked");
