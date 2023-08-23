@@ -860,7 +860,7 @@ mod unit_tests {
     }
 
     #[test]
-    #[should_panic(expected = "not enough gas, min: Gas(70000000000000)")]
+    #[should_panic(expected = "not enough gas, min: Gas(110000000000000)")]
     fn vote_wrong_gas() {
         let (mut ctx, mut ctr) = setup(&admin());
 

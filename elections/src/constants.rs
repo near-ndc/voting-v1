@@ -18,8 +18,8 @@ pub const BOND_GAS_CALLBACK: Gas = Gas(6 * Gas::ONE_TERA.0);
 pub const BOND_AMOUNT: Balance = 3 * ONE_NEAR;
 pub const GRAY_BOND_AMOUNT: Balance = 300 * ONE_NEAR;
 
-pub const VOTE_GAS: Gas = Gas(70 * Gas::ONE_TERA.0);
-pub const VOTE_GAS_CALLBACK: Gas = Gas(5 * Gas::ONE_TERA.0);
+pub const VOTE_GAS: Gas = Gas(110 * Gas::ONE_TERA.0);
+pub const VOTE_GAS_CALLBACK: Gas = Gas(10 * Gas::ONE_TERA.0);
 
 pub const MIN_REF_LINK_LEN: usize = 6;
 pub const MAX_REF_LINK_LEN: usize = 120;
