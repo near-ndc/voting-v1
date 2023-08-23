@@ -34,7 +34,7 @@ pub struct Contract {
     /// we assume that each account has at most one IAH token.
     pub bonded_amounts: LookupMap<TokenId, u128>,
     pub total_slashed: u128,
-    /// Finish time is end + cooldown, This used in unbond function, user can unbond only after this time.
+    /// Finish time is end + cooldown. This used in the `unbond` function: user can unbond only after this time.
     pub finish_time: u64,
 
     /// address which can pause the contract and make a new proposal. Should be a multisig / DAO;
