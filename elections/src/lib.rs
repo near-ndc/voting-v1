@@ -164,12 +164,12 @@ impl Contract {
 
     #[payable]
     pub fn bond(&mut self) -> Promise {
-        let sender = env::predecessor_account_id();
-        ext_sbtreg::ext(self.sbt_registry.clone()).is_human(sender.clone())
+        // is_human call is made to retrieve tokenId -> tokenId is used as a key in bonded_amounts
+        ext_sbtreg::ext(self.sbt_registry.clone()).is_human(env::predecessor_account_id())
             .then(
                 ext_self::ext(env::current_account_id())
                     .with_static_gas(VOTE_GAS_CALLBACK)
-                    .on_bond_callback(sender, U128(env::attached_deposit())),
+                    .on_bond_callback(env::predecessor_account_id(), U128(env::attached_deposit())),
             )
     }
 
@@ -183,12 +183,12 @@ impl Contract {
             format!("Elections hasn't finished yet: {:?}", self.finish_time)
         );
 
-        let sender = env::predecessor_account_id();
-        ext_sbtreg::ext(self.sbt_registry.clone()).is_human(sender.clone())
+        // is_human call is made to retrieve tokenId -> tokenId is used as a key in bonded_amounts
+        ext_sbtreg::ext(self.sbt_registry.clone()).is_human(env::predecessor_account_id())
             .then(
                 ext_self::ext(env::current_account_id())
                     .with_static_gas(VOTE_GAS_CALLBACK)
-                    .on_unbond_callback(sender),
+                    .on_unbond_callback(env::predecessor_account_id()),
             )
     }
 
