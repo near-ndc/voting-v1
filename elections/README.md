@@ -16,6 +16,16 @@
   - `seats`: max number of candidates to elect, also max number of credits each user has when casting a vote.
   - `min_candidate_support`: minimum amount of votes a candidate needs to receive to be considered a winner.
 
+## Bonding
+
+- Bonding entails a mandatory deposit of NEAR tokens that each user must furnish prior to casting their vote. This mechanism operates as a protective measure. The bonded amount remains inaccessible until the voting cooldown period elapses. In the event that a user violates the fair-voting-policy, their bonded tokens will be slashed by executing vote_revoke.
+- Each verified voter must bond 3N to cast their vote.
+- Each Non-verified voter must bond 300N to cast their vote.
+- Bond can be deposited during `accept_policy` operation or `bond` function can be used directly.
+- One bond is enough to cast votes for all proposals.
+- `finish_time`: max(`end` + `cooldown`) of all the proposals. User can only get back their bond after this period.
+- Contract returns attached tokens (minus the storage fees).
+- Bonded tokens can be slashed by executing `vote_revoke`. 100% of bonded tokens will be slashed and will be tracked in `total_slashed` variable.
 ## Flow
 
 - GWG deploys the elections smart contract and sets authority for creating new proposals.
