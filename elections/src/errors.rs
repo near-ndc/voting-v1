@@ -24,7 +24,7 @@ impl FunctionError for VoteError {
             VoteError::DoubleVote(sbt) => {
                 panic_str(&format!("user already voted with sbt={}", sbt))
             },
-            VoteError::MinBond(req, amt) => panic_str(&format!("required bond amount={}, Deposited={}", req, amt))
+            VoteError::MinBond(req, amt) => panic_str(&format!("required bond amount={}, deposited={}", req, amt))
         }
     }
 }
