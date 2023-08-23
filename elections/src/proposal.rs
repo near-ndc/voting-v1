@@ -120,6 +120,7 @@ impl Proposal {
         false
     }
 
+    #[inline]
     pub fn is_past_cooldown(&self) -> bool {
         env::block_timestamp_ms() > self.end + self.cooldown
     }

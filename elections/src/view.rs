@@ -90,12 +90,9 @@ impl Contract {
         indexed_results.sort_by_key(|&(_, value)| std::cmp::Reverse(value));
 
         let mut winners = Vec::new();
-        for (idx, votes) in indexed_results[0..=proposal.seats as usize] {
-            if votes >= proposal.min_candidate_support {
-                let candidate = proposal
-                    .candidates
-                    .get(idx)
-                    .unwrap();
+        for (idx, votes) in indexed_results[0..=proposal.seats as usize].iter() {
+            if *votes >= proposal.min_candidate_support {
+                let candidate = proposal.candidates.get(*idx).unwrap();
                 winners.push(candidate.clone());
             }
         }
