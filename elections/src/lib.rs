@@ -35,6 +35,7 @@ pub struct Contract {
     pub bonded_amounts: LookupMap<TokenId, u128>,
     pub total_slashed: u128,
     /// Finish time is end + cooldown. This used in the `unbond` function: user can unbond only after this time.
+    /// Unix timestamp (in milliseconds)
     pub finish_time: u64,
 
     /// address which can pause the contract and make a new proposal. Should be a multisig / DAO;
@@ -220,9 +221,9 @@ impl Contract {
         validate_vote(&vote, p.seats, &p.candidates);
         // call SBT registry to verify SBT
         let sbt_promise = ext_sbtreg::ext(self.sbt_registry.clone()).is_human(user.clone());
-        let flag = ext_sbtreg::ext(self.sbt_registry.clone()).account_flagged(user.clone());
+        let check_flag = ext_sbtreg::ext(self.sbt_registry.clone()).account_flagged(user.clone());
 
-        sbt_promise.and(flag)
+        sbt_promise.and(check_flag)
             .then(
                 ext_self::ext(env::current_account_id())
                     .with_static_gas(VOTE_GAS_CALLBACK)
@@ -386,8 +387,8 @@ impl Contract {
                 }
                 let token_id = tokens[0].1.get(0).unwrap();
 
-                let bonded_amounts_amount = self.bonded_amounts.get(token_id).expect("bond doesn't exist");
-                let unbond_amount = bonded_amounts_amount - ACCEPT_POLICY_COST - VOTE_COST;
+                let bonded_amount = self.bonded_amounts.get(token_id).expect("bond doesn't exist");
+                let unbond_amount = bonded_amount - ACCEPT_POLICY_COST - VOTE_COST;
                 self.bonded_amounts.remove(token_id);
                 Ok(
                     Promise::new(sender)
