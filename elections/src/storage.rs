@@ -7,7 +7,7 @@ pub enum StorageKey {
     Proposals,
     ProposalVoters(u32),
     AcceptedPolicy,
-    Bonded,
+    BondedAmount,
     UserSBT(u32),
 }
 

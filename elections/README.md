@@ -26,6 +26,7 @@
 - `finish_time`: max(`end` + `cooldown`) of all the proposals. User can only get back their bond after this period.
 - Contract returns attached tokens (minus the storage fees).
 - Bonded tokens can be slashed by executing `vote_revoke`. 100% of bonded tokens will be slashed and will be tracked in `total_slashed` variable.
+
 ## Flow
 
 - GWG deploys the elections smart contract and sets authority for creating new proposals.

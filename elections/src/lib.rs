@@ -32,7 +32,7 @@ pub struct Contract {
     pub policy: [u8; 32],
     pub accepted_policy: LookupMap<AccountId, [u8; 32]>,
     /// we assume that each account has at most one IAH token.
-    pub bonded: LookupMap<TokenId, u128>,
+    pub bonded_amounts: LookupMap<TokenId, u128>,
     pub total_slashed: u128,
     /// Finish time is end + cooldown, This used in unbond function, user can unbond only after this time.
     pub finish_time: u64,
@@ -55,7 +55,7 @@ impl Contract {
             sbt_registry,
             proposals: LookupMap::new(StorageKey::Proposals),
             accepted_policy: LookupMap::new(StorageKey::AcceptedPolicy),
-            bonded: LookupMap::new(StorageKey::Bonded),
+            bonded_amounts: LookupMap::new(StorageKey::BondedAmount),
             total_slashed: 0,
             prop_counter: 0,
             policy: policy,
@@ -280,7 +280,7 @@ impl Contract {
         }
         
         let required_bond = required_bond.unwrap();
-        let bond_deposited = self.bonded.get(&tokens[0].1.get(0).unwrap()).expect("Bond doesn't exist");
+        let bond_deposited = self.bonded_amounts.get(&tokens[0].1.get(0).unwrap()).expect("Bond doesn't exist");
         if bond_deposited < required_bond {
             return Err(VoteError::MinBond(required_bond, bond_deposited));
         }
@@ -314,7 +314,7 @@ impl Contract {
                 self.accepted_policy
                     .insert(&sender, &policy);
 
-                self.bonded.insert(token_id, &deposit_amount.0);
+                self.bonded_amounts.insert(token_id, &deposit_amount.0);
 
                 Ok(token_id.clone())
             });
@@ -351,7 +351,7 @@ impl Contract {
                     return Err("IAHRegistry::is_human() returns result: Not a human".to_owned());
                 }
                 let token_id = tokens[0].1.get(0).unwrap();
-                self.bonded.insert(token_id, &deposit_amount.0);
+                self.bonded_amounts.insert(token_id, &deposit_amount.0);
                 Ok(token_id.clone())
             });
 
@@ -386,9 +386,9 @@ impl Contract {
                 }
                 let token_id = tokens[0].1.get(0).unwrap();
 
-                let bonded_amount = self.bonded.get(token_id).expect("bond doesn't exist");
-                let unbond_amount = bonded_amount - ACCEPT_POLICY_COST - VOTE_COST;
-                self.bonded.remove(token_id);
+                let bonded_amounts_amount = self.bonded_amounts.get(token_id).expect("bond doesn't exist");
+                let unbond_amount = bonded_amounts_amount - ACCEPT_POLICY_COST - VOTE_COST;
+                self.bonded_amounts.remove(token_id);
                 Ok(
                     Promise::new(sender)
                     .transfer(unbond_amount)
@@ -413,10 +413,10 @@ impl Contract {
      ****************/
 
     pub fn slash_bond(&mut self, token_id: TokenId) {
-        let bond_amount = self.bonded.get(&token_id);
+        let bond_amount = self.bonded_amounts.get(&token_id);
         if let Some(value) = bond_amount {
             self.total_slashed += value;
-            self.bonded.remove(&token_id);
+            self.bonded_amounts.remove(&token_id);
         }  
     }
 
@@ -1227,10 +1227,10 @@ mod unit_tests {
         let (_, mut ctr) = setup(&alice());
 
         ctr.on_accept_policy_callback(Ok(mk_human_sbt(1)),alice(), policy1(), U128(BOND_AMOUNT));
-        assert_eq!(ctr.bonded.get(&1), Some(BOND_AMOUNT));
+        assert_eq!(ctr.bonded_amounts.get(&1), Some(BOND_AMOUNT));
 
         ctr.on_bond_callback(Ok(mk_human_sbt(2)),admin(), U128(BOND_AMOUNT));
-        assert_eq!(ctr.bonded.get(&2), Some(BOND_AMOUNT));
+        assert_eq!(ctr.bonded_amounts.get(&2), Some(BOND_AMOUNT));
     }
 
     #[test]
@@ -1262,13 +1262,13 @@ mod unit_tests {
         let prop_sp = mk_proposal_setup_package(&mut ctr);
         alice_voting_context(&mut ctx, &mut ctr);
 
-        assert_eq!(ctr.bonded.get(&1), Some(BOND_AMOUNT));
+        assert_eq!(ctr.bonded_amounts.get(&1), Some(BOND_AMOUNT));
         ctr.vote(prop_sp, vec![]);
 
         ctx.block_timestamp = ctr.finish_time + 1;
         testing_env!(ctx.clone());
 
         ctr.on_unbond_callback(Ok(mk_human_sbt(1)), alice());
-        assert_eq!(ctr.bonded.get(&1), None);
+        assert_eq!(ctr.bonded_amounts.get(&1), None);
     }
 }
