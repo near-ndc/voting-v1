@@ -21,14 +21,14 @@ impl FunctionError for VoteError {
             VoteError::WrongIssuer => {
                 panic_str("expected human SBTs proof from the human issuer only")
             }
-            VoteError::NoSBTs => panic_str("voter is not a verified human, expected human SBTs proof from the human issuer only"),
+            VoteError::NoSBTs => panic_str("voter is not a verified human, expected IAH SBTs proof from the IAH issuer only"),
             VoteError::DuplicateCandidate => panic_str("double vote for the same candidate"),
             VoteError::DoubleVote(sbt) => {
                 panic_str(&format!("user already voted with sbt={}", sbt))
             },
             VoteError::MinBond(req, amt) => panic_str(&format!("required bond amount={}, deposited={}", req, amt)),
             VoteError::Blacklisted => panic_str("user is blacklisted"),
-            VoteError::NoBond => panic_str("Bond doesn't exist")
+            VoteError::NoBond => panic_str("bond doesn't exist")
         }
     }
 }

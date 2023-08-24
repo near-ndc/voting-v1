@@ -27,8 +27,8 @@
 - `finish_time`: max(`finish_time`, `end` + `cooldown`) of all the proposals. 
 - User can unbond after the `finish_time`. All tokens minus storage fees will be returned.
 - Bonded tokens can be slashed by executing `vote_revoke`. 100% of bonded tokens will be slashed and will be tracked in `total_slashed` variable.
-- `unbond`: To unbond deposit, unbond function needs to be called using `i-am-human` call.
-  - Ex: `near registry call is_human_call {"ctr": "elections.near", "function": "bond", "paylad": "{}" --accountId amit.near`
+- `unbond`: To unbond deposit, unbond function needs to be called using `is_human_call`.
+  - Ex: `near registry call is_human_call {"ctr": "elections.near", "function": "unbond", "paylad": "{}" --accountId amit.near`
 
 ## Flow
 
