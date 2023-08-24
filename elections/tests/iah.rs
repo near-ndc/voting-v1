@@ -7,7 +7,7 @@ use workspaces::{Account, Contract, DevNetwork, Worker};
 //extern crate elections;
 use elections::{
     proposal::{ProposalType, VOTE_COST},
-    ProposalView, TokenMetadata, BOND_AMOUNT, ACCEPT_POLICY_COST, MICRO_NEAR, MILI_NEAR,
+    ProposalView, TokenMetadata, BOND_AMOUNT, ACCEPT_POLICY_COST, MILI_NEAR,
 };
 
 /// 1ms in seconds
