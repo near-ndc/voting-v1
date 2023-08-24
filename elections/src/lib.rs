@@ -216,7 +216,7 @@ impl Contract {
         if env::predecessor_account_id() != self.sbt_registry {
             return PromiseOrValue::Promise(Promise::new(caller)
             .transfer(deposit)
-            .then(
+            .and(
                 Self::ext(env::current_account_id())
                     .with_static_gas(FAILURE_CALLBACK_GAS)
                     .on_failure(format!(
