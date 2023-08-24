@@ -209,54 +209,64 @@ impl Contract {
     }
 
     #[payable]
-    pub fn bond(&mut self, caller: AccountId, iah_proof: HumanSBTs, 
-      #[allow(unused_variables)] payload: String, // required by is_human_call
-      ) -> PromiseOrValue<U128> {
+    pub fn bond(
+        &mut self,
+        caller: AccountId,
+        iah_proof: HumanSBTs,
+        #[allow(unused_variables)] payload: String, // required by is_human_call
+    ) -> PromiseOrValue<U128> {
         let deposit = env::attached_deposit();
         if env::predecessor_account_id() != self.sbt_registry {
-            return PromiseOrValue::Promise(Promise::new(caller)
-            .transfer(deposit)
-            .and(Self::fail("Can only be called by registry")));
+            return PromiseOrValue::Promise(
+                Promise::new(caller)
+                    .transfer(deposit)
+                    .and(Self::fail("Can only be called by registry")),
+            );
         }
 
-        // today we only support IAH proofs with exactly one token: the Fractal FV SBT.
-        if Self::is_human_issuer(&iah_proof) {
-            return PromiseOrValue::Promise(Promise::new(caller)
-            .transfer(deposit)
-            .and(Self::fail("Not a human")));
+        let (ok, token_id) = Self::is_human_issuer(&iah_proof);
+        if !ok {
+            return PromiseOrValue::Promise(
+                Promise::new(caller)
+                    .transfer(deposit)
+                    .and(Self::fail("Not a human")),
+            );
         }
-        let token_id = iah_proof[0].1.get(0).unwrap();
-        self.bonded_amounts.insert(token_id, &deposit);
+        self.bonded_amounts.insert(&token_id, &deposit);
         PromiseOrValue::Value(U128(deposit))
     }
 
     #[payable]
     #[allow(unused_variables)] // `payload` is not used but it needs to be payload so that is_human_call works
-    pub fn unbond(&mut self, caller: AccountId, iah_proof: HumanSBTs, payload: serde_json::Value) -> Promise {
+    pub fn unbond(
+        &mut self,
+        caller: AccountId,
+        iah_proof: HumanSBTs,
+        payload: serde_json::Value,
+    ) -> Promise {
         if env::predecessor_account_id() != self.sbt_registry {
             return Self::fail("Can only be called by registry");
         }
 
-        if Self::is_human_issuer(&iah_proof) {
+        let (ok, token_id) = Self::is_human_issuer(&iah_proof);
+        if !ok {
             return Self::fail("Not a human");
         }
-
         if env::block_timestamp_ms() <= self.finish_time {
             return Self::fail("cannot unbond: election is still in progress");
         }
 
-        let token_id = iah_proof[0].1.get(0).unwrap();
         let unbond_amount = self
-                    .bonded_amounts
-                    .remove(token_id)
-                    .expect("Voter didn't bond");
+            .bonded_amounts
+            .remove(&token_id)
+            .expect("Voter didn't bond");
 
         // cleanup votes, policy data from caller
         for i in 1..self.prop_counter {
             let proposal = self.proposals.get(&i);
             if let Some(mut prop) = proposal {
                 prop.user_sbt.remove(&caller);
-                prop.voters.remove(token_id);
+                prop.voters.remove(&token_id);
             }
             self.accepted_policy.remove(&caller);
         }
@@ -307,23 +317,23 @@ impl Contract {
     #[handle_result]
     pub fn on_vote_verified(
         &mut self,
-        #[callback_unwrap] tokens: HumanSBTs,
+        #[callback_unwrap] iah_proof: HumanSBTs,
         #[callback_unwrap] account_flag: Option<AccountFlag>,
         prop_id: u32,
         voter: AccountId,
         vote: Vote,
     ) -> Result<(), VoteError> {
-        if Self::is_human_issuer(&tokens) {
+        let (ok, token_id) = Self::is_human_issuer(&iah_proof);
+        if !ok {
             return Err(VoteError::NoSBTs);
         }
 
         let required_bond = match account_flag {
-           Some(AccountFlag::Blacklisted) => return Err(VoteError::Blacklisted),
-           Some(AccountFlag::Verified) => BOND_AMOUNT,
-           None => GRAY_BOND_AMOUNT,
+            Some(AccountFlag::Blacklisted) => return Err(VoteError::Blacklisted),
+            Some(AccountFlag::Verified) => BOND_AMOUNT,
+            None => GRAY_BOND_AMOUNT,
         };
 
-        let token_id = tokens[0].1.get(0).unwrap();
         let bond_deposited = self.bonded_amounts.get(&token_id);
         if let Some(bond_value) = bond_deposited {
             if bond_value < required_bond {
@@ -334,7 +344,7 @@ impl Contract {
         }
 
         let mut p = self._proposal(prop_id);
-        p.vote_on_verified(&tokens[0].1, voter, vote)?;
+        p.vote_on_verified(&iah_proof[0].1, voter, vote)?;
         self.proposals.insert(&prop_id, &p);
         emit_vote(prop_id);
         Ok(())
@@ -352,15 +362,14 @@ impl Contract {
 
         let result = callback_result
             .map_err(|e| format!("IAHRegistry::is_human() call failure: {e:?}"))
-            .and_then(|tokens| {
-                if Self::is_human_issuer(&tokens) {
+            .and_then(|iah_proof| {
+                let (ok, token_id) = Self::is_human_issuer(&iah_proof);
+                if !ok {
                     return Err("IAHRegistry::is_human() returns result: Not a human".to_owned());
                 }
-
-                let token_id = tokens[0].1.get(0).unwrap();
                 let policy = assert_hash_hex_string(&policy);
                 self.accepted_policy.insert(&sender, &policy);
-                self.bonded_amounts.insert(token_id, &deposit_amount.0);
+                self.bonded_amounts.insert(&token_id, &deposit_amount.0);
 
                 Ok(token_id.clone())
             });
@@ -371,9 +380,7 @@ impl Contract {
                 // Return deposit back to sender if accept policy failure
                 Promise::new(sender)
                     .transfer(attached_deposit)
-                    .and(
-                        Self::fail("IAHRegistry::is_human(), Accept policy failure")
-                    )
+                    .and(Self::fail("IAHRegistry::is_human(), Accept policy failure"))
                     .into()
             }
         }
@@ -422,10 +429,14 @@ impl Contract {
     }
 
     #[inline]
-    fn is_human_issuer(iah_proof: &HumanSBTs) -> bool {
+    fn is_human_issuer(iah_proof: &HumanSBTs) -> (bool, TokenId) {
         // in current version we support only one proof of personhood issuer: Fractal, so here
         // we simplify by requiring that the result contains tokens only from one issuer.
-        return iah_proof.is_empty() || !(iah_proof.len() == 1 && iah_proof[0].1.len() == 1);
+        if iah_proof.is_empty() || !(iah_proof.len() == 1 && iah_proof[0].1.len() == 1) {
+            (false, 0)
+        } else {
+            (true, *iah_proof[0].1.get(0).unwrap())
+        }
     }
 
     #[inline]
@@ -1277,10 +1288,7 @@ mod unit_tests {
 
         // Bond amount should be slashed
         assert_eq!(ctr.bonded_amounts.get(&1), None);
-        assert_eq!(
-            ctr.total_slashed,
-            BOND_AMOUNT
-        );
+        assert_eq!(ctr.total_slashed, BOND_AMOUNT);
 
         let p = ctr._proposal(1);
         assert_eq!(p.voters_num, 0, "vote should be revoked");
@@ -1426,15 +1434,16 @@ mod unit_tests {
         let vote = vec![candidate(1)];
         ctx.block_timestamp = (START + 2) * MSECOND;
         testing_env!(ctx.clone());
-        ctr.on_accept_policy_callback(
-            Ok(mk_human_sbt(1)),
-            admin(),
-            policy1(),
-            U128(BOND_AMOUNT),
-        );
+        ctr.on_accept_policy_callback(Ok(mk_human_sbt(1)), admin(), policy1(), U128(BOND_AMOUNT));
 
         // successful vote
-        match ctr.on_vote_verified(mk_human_sbt(1), Some(AccountFlag::Verified), prop_id, alice(), vote.clone()) {
+        match ctr.on_vote_verified(
+            mk_human_sbt(1),
+            Some(AccountFlag::Verified),
+            prop_id,
+            alice(),
+            vote.clone(),
+        ) {
             Ok(_) => (),
             x => panic!("expected OK, got: {:?}", x),
         };
