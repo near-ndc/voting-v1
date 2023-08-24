@@ -43,9 +43,6 @@ pub struct Contract {
     /// address which can pause the contract and make a new proposal. Should be a multisig / DAO;
     pub authority: AccountId,
     pub sbt_registry: AccountId,
-
-    pub bond_amount_verified: u128,
-    pub bond_amount_gray: u128,
 }
 
 #[near_bindgen]
@@ -71,8 +68,6 @@ impl Contract {
             prop_counter: 0,
             policy: policy,
             finish_time: finish_time,
-            bond_amount_gray: GRAY_BOND_AMOUNT,
-            bond_amount_verified: BOND_AMOUNT,
         }
     }
 
@@ -220,7 +215,7 @@ impl Contract {
         let deposit = env::attached_deposit();
         if env::predecessor_account_id() != self.sbt_registry {
             return PromiseOrValue::Promise(Promise::new(caller)
-            .transfer(attached_deposit)
+            .transfer(deposit)
             .then(
                 Self::ext(env::current_account_id())
                     .with_static_gas(FAILURE_CALLBACK_GAS)
@@ -233,7 +228,7 @@ impl Contract {
         // today we only support IAH proofs with exactly one token: the Fractal FV SBT.
         if iah_proof.is_empty() || !(iah_proof.len() == 1 && iah_proof[0].1.len() == 1) {
             return PromiseOrValue::Promise(Promise::new(caller)
-            .transfer(attached_deposit)
+            .transfer(deposit)
             .and(
                 Self::ext(env::current_account_id())
                     .with_static_gas(FAILURE_CALLBACK_GAS)
@@ -241,8 +236,8 @@ impl Contract {
             ));
         }
         let token_id = iah_proof[0].1.get(0).unwrap();
-        self.bonded_amounts.insert(token_id, &attached_deposit);
-        PromiseOrValue::Value(U128(attached_deposit))
+        self.bonded_amounts.insert(token_id, &deposit);
+        PromiseOrValue::Value(U128(deposit))
     }
 
     #[payable]
@@ -318,14 +313,6 @@ impl Contract {
             )
     }
 
-    /// Configurable bond amounts for verified and gray users
-    pub fn update_bond_amounts(&mut self, verified_amount: U128, gray_amount: U128) {
-        self.assert_admin();
-        
-        self.bond_amount_verified = verified_amount.0;
-        self.bond_amount_gray = gray_amount.0;
-    }
-
     /*****************
      * PRIVATE
      ****************/
@@ -351,9 +338,9 @@ impl Contract {
 
         let required_bond = match account_flag {
            Some(AccountFlag::Blacklisted) => return Err(VoteError::Blacklisted),
-           Some(AccountFlag::Verified) => self.bond_amount_verified,
-           None => self.bond_amount_gray,
-        }
+           Some(AccountFlag::Verified) => GRAY_BOND_AMOUNT,
+           None => BOND_AMOUNT,
+        };
 
         let bond_deposited = self
             .bonded_amounts
