@@ -16,6 +16,20 @@
   - `seats`: max number of candidates to elect, also max number of credits each user has when casting a vote.
   - `min_candidate_support`: minimum amount of votes a candidate needs to receive to be considered a winner.
 
+## Bonding
+
+- [SPEC](https://github.com/near-ndc/gov/blob/main/framework-v1/elections-voting.md#bonding)
+- Each verified voter must bond 3N to cast their vote.
+- Each Non-verified voter must bond 300N to cast their vote.
+- Bond can be deposited during `accept_policy` operation or `bond` function can be used via i-am-human-call.
+  - Ex: `near registry call is_human_call {"ctr": "elections.near", "function": "bond", "paylad": "{}"} --accountId amit.near`
+- One bond is enough to cast votes for all proposals.
+- `finish_time`: max(`finish_time`, `end` + `cooldown`) of all the proposals. 
+- User can unbond after the `finish_time`. All tokens minus storage fees will be returned.
+- Bonded tokens can be slashed by executing `vote_revoke`. 100% of bonded tokens will be slashed and will be tracked in `total_slashed` variable.
+- `unbond`: To unbond deposit, unbond function needs to be called using `is_human_call`.
+  - Ex: `near registry call is_human_call {"ctr": "elections.near", "function": "unbond", "paylad": "{}" --accountId amit.near`
+
 ## Flow
 
 - GWG deploys the elections smart contract and sets authority for creating new proposals.

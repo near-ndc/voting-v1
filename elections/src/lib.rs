@@ -1,9 +1,13 @@
+use std::cmp::max;
 use std::collections::HashSet;
 
 use events::{emit_revoke_vote, emit_vote};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::LookupMap;
-use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise};
+use near_sdk::json_types::U128;
+use near_sdk::{
+    env, near_bindgen, require, AccountId, PanicOnDefault, Promise, PromiseError, PromiseOrValue,
+};
 
 mod constants;
 mod errors;
@@ -29,6 +33,12 @@ pub struct Contract {
     /// blake2s-256 hash of the Fair Voting Policy text.
     pub policy: [u8; 32],
     pub accepted_policy: LookupMap<AccountId, [u8; 32]>,
+    /// we assume that each account has at most one IAH token.
+    pub bonded_amounts: LookupMap<TokenId, u128>,
+    pub total_slashed: u128,
+    /// Finish time is end + cooldown. This used in the `unbond` function: user can unbond only after this time.
+    /// Unix timestamp (in milliseconds)
+    pub finish_time: u64,
 
     /// address which can pause the contract and make a new proposal. Should be a multisig / DAO;
     pub authority: AccountId,
@@ -39,7 +49,12 @@ pub struct Contract {
 impl Contract {
     #[init]
     /// * `policy` is a blake2s-256 hex-encoded hash of the Fair Voting Policy text.
-    pub fn new(authority: AccountId, sbt_registry: AccountId, policy: String) -> Self {
+    pub fn new(
+        authority: AccountId,
+        sbt_registry: AccountId,
+        policy: String,
+        finish_time: u64,
+    ) -> Self {
         let policy = assert_hash_hex_string(&policy);
 
         Self {
@@ -48,8 +63,11 @@ impl Contract {
             sbt_registry,
             proposals: LookupMap::new(StorageKey::Proposals),
             accepted_policy: LookupMap::new(StorageKey::AcceptedPolicy),
+            bonded_amounts: LookupMap::new(StorageKey::BondedAmount),
+            total_slashed: 0,
             prop_counter: 0,
-            policy,
+            policy: policy,
+            finish_time: finish_time,
         }
     }
 
@@ -120,14 +138,16 @@ impl Contract {
             user_sbt: LookupMap::new(StorageKey::UserSBT(self.prop_counter)),
         };
 
+        self.finish_time = max(self.finish_time, end + cooldown);
         self.proposals.insert(&self.prop_counter, &p);
         self.prop_counter
     }
 
     /// Transaction to record the predecessor account accepting the Fair Voting Policy.
     /// * `policy` is a blake2s-256 hex-encoded hash (must be 64 bytes) of the Fair Voting Policy text.
+    /// User is required to pay bond amount in this step
     #[payable]
-    pub fn accept_fair_voting_policy(&mut self, policy: String) {
+    pub fn accept_fair_voting_policy(&mut self, policy: String) -> Promise {
         require!(
             env::attached_deposit() >= ACCEPT_POLICY_COST,
             format!(
@@ -135,9 +155,19 @@ impl Contract {
                 ACCEPT_POLICY_COST
             )
         );
-        let policy = assert_hash_hex_string(&policy);
-        self.accepted_policy
-            .insert(&env::predecessor_account_id(), &policy);
+        require!(
+            env::prepaid_gas() >= ACCEPT_POLICY_GAS,
+            format!("not enough gas, min: {:?}", ACCEPT_POLICY_GAS)
+        );
+
+        let sender = env::predecessor_account_id();
+        ext_sbtreg::ext(self.sbt_registry.clone())
+            .is_human(sender.clone())
+            .then(
+                ext_self::ext(env::current_account_id())
+                    .with_static_gas(VOTE_GAS_CALLBACK)
+                    .on_accept_policy_callback(sender, policy, U128(env::attached_deposit())),
+            )
     }
 
     /// Election vote using a seat-selection mechanism.
@@ -168,13 +198,70 @@ impl Contract {
 
         validate_vote(&vote, p.seats, &p.candidates);
         // call SBT registry to verify SBT
-        ext_sbtreg::ext(self.sbt_registry.clone())
-            .is_human(user.clone())
-            .then(
-                ext_self::ext(env::current_account_id())
-                    .with_static_gas(VOTE_GAS_CALLBACK)
-                    .on_vote_verified(prop_id, user, vote),
-            )
+        let sbt_promise = ext_sbtreg::ext(self.sbt_registry.clone()).is_human(user.clone());
+        let check_flag = ext_sbtreg::ext(self.sbt_registry.clone()).account_flagged(user.clone());
+
+        sbt_promise.and(check_flag).then(
+            ext_self::ext(env::current_account_id())
+                .with_static_gas(VOTE_GAS_CALLBACK)
+                .on_vote_verified(prop_id, user, vote),
+        )
+    }
+
+    #[payable]
+    pub fn bond(&mut self, caller: AccountId, iah_proof: HumanSBTs, 
+      #[allow(unused_variables)] payload: String, // required by is_human_call
+      ) -> PromiseOrValue<U128> {
+        let deposit = env::attached_deposit();
+        if env::predecessor_account_id() != self.sbt_registry {
+            return PromiseOrValue::Promise(Promise::new(caller)
+            .transfer(deposit)
+            .and(Self::fail("Can only be called by registry")));
+        }
+
+        // today we only support IAH proofs with exactly one token: the Fractal FV SBT.
+        if Self::is_human_issuer(&iah_proof) {
+            return PromiseOrValue::Promise(Promise::new(caller)
+            .transfer(deposit)
+            .and(Self::fail("Not a human")));
+        }
+        let token_id = iah_proof[0].1.get(0).unwrap();
+        self.bonded_amounts.insert(token_id, &deposit);
+        PromiseOrValue::Value(U128(deposit))
+    }
+
+    #[payable]
+    #[allow(unused_variables)] // `payload` is not used but it needs to be payload so that is_human_call works
+    pub fn unbond(&mut self, caller: AccountId, iah_proof: HumanSBTs, payload: serde_json::Value) -> Promise {
+        if env::predecessor_account_id() != self.sbt_registry {
+            return Self::fail("Can only be called by registry");
+        }
+
+        if Self::is_human_issuer(&iah_proof) {
+            return Self::fail("Not a human");
+        }
+
+        if env::block_timestamp_ms() <= self.finish_time {
+            return Self::fail("cannot unbond: election is still in progress");
+        }
+
+        let token_id = iah_proof[0].1.get(0).unwrap();
+        let unbond_amount = self
+                    .bonded_amounts
+                    .remove(token_id)
+                    .expect("Voter didn't bond");
+
+        // cleanup votes, policy data from caller
+        for i in 1..self.prop_counter {
+            let proposal = self.proposals.get(&i);
+            if let Some(mut prop) = proposal {
+                prop.user_sbt.remove(&caller);
+                prop.voters.remove(token_id);
+            }
+            self.accepted_policy.remove(&caller);
+        }
+
+        Promise::new(caller).transfer(unbond_amount)
     }
 
     /// Method for the authority to revoke any votes
@@ -187,6 +274,7 @@ impl Contract {
     ) -> Result<(), RevokeVoteError> {
         // check if the caller is the authority allowed to revoke votes
         self.assert_admin();
+        self.slash_bond(token_id);
         let mut p = self._proposal(prop_id);
         p.revoke_votes(token_id)?;
         self.proposals.insert(&prop_id, &p);
@@ -220,18 +308,31 @@ impl Contract {
     pub fn on_vote_verified(
         &mut self,
         #[callback_unwrap] tokens: HumanSBTs,
+        #[callback_unwrap] account_flag: Option<AccountFlag>,
         prop_id: u32,
         voter: AccountId,
         vote: Vote,
     ) -> Result<(), VoteError> {
-        if tokens.is_empty() || tokens[0].1.is_empty() {
+        if Self::is_human_issuer(&tokens) {
             return Err(VoteError::NoSBTs);
         }
-        if !(tokens.len() == 1 && tokens[0].1.len() == 1) {
-            // in current version we support only one proof of personhood issuer: Fractal, so here
-            // we simplify by requiring that the result contains tokens only from one issuer.
-            return Err(VoteError::WrongIssuer);
+
+        let required_bond = match account_flag {
+           Some(AccountFlag::Blacklisted) => return Err(VoteError::Blacklisted),
+           Some(AccountFlag::Verified) => BOND_AMOUNT,
+           None => GRAY_BOND_AMOUNT,
+        };
+
+        let token_id = tokens[0].1.get(0).unwrap();
+        let bond_deposited = self.bonded_amounts.get(&token_id);
+        if let Some(bond_value) = bond_deposited {
+            if bond_value < required_bond {
+                return Err(VoteError::MinBond(required_bond, bond_value));
+            }
+        } else {
+            return Err(VoteError::NoBond);
         }
+
         let mut p = self._proposal(prop_id);
         p.vote_on_verified(&tokens[0].1, voter, vote)?;
         self.proposals.insert(&prop_id, &p);
@@ -240,6 +341,49 @@ impl Contract {
     }
 
     #[private]
+    pub fn on_accept_policy_callback(
+        &mut self,
+        #[callback_result] callback_result: Result<HumanSBTs, PromiseError>,
+        sender: AccountId,
+        policy: String,
+        deposit_amount: U128,
+    ) -> PromiseOrValue<TokenId> {
+        let attached_deposit = deposit_amount.0;
+
+        let result = callback_result
+            .map_err(|e| format!("IAHRegistry::is_human() call failure: {e:?}"))
+            .and_then(|tokens| {
+                if Self::is_human_issuer(&tokens) {
+                    return Err("IAHRegistry::is_human() returns result: Not a human".to_owned());
+                }
+
+                let token_id = tokens[0].1.get(0).unwrap();
+                let policy = assert_hash_hex_string(&policy);
+                self.accepted_policy.insert(&sender, &policy);
+                self.bonded_amounts.insert(token_id, &deposit_amount.0);
+
+                Ok(token_id.clone())
+            });
+
+        match result {
+            Ok(token) => PromiseOrValue::Value(token),
+            Err(_e) => {
+                // Return deposit back to sender if accept policy failure
+                Promise::new(sender)
+                    .transfer(attached_deposit)
+                    .and(
+                        Self::fail("IAHRegistry::is_human(), Accept policy failure")
+                    )
+                    .into()
+            }
+        }
+    }
+
+    #[private]
+    pub fn on_failure(&mut self, error: String) {
+        env::panic_str(&error)
+    }
+
     #[handle_result]
     pub fn on_revoke_verified(
         &mut self,
@@ -263,6 +407,27 @@ impl Contract {
      * INTERNAL
      ****************/
 
+    #[private]
+    pub fn slash_bond(&mut self, token_id: TokenId) {
+        let bond_amount = self.bonded_amounts.remove(&token_id);
+        if let Some(value) = bond_amount {
+            self.total_slashed += value;
+        }
+    }
+
+    fn fail(reason: &str) -> Promise {
+        Self::ext(env::current_account_id())
+            .with_static_gas(FAILURE_CALLBACK_GAS)
+            .on_failure(reason.to_string())
+    }
+
+    #[inline]
+    fn is_human_issuer(iah_proof: &HumanSBTs) -> bool {
+        // in current version we support only one proof of personhood issuer: Fractal, so here
+        // we simplify by requiring that the result contains tokens only from one issuer.
+        return iah_proof.is_empty() || !(iah_proof.len() == 1 && iah_proof[0].1.len() == 1);
+    }
+
     #[inline]
     fn assert_admin(&self) {
         require!(
@@ -278,6 +443,7 @@ mod unit_tests {
         test_utils::{self, VMContextBuilder},
         testing_env, Gas, VMContext,
     };
+    use serde_json::Value;
 
     use crate::*;
 
@@ -353,8 +519,15 @@ mod unit_tests {
                 current_vote = &vote3;
             }
 
+            ctr.on_accept_policy_callback(
+                Ok(mk_human_sbt(i as u64)),
+                candidate(i),
+                policy1(),
+                U128(BOND_AMOUNT),
+            );
             match ctr.on_vote_verified(
                 mk_human_sbt(i as u64),
+                Some(AccountFlag::Verified),
                 prop_id,
                 candidate(i),
                 current_vote.to_vec(),
@@ -410,7 +583,7 @@ mod unit_tests {
         ctx.predecessor_account_id = alice();
         ctx.attached_deposit = ACCEPT_POLICY_COST;
         testing_env!(ctx.clone());
-        ctr.accept_fair_voting_policy(policy1());
+        ctr.on_accept_policy_callback(Ok(mk_human_sbt(1)), alice(), policy1(), U128(BOND_AMOUNT));
 
         ctx.attached_deposit = VOTE_COST;
         ctx.block_timestamp = (START + 2) * MSECOND;
@@ -425,7 +598,7 @@ mod unit_tests {
             .is_view(false)
             .build();
         testing_env!(ctx.clone());
-        let ctr = Contract::new(admin(), sbt_registry(), policy1());
+        let ctr = Contract::new(admin(), sbt_registry(), policy1(), 1);
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
         (ctx, ctr)
@@ -582,6 +755,7 @@ mod unit_tests {
         let vote = vec![candidate(1)];
         ctx.block_timestamp = (START + 2) * MSECOND;
         testing_env!(ctx.clone());
+        ctr.on_accept_policy_callback(Ok(mk_human_sbt(1)), admin(), policy1(), U128(BOND_AMOUNT));
 
         // check initial state
         let p = ctr._proposal(prop_id);
@@ -589,7 +763,13 @@ mod unit_tests {
         assert_eq!(p.result, vec![0, 0, 0],);
 
         // successful vote
-        match ctr.on_vote_verified(mk_human_sbt(1), prop_id, alice(), vote.clone()) {
+        match ctr.on_vote_verified(
+            mk_human_sbt(1),
+            Some(AccountFlag::Verified),
+            prop_id,
+            alice(),
+            vote.clone(),
+        ) {
             Ok(_) => (),
             x => panic!("expected OK, got: {:?}", x),
         };
@@ -600,7 +780,13 @@ mod unit_tests {
         assert!(p.user_sbt.contains_key(&alice()));
 
         // attempt double vote
-        match ctr.on_vote_verified(mk_human_sbt(1), prop_id, alice(), vote.clone()) {
+        match ctr.on_vote_verified(
+            mk_human_sbt(1),
+            Some(AccountFlag::Verified),
+            prop_id,
+            alice(),
+            vote.clone(),
+        ) {
             Err(VoteError::DoubleVote(1)) => (),
             x => panic!("expected DoubleVote(1), got: {:?}", x),
         };
@@ -608,30 +794,62 @@ mod unit_tests {
         assert_eq!(p.result, vec![1, 0, 0], "vote result should not change");
 
         //set sbt=4 and attempt double vote
+        ctr.on_accept_policy_callback(Ok(mk_human_sbt(4)), admin(), policy1(), U128(BOND_AMOUNT));
         ctr._proposal(prop_id).voters.insert(&4, &vec![1]);
-        match ctr.on_vote_verified(mk_human_sbt(4), prop_id, alice(), vote.clone()) {
+        match ctr.on_vote_verified(
+            mk_human_sbt(4),
+            Some(AccountFlag::Verified),
+            prop_id,
+            alice(),
+            vote.clone(),
+        ) {
             Err(VoteError::DoubleVote(4)) => (),
             x => panic!("expected DoubleVote(4), got: {:?}", x),
         };
         assert_eq!(p.result, vec![1, 0, 0], "vote result should not change");
 
         // attempt to double vote with few tokens
-        match ctr.on_vote_verified(mk_human_sbts(vec![4]), prop_id, alice(), vote.clone()) {
+        match ctr.on_vote_verified(
+            mk_human_sbts(vec![4]),
+            Some(AccountFlag::Verified),
+            prop_id,
+            alice(),
+            vote.clone(),
+        ) {
             Err(VoteError::DoubleVote(4)) => (),
             x => panic!("expected DoubleVote(4), got: {:?}", x),
         };
         assert_eq!(p.result, vec![1, 0, 0], "vote result should not change");
 
-        // wrong issuer
-        match ctr.on_vote_verified(mk_nohuman_sbt(3), prop_id, alice(), vote.clone()) {
-            Err(VoteError::WrongIssuer) => (),
-            x => panic!("expected WrongIssuer, got: {:?}", x),
-        };
-        match ctr.on_vote_verified(vec![], prop_id, alice(), vote.clone()) {
+        // not a human
+        ctr.on_accept_policy_callback(Ok(mk_human_sbt(3)), admin(), policy1(), U128(BOND_AMOUNT));
+        match ctr.on_vote_verified(
+            mk_nohuman_sbt(3),
+            Some(AccountFlag::Verified),
+            prop_id,
+            alice(),
+            vote.clone(),
+        ) {
             Err(VoteError::NoSBTs) => (),
             x => panic!("expected WrongIssuer, got: {:?}", x),
         };
-        match ctr.on_vote_verified(vec![(human_issuer(), vec![])], prop_id, alice(), vote) {
+        match ctr.on_vote_verified(
+            vec![],
+            Some(AccountFlag::Verified),
+            prop_id,
+            alice(),
+            vote.clone(),
+        ) {
+            Err(VoteError::NoSBTs) => (),
+            x => panic!("expected WrongIssuer, got: {:?}", x),
+        };
+        match ctr.on_vote_verified(
+            vec![(human_issuer(), vec![])],
+            Some(AccountFlag::Verified),
+            prop_id,
+            alice(),
+            vote,
+        ) {
             Err(VoteError::NoSBTs) => (),
             x => panic!("expected NoSBTs, got: {:?}", x),
         };
@@ -644,7 +862,15 @@ mod unit_tests {
         // bob, tokenID=20: successful vote with single selection
         ctx.predecessor_account_id = alice();
         testing_env!(ctx.clone());
-        match ctr.on_vote_verified(mk_human_sbt(20), prop_id, bob(), vec![candidate(3)]) {
+        ctr.on_accept_policy_callback(Ok(mk_human_sbt(20)), alice(), policy1(), U128(BOND_AMOUNT));
+
+        match ctr.on_vote_verified(
+            mk_human_sbt(20),
+            Some(AccountFlag::Verified),
+            prop_id,
+            bob(),
+            vec![candidate(3)],
+        ) {
             Ok(_) => (),
             x => panic!("expected OK, got: {:?}", x),
         };
@@ -660,9 +886,12 @@ mod unit_tests {
         // charlie, tokenID=22: vote with 2 selections
         ctx.predecessor_account_id = bob();
         testing_env!(ctx);
+        ctr.on_accept_policy_callback(Ok(mk_human_sbt(22)), bob(), policy1(), U128(BOND_AMOUNT));
+
         // candidates are put in non alphabetical order.
         match ctr.on_vote_verified(
             mk_human_sbt(22),
+            Some(AccountFlag::Verified),
             prop_id,
             charlie(),
             vec![candidate(3), candidate(2)],
@@ -680,7 +909,13 @@ mod unit_tests {
         );
 
         // SetupPackage vote, again with charlie
-        match ctr.on_vote_verified(mk_human_sbt(22), prop_sp, charlie(), vec![]) {
+        match ctr.on_vote_verified(
+            mk_human_sbt(22),
+            Some(AccountFlag::Verified),
+            prop_sp,
+            charlie(),
+            vec![],
+        ) {
             Ok(_) => (),
             x => panic!("expected OK, got: {:?}", x),
         };
@@ -721,7 +956,8 @@ mod unit_tests {
         assert!(res.is_none());
         ctx.attached_deposit = ACCEPT_POLICY_COST;
         testing_env!(ctx.clone());
-        ctr.accept_fair_voting_policy(policy1());
+        ctr.on_accept_policy_callback(Ok(mk_human_sbt(1)), admin(), policy1(), U128(BOND_AMOUNT));
+
         res = ctr.accepted_policy(admin());
         assert!(res.is_some());
         assert_eq!(res.unwrap(), policy1());
@@ -738,7 +974,7 @@ mod unit_tests {
     }
 
     #[test]
-    #[should_panic(expected = "not enough gas, min: Gas(70000000000000)")]
+    #[should_panic(expected = "not enough gas, min: Gas(110000000000000)")]
     fn vote_wrong_gas() {
         let (mut ctx, mut ctr) = setup(&admin());
 
@@ -836,7 +1072,7 @@ mod unit_tests {
 
         ctx.attached_deposit = ACCEPT_POLICY_COST;
         testing_env!(ctx.clone());
-        ctr.accept_fair_voting_policy(policy1());
+        ctr.on_accept_policy_callback(Ok(mk_human_sbt(1)), admin(), policy1(), U128(BOND_AMOUNT));
 
         let prop_id = mk_proposal(&mut ctr);
         ctx.attached_deposit = VOTE_COST;
@@ -945,10 +1181,12 @@ mod unit_tests {
         let prop_id_3 = mk_proposal(&mut ctr);
         ctx.block_timestamp = (START + 2) * MSECOND;
         testing_env!(ctx.clone());
+        ctr.on_accept_policy_callback(Ok(mk_human_sbt(1)), admin(), policy1(), U128(BOND_AMOUNT));
 
         // vote on proposal 1
         match ctr.on_vote_verified(
             mk_human_sbt(1),
+            Some(AccountFlag::Verified),
             prop_id_1,
             alice(),
             vec![candidate(3), candidate(2)],
@@ -960,7 +1198,13 @@ mod unit_tests {
         assert_eq!(res, vec![Some(vec![2, 1]), None, None]);
 
         // vote on proposal 3
-        match ctr.on_vote_verified(mk_human_sbt(1), prop_id_3, alice(), vec![candidate(2)]) {
+        match ctr.on_vote_verified(
+            mk_human_sbt(1),
+            Some(AccountFlag::Verified),
+            prop_id_3,
+            alice(),
+            vec![candidate(2)],
+        ) {
             Ok(_) => (),
             x => panic!("expected OK, got: {:?}", x),
         };
@@ -978,9 +1222,11 @@ mod unit_tests {
 
         ctx.block_timestamp = (START + 2) * MSECOND;
         testing_env!(ctx.clone());
+        ctr.on_accept_policy_callback(Ok(mk_human_sbt(1)), admin(), policy1(), U128(BOND_AMOUNT));
 
         match ctr.on_vote_verified(
             mk_human_sbt(1),
+            Some(AccountFlag::Verified),
             prop_id_1,
             alice(),
             vec![candidate(3), candidate(2)],
@@ -1003,9 +1249,16 @@ mod unit_tests {
         let vote = vec![candidate(1)];
         ctx.block_timestamp = (START + 2) * MSECOND;
         testing_env!(ctx.clone());
+        ctr.on_accept_policy_callback(Ok(mk_human_sbt(1)), alice(), policy1(), U128(BOND_AMOUNT));
 
         // successful vote
-        match ctr.on_vote_verified(mk_human_sbt(1), prop_id, alice(), vote.clone()) {
+        match ctr.on_vote_verified(
+            mk_human_sbt(1),
+            Some(AccountFlag::Verified),
+            prop_id,
+            alice(),
+            vote.clone(),
+        ) {
             Ok(_) => (),
             x => panic!("expected OK, got: {:?}", x),
         };
@@ -1013,11 +1266,22 @@ mod unit_tests {
         assert_eq!(p.voters_num, 1);
         assert_eq!(p.result, vec![1, 0, 0]);
 
+        // Before revoke bond should be present
+        assert_eq!(ctr.bonded_amounts.get(&1), Some(BOND_AMOUNT));
+
         // revoke vote
         match ctr.admin_revoke_vote(prop_id, 1) {
             Ok(_) => (),
             x => panic!("expected OK, got: {:?}", x),
         }
+
+        // Bond amount should be slashed
+        assert_eq!(ctr.bonded_amounts.get(&1), None);
+        assert_eq!(
+            ctr.total_slashed,
+            BOND_AMOUNT
+        );
+
         let p = ctr._proposal(1);
         assert_eq!(p.voters_num, 0, "vote should be revoked");
         assert_eq!(p.result, vec![0, 0, 0], "vote should be revoked");
@@ -1036,11 +1300,13 @@ mod unit_tests {
         let prop4 = mk_proposal(&mut ctr);
         ctx.block_timestamp = (START + 2) * MSECOND;
         testing_env!(ctx.clone());
+        ctr.on_accept_policy_callback(Ok(mk_human_sbt(1)), admin(), policy1(), U128(BOND_AMOUNT));
 
         // first vote (voting not yet completed)
         let mut prop_id = prop1;
         match ctr.on_vote_verified(
             mk_human_sbt(1),
+            Some(AccountFlag::Verified),
             prop_id,
             alice(),
             vec![candidate(3), candidate(2)],
@@ -1054,6 +1320,7 @@ mod unit_tests {
         prop_id = prop2;
         match ctr.on_vote_verified(
             mk_human_sbt(1),
+            Some(AccountFlag::Verified),
             prop_id,
             alice(),
             vec![candidate(3), candidate(2)],
@@ -1067,6 +1334,7 @@ mod unit_tests {
         prop_id = prop3;
         match ctr.on_vote_verified(
             mk_human_sbt(1),
+            Some(AccountFlag::Verified),
             prop_id,
             alice(),
             vec![candidate(3), candidate(2)],
@@ -1080,6 +1348,7 @@ mod unit_tests {
         prop_id = prop4;
         match ctr.on_vote_verified(
             mk_human_sbt(1),
+            Some(AccountFlag::Verified),
             prop_id,
             alice(),
             vec![candidate(3), candidate(2)],
@@ -1091,6 +1360,65 @@ mod unit_tests {
     }
 
     #[test]
+    fn bond_amount() {
+        let (mut ctx, mut ctr) = setup(&alice());
+
+        ctr.on_accept_policy_callback(Ok(mk_human_sbt(1)), alice(), policy1(), U128(BOND_AMOUNT));
+        assert_eq!(ctr.bonded_amounts.get(&1), Some(BOND_AMOUNT));
+
+        ctx.predecessor_account_id = sbt_registry();
+        ctx.attached_deposit = BOND_AMOUNT;
+        testing_env!(ctx);
+
+        ctr.bond(alice(), mk_human_sbt(2), "".to_string());
+        assert_eq!(ctr.bonded_amounts.get(&2), Some(BOND_AMOUNT));
+    }
+
+    #[test]
+    #[should_panic(expected = "Err(MinBond(3000000000000000000, 2000000000000000000))")]
+    fn vote_without_bond_amount() {
+        let (mut ctx, mut ctr) = setup(&admin());
+        let prop_id_1 = mk_proposal(&mut ctr);
+        ctx.block_timestamp = (START + 2) * MSECOND;
+        testing_env!(ctx);
+        ctr.on_accept_policy_callback(
+            Ok(mk_human_sbt(1)),
+            admin(),
+            policy1(),
+            U128(BOND_AMOUNT - MICRO_NEAR),
+        );
+
+        match ctr.on_vote_verified(
+            mk_human_sbt(1),
+            Some(AccountFlag::Verified),
+            prop_id_1,
+            alice(),
+            vec![candidate(3), candidate(2)],
+        ) {
+            Ok(_) => (),
+            x => panic!("expected OK, got: {:?}", x),
+        };
+    }
+
+    #[test]
+    fn unbond_amount() {
+        let (mut ctx, mut ctr) = setup(&admin());
+
+        let prop_sp = mk_proposal_setup_package(&mut ctr);
+        alice_voting_context(&mut ctx, &mut ctr);
+
+        assert_eq!(ctr.bonded_amounts.get(&1), Some(BOND_AMOUNT));
+        ctr.vote(prop_sp, vec![]);
+
+        ctx.block_timestamp = ctr.finish_time * 1000000000; // in nano
+        ctx.predecessor_account_id = sbt_registry();
+        testing_env!(ctx.clone());
+
+        ctr.unbond(alice(), mk_human_sbt(1), Value::String("".to_string()));
+        assert_eq!(ctr.bonded_amounts.get(&1), None);
+    }
+
+    #[test]
     fn revoke_vote() {
         let (mut ctx, mut ctr) = setup(&admin());
 
@@ -1098,9 +1426,15 @@ mod unit_tests {
         let vote = vec![candidate(1)];
         ctx.block_timestamp = (START + 2) * MSECOND;
         testing_env!(ctx.clone());
+        ctr.on_accept_policy_callback(
+            Ok(mk_human_sbt(1)),
+            admin(),
+            policy1(),
+            U128(BOND_AMOUNT),
+        );
 
         // successful vote
-        match ctr.on_vote_verified(mk_human_sbt(1), prop_id, alice(), vote.clone()) {
+        match ctr.on_vote_verified(mk_human_sbt(1), Some(AccountFlag::Verified), prop_id, alice(), vote.clone()) {
             Ok(_) => (),
             x => panic!("expected OK, got: {:?}", x),
         };

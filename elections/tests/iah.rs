@@ -7,7 +7,7 @@ use workspaces::{Account, Contract, DevNetwork, Worker};
 //extern crate elections;
 use elections::{
     proposal::{ProposalType, VOTE_COST},
-    ProposalView, TokenMetadata, ACCEPT_POLICY_COST,
+    ProposalView, TokenMetadata, BOND_AMOUNT, ACCEPT_POLICY_COST, MILI_NEAR,
 };
 
 /// 1ms in seconds
@@ -43,6 +43,7 @@ async fn init(
             "authority": admin.id(),
             "sbt_registry": registry_contract.id(),
             "policy": policy1(),
+            "finish_time": 1,
         }))
         .max_gas()
         .transact();
@@ -54,12 +55,13 @@ async fn init(
     let now = block.timestamp() / MSECOND; // timestamp in seconds
     let start_time = now + 20 * 1000; // below we are executing 5 transactions, first has 3 receipts, so the proposal is roughtly now + 20seconds
     let expires_at: u64 = now + 100 * 1_000;
+    let proposal_expires_at: u64 = expires_at + 25 * 1000;
 
     // mint IAH sbt to alice and john
     let token_metadata = TokenMetadata {
         class: 1,
         issued_at: Some(0),
-        expires_at: Some(expires_at),
+        expires_at: Some(proposal_expires_at * 20),
         reference: None,
         reference_hash: None,
     };
@@ -67,12 +69,23 @@ async fn init(
     let token_metadata_short_expire_at = TokenMetadata {
         class: 1,
         issued_at: Some(0),
-        expires_at: Some(now),
+        expires_at: Some(now + 7000),
         reference: None,
         reference_hash: None,
     };
+
+     // mint IAH sbt to bob
+     let token_metadata_bob = TokenMetadata {
+        class: 1,
+        issued_at: Some(0),
+        expires_at: Some(expires_at),
+        reference: None,
+        reference_hash: None,
+    };
+
     let token_spec = vec![
         (alice.id(), vec![token_metadata]),
+        (bob.id(), vec![token_metadata_bob]),
         (john.id(), vec![token_metadata_short_expire_at]),
     ];
 
@@ -89,16 +102,23 @@ async fn init(
         .call(ndc_elections_contract.id(), "create_proposal")
         .args_json(json!({
             "typ": ProposalType::HouseOfMerit, "start": start_time,
-            "end": expires_at, "cooldown": 6048000, "ref_link": "test.io", "quorum": 10,
+            "end": proposal_expires_at, "cooldown": 1, "ref_link": "test.io", "quorum": 10,
             "credits": 5, "seats": 1, "candidates": [john.id(), alice.id()],
             "min_candidate_support": 2,
         }))
         .max_gas()
         .transact();
 
-    accept_policy(ndc_elections_contract.clone(), alice.clone(), policy1()).await?;
-    accept_policy(ndc_elections_contract.clone(), bob.clone(), policy1()).await?;
     accept_policy(ndc_elections_contract.clone(), john.clone(), policy1()).await?;
+    accept_policy(ndc_elections_contract.clone(), alice.clone(), policy1()).await?;
+
+    let res3 = auth_flagger
+        .call(registry_contract.id(), "admin_flag_accounts")
+        .args_json(json!({ "flag": "Verified", "accounts": [john.id(), alice.id(), bob.id()], "memo": ""}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res3.is_success(), "{:?}", res3);
 
     assert!(res1.is_success(), "{:?}", res1);
     let proposal_id: u32 = res2.await?.json()?;
@@ -137,12 +157,13 @@ async fn vote_by_human() -> anyhow::Result<()> {
 #[tokio::test]
 async fn vote_by_non_human() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
-    let (ndc_elections_contract, _, _, bob, john, _, proposal_id) = init(&worker).await?;
-
+    let (ndc_elections_contract, _, _, john, _, _, proposal_id) = init(&worker).await?;
+    
+    let non_human = worker.dev_create_account().await?;
     // fast forward to the voting period
     worker.fast_forward(12).await?;
 
-    let res = bob
+    let res = non_human
         .call(ndc_elections_contract.id(), "vote")
         .args_json(json!({"prop_id": proposal_id, "vote": [john.id()],}))
         .deposit(VOTE_COST)
@@ -152,7 +173,7 @@ async fn vote_by_non_human() -> anyhow::Result<()> {
     assert!(res.is_failure(), "resp should be a failure {:?}", res);
     let res_str = format!("{:?}", res);
     assert!(
-        res_str.contains("voter is not a verified human"),
+        res_str.contains("user didn't accept the voting policy"),
         "{}",
         res_str
     );
@@ -166,7 +187,7 @@ async fn vote_expired_iah_token() -> anyhow::Result<()> {
     let (ndc_elections_contract, _, alice, _, john, _, proposal_id) = init(&worker).await?;
 
     // fast forward to the voting period
-    worker.fast_forward(100).await?;
+    worker.fast_forward(70).await?;
 
     let res = john
         .call(ndc_elections_contract.id(), "vote")
@@ -208,6 +229,118 @@ async fn vote_without_accepting_policy() -> anyhow::Result<()> {
         "{}",
         failures
     );
+
+    Ok(())
+}
+
+// This test can be uncommented after mainnet e2e. Because for mainnet e2e storage cost of ACCEPT_POLICY is higher than
+// BOND_AMOUNT or GRAY_BOND so error can't be created. I have tested it with original values. 3N and 300N
+#[ignore]
+#[tokio::test]
+async fn vote_without_deposit_bond() -> anyhow::Result<()> {
+    let worker = workspaces::sandbox().await?;
+    let (ndc_elections_contract, _, _, bob, john, _, proposal_id) = init(&worker).await?;
+
+    let res = bob
+        .call(ndc_elections_contract.id(), "accept_fair_voting_policy")
+        .args_json(json!({
+            "policy": policy1(),
+        }))
+        .deposit(ACCEPT_POLICY_COST)
+        .max_gas()
+        .transact()
+        .await?;
+
+    assert!(res.is_success(), "{:?}", res);
+
+    // fast forward to the voting period
+    worker.fast_forward(10).await?;
+
+    let res = bob
+        .call(ndc_elections_contract.id(), "vote")
+        .args_json(json!({"prop_id": proposal_id, "vote": [john.id()],}))
+        .deposit(VOTE_COST)
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_failure(), "resp should be a failure {:?}", res);
+    let failures = format!("{:?}", res.receipt_failures());
+    assert!(
+        failures.contains("Smart contract panicked: required bond amount=3000000000000000000000000, deposited=10000000000000000000000"),
+        "{}",
+        failures
+    );
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn unbond_amount_before_election_end() -> anyhow::Result<()> {
+    let worker = workspaces::sandbox().await?;
+    let (ndc_elections_contract, registry_contract, alice, _, john, _, proposal_id) = init(&worker).await?;
+
+    // fast forward to the voting period
+    worker.fast_forward(12).await?;
+
+    let res = alice
+        .call(ndc_elections_contract.id(), "vote")
+        .args_json(json!({"prop_id": proposal_id, "vote": [john.id()],}))
+        .deposit(VOTE_COST)
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success(), "{:?}", res);
+
+    let res1 = alice
+         .call(registry_contract.id(), "is_human_call")
+        .args_json(json!({"ctr": ndc_elections_contract.id(), "function": "unbond", "payload": "{}"}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res1.is_failure(), "resp should be a failure {:?}", res1);
+    let failures = format!("{:?}", res1.receipt_failures());
+    assert!(
+        failures.contains("cannot unbond: election is still in progress"),
+        "{}",
+        failures
+    );
+    Ok(())
+}
+
+// This test assumes bond amount to be 3N and 300N. Tested
+#[ignore]
+#[tokio::test]
+async fn unbond_amount() -> anyhow::Result<()> {
+    let worker = workspaces::sandbox().await?;
+    let (ndc_elections_contract, registry_contract, alice, _, john, _, proposal_id) = init(&worker).await?;
+
+    // fast forward to the voting period
+    worker.fast_forward(12).await?;
+
+    let res = alice
+        .call(ndc_elections_contract.id(), "vote")
+        .args_json(json!({"prop_id": proposal_id, "vote": [john.id()],}))
+        .deposit(VOTE_COST)
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success(), "{:?}", res);
+
+    let balance_before = alice.view_account().await?;
+    // fast forward to the end of voting + cooldown period
+    worker.fast_forward(200).await?;
+
+    let res1 = alice
+        .call(registry_contract.id(), "is_human_call")
+        .args_json(json!({"ctr": ndc_elections_contract.id(), "function": "unbond", "payload": "{}"}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res1.is_success(), "{:?}", res1);
+
+    let balance_after = alice.view_account().await?;
+    // Make sure you get back your NEAR - Some fees - Storage
+    assert!(balance_after.balance - balance_before.balance > BOND_AMOUNT - 10 * MILI_NEAR);
 
     Ok(())
 }
@@ -306,7 +439,7 @@ async fn accept_policy(election: Contract, user: Account, policy: String) -> any
         .args_json(json!({
             "policy": policy,
         }))
-        .deposit(ACCEPT_POLICY_COST)
+        .deposit(BOND_AMOUNT + ACCEPT_POLICY_COST)
         .max_gas()
         .transact()
         .await?;

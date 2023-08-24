@@ -1,5 +1,6 @@
 use near_sdk::serde::Deserialize;
-use near_sdk::{ext_contract, AccountId};
+use near_sdk::{ext_contract, AccountId, Promise};
+use near_sdk::json_types::U128;
 
 // imports needed for conditional derive (required for tests)
 #[allow(unused_imports)]
@@ -17,6 +18,10 @@ pub trait ExtSelf {
         vote: Vote,
     ) -> Result<(), VoteError>;
     fn on_revoke_verified(&mut self, prop_id: u32, user: AccountId) -> Result<(), RevokeVoteError>;
+    fn on_accept_policy_callback(&mut self,
+        sender: AccountId,
+        policy: String,
+        deposit_amount: U128) -> Promise;
 }
 
 #[ext_contract(ext_sbtreg)]

@@ -16,7 +16,9 @@ pub async fn setup_registry(
         .call("new")
         .args_json(json!({"authority": authority.id(),
                           "iah_issuer": iah_issuer.id(), "iah_classes": [1],
-                          "authorized_flaggers": vec![auth_flagger.id()] }))
+                          "authorized_flaggers": vec![auth_flagger.id()],
+                          "community_verified_set": vec![(iah_issuer.id(), vec![1])]
+                        }))
         .max_gas()
         .transact()
         .await?;
