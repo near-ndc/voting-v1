@@ -214,9 +214,10 @@ impl Contract {
     }
 
     #[payable]
-    #[allow(unused_variables)] // `payload` is not used but it needs to be payload so that is_human_call works
-    pub fn bond(&mut self, caller: AccountId, iah_proof: HumanSBTs, payload: String) -> PromiseOrValue<U128> {
-        let attached_deposit = env::attached_deposit();
+    pub fn bond(&mut self, caller: AccountId, iah_proof: HumanSBTs, 
+      #[allow(unused_variables)] payload: String, // required by is_human_call
+      ) -> PromiseOrValue<U128> {
+        let deposit = env::attached_deposit();
         if env::predecessor_account_id() != self.sbt_registry {
             return PromiseOrValue::Promise(Promise::new(caller)
             .transfer(attached_deposit)
@@ -227,19 +228,16 @@ impl Contract {
                         "Can only be called by registry"
                     )),
             ));
-            // option 1. return deposit and return from function ... note it will show in explorer that the function succeeded
-            // option 2. return deposit and schedule "self callback" to panic. - here the explorer will show that function fails.
         }
 
+        // today we only support IAH proofs with exactly one token: the Fractal FV SBT.
         if iah_proof.is_empty() || !(iah_proof.len() == 1 && iah_proof[0].1.len() == 1) {
             return PromiseOrValue::Promise(Promise::new(caller)
             .transfer(attached_deposit)
-            .then(
+            .and(
                 Self::ext(env::current_account_id())
                     .with_static_gas(FAILURE_CALLBACK_GAS)
-                    .on_failure(format!(
-                        "Not a human"
-                    )),
+                    .on_failure("Not a human".to_string()),
             ));
         }
         let token_id = iah_proof[0].1.get(0).unwrap();
@@ -277,12 +275,10 @@ impl Contract {
         }
 
         let token_id = iah_proof[0].1.get(0).unwrap();
-        let bonded_amount = self
+        let unbond_amount = self
                     .bonded_amounts
-                    .get(token_id)
+                    .remove(token_id)
                     .expect("bond doesn't exist");
-        let unbond_amount = bonded_amount - ACCEPT_POLICY_COST - VOTE_COST;
-        self.bonded_amounts.remove(token_id);
 
         Promise::new(caller).transfer(unbond_amount)
     }
@@ -353,14 +349,10 @@ impl Contract {
             return Err(VoteError::WrongIssuer);
         }
 
-        let required_bond;
-        if account_flag == Some(AccountFlag::Blacklisted) {
-            return Err(VoteError::Blacklisted);
-        }
-        if account_flag == Some(AccountFlag::Verified) {
-            required_bond = self.bond_amount_verified;
-        } else {
-            required_bond = self.bond_amount_gray;
+        let required_bond = match account_flag {
+           Some(AccountFlag::Blacklisted) => return Err(VoteError::Blacklisted),
+           Some(AccountFlag::Verified) => self.bond_amount_verified,
+           None => self.bond_amount_gray,
         }
 
         let bond_deposited = self
@@ -398,7 +390,6 @@ impl Contract {
                 let token_id = tokens[0].1.get(0).unwrap();
                 let policy = assert_hash_hex_string(&policy);
                 self.accepted_policy.insert(&sender, &policy);
-
                 self.bonded_amounts.insert(token_id, &deposit_amount.0);
 
                 Ok(token_id.clone())
@@ -410,7 +401,7 @@ impl Contract {
                 // Return deposit back to sender if accept policy failure
                 Promise::new(sender)
                     .transfer(attached_deposit)
-                    .then(
+                    .and(
                         Self::ext(env::current_account_id())
                             .with_static_gas(FAILURE_CALLBACK_GAS)
                             .on_failure(format!(

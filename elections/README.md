@@ -23,8 +23,8 @@
 - Each Non-verified voter must bond 300N to cast their vote.
 - Bond can be deposited during `accept_policy` operation or `bond` function can be used via i-am-human-call.
 - One bond is enough to cast votes for all proposals.
-- `finish_time`: max(`finish_time`, `end` + `cooldown`) of all the proposals. User can only get back their bond after this period.
-- Contract returns attached tokens (minus the storage fees).
+- `finish_time`: max(`finish_time`, `end` + `cooldown`) of all the proposals. 
+- User can unbond after the `finish_time`. All tokens minus storage fees will be returned.
 - Bonded tokens can be slashed by executing `vote_revoke`. 100% of bonded tokens will be slashed and will be tracked in `total_slashed` variable.
 - `unbond`: To unbond deposit, unbond function needs to be called using `i-am-human` call.
 
