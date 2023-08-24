@@ -433,9 +433,9 @@ impl Contract {
         // in current version we support only one proof of personhood issuer: Fractal, so here
         // we simplify by requiring that the result contains tokens only from one issuer.
         if iah_proof.is_empty() || !(iah_proof.len() == 1 && iah_proof[0].1.len() == 1) {
-            (true, *iah_proof[0].1.get(0).unwrap())
-        } else {
             (false, 0)
+        } else {
+            (true, *iah_proof[0].1.get(0).unwrap())
         }
     }
 
