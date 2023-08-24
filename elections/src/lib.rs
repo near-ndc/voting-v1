@@ -216,24 +216,14 @@ impl Contract {
         if env::predecessor_account_id() != self.sbt_registry {
             return PromiseOrValue::Promise(Promise::new(caller)
             .transfer(deposit)
-            .and(
-                Self::ext(env::current_account_id())
-                    .with_static_gas(FAILURE_CALLBACK_GAS)
-                    .on_failure(format!(
-                        "Can only be called by registry"
-                    )),
-            ));
+            .and(Self::fail("Can only be called by registry")));
         }
 
         // today we only support IAH proofs with exactly one token: the Fractal FV SBT.
         if Self::is_human_issuer(&iah_proof) {
             return PromiseOrValue::Promise(Promise::new(caller)
             .transfer(deposit)
-            .and(
-                Self::ext(env::current_account_id())
-                    .with_static_gas(FAILURE_CALLBACK_GAS)
-                    .on_failure("Not a human".to_string()),
-            ));
+            .and(Self::fail("Not a human")));
         }
         let token_id = iah_proof[0].1.get(0).unwrap();
         self.bonded_amounts.insert(token_id, &deposit);
@@ -244,36 +234,22 @@ impl Contract {
     #[allow(unused_variables)] // `payload` is not used but it needs to be payload so that is_human_call works
     pub fn unbond(&mut self, caller: AccountId, iah_proof: HumanSBTs, payload: serde_json::Value) -> Promise {
         if env::predecessor_account_id() != self.sbt_registry {
-            return
-                Self::ext(env::current_account_id())
-                    .with_static_gas(FAILURE_CALLBACK_GAS)
-                    .on_failure(format!(
-                    "Can only be called by registry"
-                ));
+            return Self::fail("Can only be called by registry");
         }
 
         if Self::is_human_issuer(&iah_proof) {
-            return
-                Self::ext(env::current_account_id())
-                    .with_static_gas(FAILURE_CALLBACK_GAS)
-                    .on_failure(format!(
-                        "Not a human"
-                ));
+            return Self::fail("Not a human");
         }
 
         if env::block_timestamp_ms() <= self.finish_time {
-            return Self::ext(env::current_account_id())
-                    .with_static_gas(FAILURE_CALLBACK_GAS)
-                    .on_failure(format!(
-                        "cannot unbond: election is still in progress"
-                    ));
+            return Self::fail("cannot unbond: election is still in progress");
         }
 
         let token_id = iah_proof[0].1.get(0).unwrap();
         let unbond_amount = self
                     .bonded_amounts
                     .remove(token_id)
-                    .expect("bond doesn't exist");
+                    .expect("Voter didn't bond");
 
         // cleanup votes, policy data from caller
         for i in 1..self.prop_counter {
@@ -391,16 +367,12 @@ impl Contract {
 
         match result {
             Ok(token) => PromiseOrValue::Value(token),
-            Err(e) => {
+            Err(_e) => {
                 // Return deposit back to sender if accept policy failure
                 Promise::new(sender)
                     .transfer(attached_deposit)
                     .and(
-                        Self::ext(env::current_account_id())
-                            .with_static_gas(FAILURE_CALLBACK_GAS)
-                            .on_failure(format!(
-                                "IAHRegistry::is_human(), Accept policy failure: {e:?}"
-                            )),
+                        Self::fail("IAHRegistry::is_human(), Accept policy failure")
                     )
                     .into()
             }
@@ -441,6 +413,12 @@ impl Contract {
         if let Some(value) = bond_amount {
             self.total_slashed += value;
         }
+    }
+
+    fn fail(reason: &str) -> Promise {
+        Self::ext(env::current_account_id())
+            .with_static_gas(FAILURE_CALLBACK_GAS)
+            .on_failure(reason.to_string())
     }
 
     #[inline]

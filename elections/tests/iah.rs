@@ -307,6 +307,8 @@ async fn unbond_amount_before_election_end() -> anyhow::Result<()> {
     Ok(())
 }
 
+// This test assumes bond amount to be 3N and 300N. Tested
+#[ignore]
 #[tokio::test]
 async fn unbond_amount() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;

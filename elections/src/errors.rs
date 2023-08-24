@@ -28,7 +28,7 @@ impl FunctionError for VoteError {
             },
             VoteError::MinBond(req, amt) => panic_str(&format!("required bond amount={}, deposited={}", req, amt)),
             VoteError::Blacklisted => panic_str("user is blacklisted"),
-            VoteError::NoBond => panic_str("bond doesn't exist")
+            VoteError::NoBond => panic_str("Voter didn't bond")
         }
     }
 }
