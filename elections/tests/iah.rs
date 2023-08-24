@@ -7,7 +7,7 @@ use workspaces::{Account, Contract, DevNetwork, Worker};
 //extern crate elections;
 use elections::{
     proposal::{ProposalType, VOTE_COST},
-    ProposalView, TokenMetadata, BOND_AMOUNT, MILI_NEAR,
+    ProposalView, TokenMetadata, BOND_AMOUNT, MILI_NEAR, ACCEPT_POLICY_COST,
 };
 
 /// 1ms in seconds
@@ -434,7 +434,7 @@ async fn accept_policy(election: Contract, user: Account, policy: String) -> any
         .args_json(json!({
             "policy": policy,
         }))
-        .deposit(BOND_AMOUNT)
+        .deposit(BOND_AMOUNT + ACCEPT_POLICY_COST)
         .max_gas()
         .transact()
         .await?;

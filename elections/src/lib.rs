@@ -226,7 +226,7 @@ impl Contract {
         }
 
         // today we only support IAH proofs with exactly one token: the Fractal FV SBT.
-        if iah_proof.is_empty() || !(iah_proof.len() == 1 && iah_proof[0].1.len() == 1) {
+        if Self::is_human_issuer(&iah_proof) {
             return PromiseOrValue::Promise(Promise::new(caller)
             .transfer(deposit)
             .and(
@@ -252,7 +252,7 @@ impl Contract {
                 ));
         }
 
-        if iah_proof.is_empty() || !(iah_proof.len() == 1 && iah_proof[0].1.len() == 1) {
+        if Self::is_human_issuer(&iah_proof) {
             return
                 Self::ext(env::current_account_id())
                     .with_static_gas(FAILURE_CALLBACK_GAS)
@@ -274,6 +274,16 @@ impl Contract {
                     .bonded_amounts
                     .remove(token_id)
                     .expect("bond doesn't exist");
+
+        // cleanup votes, policy data from caller
+        for i in 1..self.prop_counter {
+            let proposal = self.proposals.get(&i);
+            if let Some(mut prop) = proposal {
+                prop.user_sbt.remove(&caller);
+                prop.voters.remove(token_id);
+            }
+            self.accepted_policy.remove(&caller);
+        }
 
         Promise::new(caller).transfer(unbond_amount)
     }
@@ -327,24 +337,20 @@ impl Contract {
         voter: AccountId,
         vote: Vote,
     ) -> Result<(), VoteError> {
-        if tokens.is_empty() || tokens[0].1.is_empty() {
+        if Self::is_human_issuer(&tokens) {
             return Err(VoteError::NoSBTs);
-        }
-        if !(tokens.len() == 1 && tokens[0].1.len() == 1) {
-            // in current version we support only one proof of personhood issuer: Fractal, so here
-            // we simplify by requiring that the result contains tokens only from one issuer.
-            return Err(VoteError::WrongIssuer);
         }
 
         let required_bond = match account_flag {
            Some(AccountFlag::Blacklisted) => return Err(VoteError::Blacklisted),
-           Some(AccountFlag::Verified) => GRAY_BOND_AMOUNT,
-           None => BOND_AMOUNT,
+           Some(AccountFlag::Verified) => BOND_AMOUNT,
+           None => GRAY_BOND_AMOUNT,
         };
 
+        let token_id = tokens[0].1.get(0).unwrap();
         let bond_deposited = self
             .bonded_amounts
-            .get(&tokens[0].1.get(0).unwrap())
+            .get(&token_id)
             .expect("Bond doesn't exist");
         if bond_deposited < required_bond {
             return Err(VoteError::MinBond(required_bond, bond_deposited));
@@ -370,7 +376,7 @@ impl Contract {
         let result = callback_result
             .map_err(|e| format!("IAHRegistry::is_human() call failure: {e:?}"))
             .and_then(|tokens| {
-                if tokens.is_empty() || !(tokens.len() == 1 && tokens[0].1.len() == 1) {
+                if Self::is_human_issuer(&tokens) {
                     return Err("IAHRegistry::is_human() returns result: Not a human".to_owned());
                 }
 
@@ -430,11 +436,17 @@ impl Contract {
 
     #[private]
     pub fn slash_bond(&mut self, token_id: TokenId) {
-        let bond_amount = self.bonded_amounts.get(&token_id);
+        let bond_amount = self.bonded_amounts.remove(&token_id);
         if let Some(value) = bond_amount {
-            self.total_slashed += value - ACCEPT_POLICY_COST - VOTE_COST;
-            self.bonded_amounts.remove(&token_id);
+            self.total_slashed += value;
         }
+    }
+
+    #[inline]
+    fn is_human_issuer(iah_proof: &HumanSBTs) -> bool {
+        // in current version we support only one proof of personhood issuer: Fractal, so here
+        // we simplify by requiring that the result contains tokens only from one issuer.
+        return iah_proof.is_empty() || !(iah_proof.len() == 1 && iah_proof[0].1.len() == 1);
     }
 
     #[inline]
@@ -1288,7 +1300,7 @@ mod unit_tests {
         assert_eq!(ctr.bonded_amounts.get(&1), None);
         assert_eq!(
             ctr.total_slashed,
-            BOND_AMOUNT - ACCEPT_POLICY_COST - VOTE_COST
+            BOND_AMOUNT
         );
 
         let p = ctr._proposal(1);
@@ -1384,7 +1396,7 @@ mod unit_tests {
     }
 
     #[test]
-    #[should_panic(expected = "Err(MinBond(3000000000000000000000000, 2999000000000000000000000))")]
+    #[should_panic(expected = "Err(MinBond(3000000000000000000, 2000000000000000000))")]
     fn vote_without_bond_amount() {
         let (mut ctx, mut ctr) = setup(&admin());
         let prop_id_1 = mk_proposal(&mut ctr);
@@ -1394,7 +1406,7 @@ mod unit_tests {
             Ok(mk_human_sbt(1)),
             admin(),
             policy1(),
-            U128(BOND_AMOUNT - MILI_NEAR),
+            U128(BOND_AMOUNT - MICRO_NEAR),
         );
 
         match ctr.on_vote_verified(
