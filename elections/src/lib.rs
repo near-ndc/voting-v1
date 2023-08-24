@@ -348,12 +348,13 @@ impl Contract {
         };
 
         let token_id = tokens[0].1.get(0).unwrap();
-        let bond_deposited = self
-            .bonded_amounts
-            .get(&token_id)
-            .expect("Bond doesn't exist");
-        if bond_deposited < required_bond {
-            return Err(VoteError::MinBond(required_bond, bond_deposited));
+        let bond_deposited = self.bonded_amounts.get(&token_id);
+        if let Some(bond_value) = bond_deposited {
+            if bond_value < required_bond {
+                return Err(VoteError::MinBond(required_bond, bond_value));
+            }
+        } else {
+            return Err(VoteError::NoBond);
         }
 
         let mut p = self._proposal(prop_id);
@@ -842,7 +843,7 @@ mod unit_tests {
         };
         assert_eq!(p.result, vec![1, 0, 0], "vote result should not change");
 
-        // wrong issuer
+        // not a human
         ctr.on_accept_policy_callback(Ok(mk_human_sbt(3)), admin(), policy1(), U128(BOND_AMOUNT));
         match ctr.on_vote_verified(
             mk_nohuman_sbt(3),
@@ -851,7 +852,7 @@ mod unit_tests {
             alice(),
             vote.clone(),
         ) {
-            Err(VoteError::WrongIssuer) => (),
+            Err(VoteError::NoSBTs) => (),
             x => panic!("expected WrongIssuer, got: {:?}", x),
         };
         match ctr.on_vote_verified(

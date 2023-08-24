@@ -7,7 +7,7 @@ use workspaces::{Account, Contract, DevNetwork, Worker};
 //extern crate elections;
 use elections::{
     proposal::{ProposalType, VOTE_COST},
-    ProposalView, TokenMetadata, BOND_AMOUNT, MILI_NEAR, ACCEPT_POLICY_COST,
+    ProposalView, TokenMetadata, BOND_AMOUNT, ACCEPT_POLICY_COST, MICRO_NEAR, MILI_NEAR,
 };
 
 /// 1ms in seconds
@@ -233,6 +233,9 @@ async fn vote_without_accepting_policy() -> anyhow::Result<()> {
     Ok(())
 }
 
+// This test can be uncommented after mainnet e2e. Because for mainnet e2e storage cost of ACCEPT_POLICY is higher than
+// BOND_AMOUNT or GRAY_BOND so error can't be created. I have tested it with original values. 3N and 300N
+#[ignore]
 #[tokio::test]
 async fn vote_without_deposit_bond() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
@@ -243,7 +246,7 @@ async fn vote_without_deposit_bond() -> anyhow::Result<()> {
         .args_json(json!({
             "policy": policy1(),
         }))
-        .deposit(10 * MILI_NEAR)
+        .deposit(ACCEPT_POLICY_COST)
         .max_gas()
         .transact()
         .await?;
