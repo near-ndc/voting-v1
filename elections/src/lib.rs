@@ -6,7 +6,7 @@ use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::LookupMap;
 use near_sdk::json_types::U128;
 use near_sdk::{
-    env, near_bindgen, require, AccountId, PanicOnDefault, Promise, PromiseError, PromiseOrValue,
+    env, near_bindgen, require, AccountId, PanicOnDefault, Promise, PromiseOrValue,
 };
 
 mod constants;
@@ -145,9 +145,8 @@ impl Contract {
 
     /// Transaction to record the predecessor account accepting the Fair Voting Policy.
     /// * `policy` is a blake2s-256 hex-encoded hash (must be 64 bytes) of the Fair Voting Policy text.
-    /// User is required to pay bond amount in this step
     #[payable]
-    pub fn accept_fair_voting_policy(&mut self, policy: String) -> Promise {
+    pub fn accept_fair_voting_policy(&mut self, policy: String) {
         require!(
             env::attached_deposit() >= ACCEPT_POLICY_COST,
             format!(
@@ -155,19 +154,9 @@ impl Contract {
                 ACCEPT_POLICY_COST
             )
         );
-        require!(
-            env::prepaid_gas() >= ACCEPT_POLICY_GAS,
-            format!("not enough gas, min: {:?}", ACCEPT_POLICY_GAS)
-        );
-
-        let sender = env::predecessor_account_id();
-        ext_sbtreg::ext(self.sbt_registry.clone())
-            .is_human(sender.clone())
-            .then(
-                ext_self::ext(env::current_account_id())
-                    .with_static_gas(VOTE_GAS_CALLBACK)
-                    .on_accept_policy_callback(sender, policy, U128(env::attached_deposit())),
-            )
+        let policy = assert_hash_hex_string(&policy);
+        self.accepted_policy
+            .insert(&env::predecessor_account_id(), &policy);
     }
 
     /// Election vote using a seat-selection mechanism.
@@ -351,42 +340,6 @@ impl Contract {
     }
 
     #[private]
-    pub fn on_accept_policy_callback(
-        &mut self,
-        #[callback_result] callback_result: Result<HumanSBTs, PromiseError>,
-        sender: AccountId,
-        policy: String,
-        deposit_amount: U128,
-    ) -> PromiseOrValue<TokenId> {
-        let attached_deposit = deposit_amount.0;
-
-        let result = callback_result
-            .map_err(|e| format!("IAHRegistry::is_human() call failure: {e:?}"))
-            .and_then(|iah_proof| {
-                let (ok, token_id) = Self::is_human_issuer(&iah_proof);
-                if !ok {
-                    return Err("IAHRegistry::is_human() returns result: Not a human".to_owned());
-                }
-                let policy = assert_hash_hex_string(&policy);
-                self.accepted_policy.insert(&sender, &policy);
-                self.bonded_amounts.insert(&token_id, &deposit_amount.0);
-
-                Ok(token_id.clone())
-            });
-
-        match result {
-            Ok(token) => PromiseOrValue::Value(token),
-            Err(_e) => {
-                // Return deposit back to sender if accept policy failure
-                Promise::new(sender)
-                    .transfer(attached_deposit)
-                    .then(Self::fail("IAHRegistry::is_human(), Accept policy failure"))
-                    .into()
-            }
-        }
-    }
-
-    #[private]
     pub fn on_failure(&mut self, error: String) {
         env::panic_str(&error)
     }
@@ -504,6 +457,8 @@ mod unit_tests {
         for idx in 0..100 {
             candidates.push(candidate(idx));
         }
+        ctx.attached_deposit = BOND_AMOUNT;
+        ctx.predecessor_account_id = sbt_registry();
         let prop_id = ctr.create_proposal(
             crate::ProposalType::HouseOfMerit,
             START + 1,
@@ -515,6 +470,8 @@ mod unit_tests {
             candidates,
             6,
         );
+        ctx.attached_deposit = BOND_AMOUNT;
+        ctx.predecessor_account_id = sbt_registry();
         ctx.block_timestamp = (START + 2) * MSECOND;
         testing_env!(ctx.clone());
 
@@ -530,12 +487,8 @@ mod unit_tests {
                 current_vote = &vote3;
             }
 
-            ctr.on_accept_policy_callback(
-                Ok(mk_human_sbt(i as u64)),
-                candidate(i),
-                policy1(),
-                U128(BOND_AMOUNT),
-            );
+            ctr.bond(candidate(i), mk_human_sbt(i as u64), Value::String("".to_string()));
+     
             match ctr.on_vote_verified(
                 mk_human_sbt(i as u64),
                 Some(AccountFlag::Verified),
@@ -591,10 +544,15 @@ mod unit_tests {
     }
 
     fn alice_voting_context(ctx: &mut VMContext, ctr: &mut Contract) {
+        ctx.attached_deposit = BOND_AMOUNT;
+        ctx.predecessor_account_id = sbt_registry();
+        testing_env!(ctx.clone());
+        ctr.bond(alice(), mk_human_sbt(1), Value::String("".to_string()));
+
         ctx.predecessor_account_id = alice();
         ctx.attached_deposit = ACCEPT_POLICY_COST;
         testing_env!(ctx.clone());
-        ctr.on_accept_policy_callback(Ok(mk_human_sbt(1)), alice(), policy1(), U128(BOND_AMOUNT));
+        ctr.accept_fair_voting_policy(policy1());
 
         ctx.attached_deposit = VOTE_COST;
         ctx.block_timestamp = (START + 2) * MSECOND;
@@ -765,8 +723,10 @@ mod unit_tests {
         let prop_sp = mk_proposal_setup_package(&mut ctr);
         let vote = vec![candidate(1)];
         ctx.block_timestamp = (START + 2) * MSECOND;
+        ctx.attached_deposit = BOND_AMOUNT;
+        ctx.predecessor_account_id = sbt_registry();
         testing_env!(ctx.clone());
-        ctr.on_accept_policy_callback(Ok(mk_human_sbt(1)), admin(), policy1(), U128(BOND_AMOUNT));
+        ctr.bond(alice(), mk_human_sbt(1), Value::String("".to_string()));
 
         // check initial state
         let p = ctr._proposal(prop_id);
@@ -805,8 +765,8 @@ mod unit_tests {
         assert_eq!(p.result, vec![1, 0, 0], "vote result should not change");
 
         //set sbt=4 and attempt double vote
-        ctr.on_accept_policy_callback(Ok(mk_human_sbt(4)), admin(), policy1(), U128(BOND_AMOUNT));
         ctr._proposal(prop_id).voters.insert(&4, &vec![1]);
+        ctr.bond(alice(), mk_human_sbt(4), Value::String("".to_string()));
         match ctr.on_vote_verified(
             mk_human_sbt(4),
             Some(AccountFlag::Verified),
@@ -833,7 +793,6 @@ mod unit_tests {
         assert_eq!(p.result, vec![1, 0, 0], "vote result should not change");
 
         // not a human
-        ctr.on_accept_policy_callback(Ok(mk_human_sbt(3)), admin(), policy1(), U128(BOND_AMOUNT));
         match ctr.on_vote_verified(
             mk_nohuman_sbt(3),
             Some(AccountFlag::Verified),
@@ -871,9 +830,10 @@ mod unit_tests {
         // Create more successful votes
 
         // bob, tokenID=20: successful vote with single selection
+        ctr.bond(bob(), mk_human_sbt(20), Value::String("".to_string()));
+        ctr.bond(charlie(), mk_human_sbt(22), Value::String("".to_string()));
         ctx.predecessor_account_id = alice();
         testing_env!(ctx.clone());
-        ctr.on_accept_policy_callback(Ok(mk_human_sbt(20)), alice(), policy1(), U128(BOND_AMOUNT));
 
         match ctr.on_vote_verified(
             mk_human_sbt(20),
@@ -897,7 +857,6 @@ mod unit_tests {
         // charlie, tokenID=22: vote with 2 selections
         ctx.predecessor_account_id = bob();
         testing_env!(ctx);
-        ctr.on_accept_policy_callback(Ok(mk_human_sbt(22)), bob(), policy1(), U128(BOND_AMOUNT));
 
         // candidates are put in non alphabetical order.
         match ctr.on_vote_verified(
@@ -967,7 +926,7 @@ mod unit_tests {
         assert!(res.is_none());
         ctx.attached_deposit = ACCEPT_POLICY_COST;
         testing_env!(ctx.clone());
-        ctr.on_accept_policy_callback(Ok(mk_human_sbt(1)), admin(), policy1(), U128(BOND_AMOUNT));
+        ctr.accept_fair_voting_policy(policy1());
 
         res = ctr.accepted_policy(admin());
         assert!(res.is_some());
@@ -1083,7 +1042,14 @@ mod unit_tests {
 
         ctx.attached_deposit = ACCEPT_POLICY_COST;
         testing_env!(ctx.clone());
-        ctr.on_accept_policy_callback(Ok(mk_human_sbt(1)), admin(), policy1(), U128(BOND_AMOUNT));
+        ctr.accept_fair_voting_policy(policy1());
+
+        ctx.predecessor_account_id = sbt_registry();
+        ctx.attached_deposit = BOND_AMOUNT;
+        testing_env!(ctx.clone());
+        ctr.bond(alice(), mk_human_sbt(1), Value::String("".to_string()));
+        ctx.predecessor_account_id = admin();
+        testing_env!(ctx.clone());
 
         let prop_id = mk_proposal(&mut ctr);
         ctx.attached_deposit = VOTE_COST;
@@ -1191,8 +1157,10 @@ mod unit_tests {
         mk_proposal(&mut ctr);
         let prop_id_3 = mk_proposal(&mut ctr);
         ctx.block_timestamp = (START + 2) * MSECOND;
+        ctx.attached_deposit = BOND_AMOUNT;
+        ctx.predecessor_account_id = sbt_registry();
         testing_env!(ctx.clone());
-        ctr.on_accept_policy_callback(Ok(mk_human_sbt(1)), admin(), policy1(), U128(BOND_AMOUNT));
+        ctr.bond(admin(), mk_human_sbt(1), Value::String("".to_string()));
 
         // vote on proposal 1
         match ctr.on_vote_verified(
@@ -1232,8 +1200,10 @@ mod unit_tests {
         let prop_id_2 = mk_proposal(&mut ctr);
 
         ctx.block_timestamp = (START + 2) * MSECOND;
+        ctx.attached_deposit = BOND_AMOUNT;
+        ctx.predecessor_account_id = sbt_registry();
         testing_env!(ctx.clone());
-        ctr.on_accept_policy_callback(Ok(mk_human_sbt(1)), admin(), policy1(), U128(BOND_AMOUNT));
+        ctr.bond(alice(), mk_human_sbt(1), Value::String("".to_string()));
 
         match ctr.on_vote_verified(
             mk_human_sbt(1),
@@ -1259,8 +1229,13 @@ mod unit_tests {
         let prop_id = mk_proposal(&mut ctr);
         let vote = vec![candidate(1)];
         ctx.block_timestamp = (START + 2) * MSECOND;
+        ctx.attached_deposit = BOND_AMOUNT;
+        ctx.predecessor_account_id = sbt_registry();
         testing_env!(ctx.clone());
-        ctr.on_accept_policy_callback(Ok(mk_human_sbt(1)), alice(), policy1(), U128(BOND_AMOUNT));
+        ctr.bond(alice(), mk_human_sbt(1), Value::String("".to_string()));
+
+        ctx.predecessor_account_id = admin();
+        testing_env!(ctx.clone());
 
         // successful vote
         match ctr.on_vote_verified(
@@ -1307,8 +1282,10 @@ mod unit_tests {
         let prop3 = mk_proposal(&mut ctr);
         let prop4 = mk_proposal(&mut ctr);
         ctx.block_timestamp = (START + 2) * MSECOND;
+        ctx.attached_deposit = BOND_AMOUNT;
+        ctx.predecessor_account_id = sbt_registry();
         testing_env!(ctx.clone());
-        ctr.on_accept_policy_callback(Ok(mk_human_sbt(1)), admin(), policy1(), U128(BOND_AMOUNT));
+        ctr.bond(admin(), mk_human_sbt(1), Value::String("".to_string()));
 
         // first vote (voting not yet completed)
         let mut prop_id = prop1;
@@ -1371,9 +1348,6 @@ mod unit_tests {
     fn bond_amount() {
         let (mut ctx, mut ctr) = setup(&alice());
 
-        ctr.on_accept_policy_callback(Ok(mk_human_sbt(1)), alice(), policy1(), U128(BOND_AMOUNT));
-        assert_eq!(ctr.bonded_amounts.get(&1), Some(BOND_AMOUNT));
-
         ctx.predecessor_account_id = sbt_registry();
         ctx.attached_deposit = BOND_AMOUNT;
         testing_env!(ctx);
@@ -1383,18 +1357,12 @@ mod unit_tests {
     }
 
     #[test]
-    #[should_panic(expected = "Err(MinBond(3000000000000000000, 2000000000000000000))")]
+    #[should_panic(expected = "Err(NoBond)")]
     fn vote_without_bond_amount() {
         let (mut ctx, mut ctr) = setup(&admin());
         let prop_id_1 = mk_proposal(&mut ctr);
         ctx.block_timestamp = (START + 2) * MSECOND;
         testing_env!(ctx);
-        ctr.on_accept_policy_callback(
-            Ok(mk_human_sbt(1)),
-            admin(),
-            policy1(),
-            U128(BOND_AMOUNT - MICRO_NEAR),
-        );
 
         match ctr.on_vote_verified(
             mk_human_sbt(1),
@@ -1434,7 +1402,14 @@ mod unit_tests {
         let vote = vec![candidate(1)];
         ctx.block_timestamp = (START + 2) * MSECOND;
         testing_env!(ctx.clone());
-        ctr.on_accept_policy_callback(Ok(mk_human_sbt(1)), admin(), policy1(), U128(BOND_AMOUNT));
+
+        ctx.attached_deposit = BOND_AMOUNT;
+        ctx.predecessor_account_id = sbt_registry();
+        testing_env!(ctx.clone());
+        ctr.bond(admin(), mk_human_sbt(1), Value::String("".to_string()));
+
+        ctx.predecessor_account_id = admin();
+        testing_env!(ctx.clone());
 
         // successful vote
         match ctr.on_vote_verified(
