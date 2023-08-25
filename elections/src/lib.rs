@@ -213,14 +213,14 @@ impl Contract {
         &mut self,
         caller: AccountId,
         iah_proof: HumanSBTs,
-        #[allow(unused_variables)] payload: String, // required by is_human_call
+        #[allow(unused_variables)] payload: serde_json::Value, // required by is_human_call
     ) -> PromiseOrValue<U128> {
         let deposit = env::attached_deposit();
         if env::predecessor_account_id() != self.sbt_registry {
             return PromiseOrValue::Promise(
                 Promise::new(caller)
                     .transfer(deposit)
-                    .and(Self::fail("Can only be called by registry")),
+                    .then(Self::fail("Can only be called by registry")),
             );
         }
 
@@ -229,7 +229,7 @@ impl Contract {
             return PromiseOrValue::Promise(
                 Promise::new(caller)
                     .transfer(deposit)
-                    .and(Self::fail("Not a human")),
+                    .then(Self::fail("Not a human")),
             );
         }
         self.bonded_amounts.insert(&token_id, &deposit);
@@ -380,7 +380,7 @@ impl Contract {
                 // Return deposit back to sender if accept policy failure
                 Promise::new(sender)
                     .transfer(attached_deposit)
-                    .and(Self::fail("IAHRegistry::is_human(), Accept policy failure"))
+                    .then(Self::fail("IAHRegistry::is_human(), Accept policy failure"))
                     .into()
             }
         }
@@ -1378,7 +1378,7 @@ mod unit_tests {
         ctx.attached_deposit = BOND_AMOUNT;
         testing_env!(ctx);
 
-        ctr.bond(alice(), mk_human_sbt(2), "".to_string());
+        ctr.bond(alice(), mk_human_sbt(2), Value::String("".to_string()));
         assert_eq!(ctr.bonded_amounts.get(&2), Some(BOND_AMOUNT));
     }
 
