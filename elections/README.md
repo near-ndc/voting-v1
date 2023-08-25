@@ -16,20 +16,6 @@
   - `seats`: max number of candidates to elect, also max number of credits each user has when casting a vote.
   - `min_candidate_support`: minimum amount of votes a candidate needs to receive to be considered a winner.
 
-## Bonding
-
-- [SPEC](https://github.com/near-ndc/gov/blob/main/framework-v1/elections-voting.md#bonding)
-- Each verified voter must bond 3N to cast their vote.
-- Each Non-verified voter must bond 300N to cast their vote.
-- Bond can be deposited during `accept_policy` operation or `bond` function can be used via i-am-human-call.
-  - Ex: `near registry call is_human_call {"ctr": "elections.near", "function": "bond", "paylad": "{}"} --accountId amit.near`
-- One bond is enough to cast votes for all proposals.
-- `finish_time`: max(`finish_time`, `end` + `cooldown`) of all the proposals. 
-- User can unbond after the `finish_time`. All tokens minus storage fees will be returned.
-- Bonded tokens can be slashed by executing `vote_revoke`. 100% of bonded tokens will be slashed and will be tracked in `total_slashed` variable.
-- `unbond`: To unbond deposit, unbond function needs to be called using `is_human_call`.
-  - Ex: `near registry call is_human_call {"ctr": "elections.near", "function": "unbond", "paylad": "{}" --accountId amit.near`
-
 ## Flow
 
 - GWG deploys the elections smart contract and sets authority for creating new proposals.
@@ -39,6 +25,31 @@
 - Anyone can query the proposal and the ongoing result at any time.
 - Voting is active until the `proposal.end` time.
 - Vote revocation is active until the `proposal.end` + `cooldown` time.
+
+## Bonding
+
+- [SPEC](https://github.com/near-ndc/gov/blob/main/framework-v1/elections-voting.md#bonding)
+- Each verified voter must bond 3N to cast their vote. Each Non-verified voter must bond 300N to cast their vote.
+- Bond can be deposited during `accept_policy` operation or `bond` function can be used via i-am-human-call.
+  ```rust
+  near registry call is_human_call {"ctr": "elections.near", "function": "bond", "paylad": ""} --accountId YOU.near --deposit 3
+  ```
+- One bond is enough to cast votes for all proposals.
+- `finish_time`: max(`finish_time`, `end` + `cooldown`) of all the proposals.
+- User can unbond after the `finish_time`. All tokens minus storage fees will be returned.
+- Bonded tokens can be slashed by executing `vote_revoke`. 100% of bonded tokens will be slashed and will be tracked in `total_slashed` variable.
+- `unbond`: To unbond deposit, unbond function needs to be called via IAH `registry.is_human_call`.
+  ```rust
+  near registry call is_human_call {"ctr": "elections.near", "function": "unbond", "payload": "" --accountId YOU.near
+  ```
+
+## Voting
+
+### Setup Package
+
+Setup Package proposal is a proposal with `seats=1` (at most one option can be selected) and `candidates = ["yes", "no", "abstain"]`.
+
+Voting for setup package uses the same API as voting for candidates. The vote must be either an empty list or a list of one element: `["yes"]` or `["no"]` or `["abstain"]`.
 
 ## Usage
 
