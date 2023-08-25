@@ -29,14 +29,14 @@ impl Contract {
     /// Returns the proposal status
     pub fn proposal_status(&self, prop_id: u32) -> Option<ProposalStatus> {
         let now = env::block_timestamp_ms();
-        return self.proposals.get(&prop_id).map(|p| p.status(now));
+        self.proposals.get(&prop_id).map(|p| p.status(now))
     }
 
     /// Returns the policy if user has accepted it otherwise returns None
     pub fn accepted_policy(&self, user: AccountId) -> Option<String> {
         self.accepted_policy
             .get(&user)
-            .map(|policy| hex::encode(policy))
+            .map(hex::encode)
     }
 
     /// Returns all the users votes for all the proposals. If user has not voted yet a vector with None values will be returned.

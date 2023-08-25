@@ -109,8 +109,8 @@ async fn init(
         .max_gas()
         .transact();
 
-    accept_policy(ndc_elections_contract.clone(), john.clone(), policy1()).await?;
-    accept_policy(ndc_elections_contract.clone(), alice.clone(), policy1()).await?;
+    accept_policy_and_bond(registry_contract.clone(), ndc_elections_contract.clone(), john.clone(), policy1()).await?;
+    accept_policy_and_bond(registry_contract.clone(), ndc_elections_contract.clone(), alice.clone(), policy1()).await?;
 
     let res3 = auth_flagger
         .call(registry_contract.id(), "admin_flag_accounts")
@@ -266,7 +266,7 @@ async fn vote_without_deposit_bond() -> anyhow::Result<()> {
     assert!(res.is_failure(), "resp should be a failure {:?}", res);
     let failures = format!("{:?}", res.receipt_failures());
     assert!(
-        failures.contains("Smart contract panicked: required bond amount=3000000000000000000000000, deposited=10000000000000000000000"),
+        failures.contains("Voter didn't bond"),
         "{}",
         failures
     );
@@ -432,19 +432,29 @@ async fn revoke_vote() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn accept_policy(election: Contract, user: Account, policy: String) -> anyhow::Result<()> {
+async fn accept_policy_and_bond(registry: Contract, election: Contract, user: Account, policy: String) -> anyhow::Result<()> {
     let call_from = user.clone();
     let res = call_from
         .call(election.id(), "accept_fair_voting_policy")
         .args_json(json!({
             "policy": policy,
         }))
-        .deposit(BOND_AMOUNT + ACCEPT_POLICY_COST)
+        .deposit(ACCEPT_POLICY_COST)
         .max_gas()
         .transact()
         .await?;
 
     assert!(res.is_success(), "{:?}", res);
+
+    let call_from2 = user.clone();
+    let res1 = call_from2
+        .call(registry.id(), "is_human_call")
+        .args_json(json!({"ctr": election.id(), "function": "bond", "payload": "{}"}))
+        .deposit(BOND_AMOUNT)
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res1.is_success(), "{:?}", res1);
     Ok(())
 }
 
