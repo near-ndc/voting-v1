@@ -266,7 +266,7 @@ async fn vote_without_deposit_bond() -> anyhow::Result<()> {
     assert!(res.is_failure(), "resp should be a failure {:?}", res);
     let failures = format!("{:?}", res.receipt_failures());
     assert!(
-        failures.contains("Smart contract panicked: required bond amount=3000000000000000000000000, deposited=10000000000000000000000"),
+        failures.contains("Voter didn't bond"),
         "{}",
         failures
     );

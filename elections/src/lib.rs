@@ -452,13 +452,26 @@ mod unit_tests {
         "21c09f8686fe7d0d798517111a66675da0012d8ad1693a47e0e2a7d3ae1c69d4".to_owned()
     }
 
+    fn bond_amount_call(ctx: &mut VMContext, ctr: &mut Contract, user: AccountId, token_id: u64) {
+        let temp_attached = ctx.attached_deposit;
+        let temp_caller = ctx.predecessor_account_id.clone();
+        ctx.attached_deposit = BOND_AMOUNT;
+        ctx.predecessor_account_id = sbt_registry();
+        testing_env!(ctx.clone());
+
+        ctr.bond(user, mk_human_sbt(token_id), Value::String("".to_string()));
+
+        ctx.predecessor_account_id = temp_caller;
+        ctx.attached_deposit = temp_attached;
+        testing_env!(ctx.clone());
+    }
+
     fn mock_proposal_and_votes(ctx: &mut VMContext, ctr: &mut Contract) -> u32 {
         let mut candidates = Vec::new();
         for idx in 0..100 {
             candidates.push(candidate(idx));
         }
-        ctx.attached_deposit = BOND_AMOUNT;
-        ctx.predecessor_account_id = sbt_registry();
+
         let prop_id = ctr.create_proposal(
             crate::ProposalType::HouseOfMerit,
             START + 1,
@@ -470,8 +483,6 @@ mod unit_tests {
             candidates,
             6,
         );
-        ctx.attached_deposit = BOND_AMOUNT;
-        ctx.predecessor_account_id = sbt_registry();
         ctx.block_timestamp = (START + 2) * MSECOND;
         testing_env!(ctx.clone());
 
@@ -487,8 +498,8 @@ mod unit_tests {
                 current_vote = &vote3;
             }
 
-            ctr.bond(candidate(i), mk_human_sbt(i as u64), Value::String("".to_string()));
-     
+            bond_amount_call(ctx, ctr, candidate(i), i as u64);
+
             match ctr.on_vote_verified(
                 mk_human_sbt(i as u64),
                 Some(AccountFlag::Verified),
@@ -544,15 +555,12 @@ mod unit_tests {
     }
 
     fn alice_voting_context(ctx: &mut VMContext, ctr: &mut Contract) {
-        ctx.attached_deposit = BOND_AMOUNT;
-        ctx.predecessor_account_id = sbt_registry();
-        testing_env!(ctx.clone());
-        ctr.bond(alice(), mk_human_sbt(1), Value::String("".to_string()));
-
         ctx.predecessor_account_id = alice();
         ctx.attached_deposit = ACCEPT_POLICY_COST;
         testing_env!(ctx.clone());
         ctr.accept_fair_voting_policy(policy1());
+
+        bond_amount_call(ctx, ctr, alice(), 1);
 
         ctx.attached_deposit = VOTE_COST;
         ctx.block_timestamp = (START + 2) * MSECOND;
@@ -1044,12 +1052,7 @@ mod unit_tests {
         testing_env!(ctx.clone());
         ctr.accept_fair_voting_policy(policy1());
 
-        ctx.predecessor_account_id = sbt_registry();
-        ctx.attached_deposit = BOND_AMOUNT;
-        testing_env!(ctx.clone());
-        ctr.bond(alice(), mk_human_sbt(1), Value::String("".to_string()));
-        ctx.predecessor_account_id = admin();
-        testing_env!(ctx.clone());
+        bond_amount_call(&mut ctx, &mut ctr, alice(), 1);
 
         let prop_id = mk_proposal(&mut ctr);
         ctx.attached_deposit = VOTE_COST;
@@ -1229,13 +1232,7 @@ mod unit_tests {
         let prop_id = mk_proposal(&mut ctr);
         let vote = vec![candidate(1)];
         ctx.block_timestamp = (START + 2) * MSECOND;
-        ctx.attached_deposit = BOND_AMOUNT;
-        ctx.predecessor_account_id = sbt_registry();
-        testing_env!(ctx.clone());
-        ctr.bond(alice(), mk_human_sbt(1), Value::String("".to_string()));
-
-        ctx.predecessor_account_id = admin();
-        testing_env!(ctx.clone());
+        bond_amount_call(&mut ctx, &mut ctr, alice(), 1);
 
         // successful vote
         match ctr.on_vote_verified(
@@ -1403,13 +1400,7 @@ mod unit_tests {
         ctx.block_timestamp = (START + 2) * MSECOND;
         testing_env!(ctx.clone());
 
-        ctx.attached_deposit = BOND_AMOUNT;
-        ctx.predecessor_account_id = sbt_registry();
-        testing_env!(ctx.clone());
-        ctr.bond(admin(), mk_human_sbt(1), Value::String("".to_string()));
-
-        ctx.predecessor_account_id = admin();
-        testing_env!(ctx.clone());
+        bond_amount_call(&mut ctx, &mut ctr, admin(), 1);
 
         // successful vote
         match ctr.on_vote_verified(
