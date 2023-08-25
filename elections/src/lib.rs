@@ -389,7 +389,7 @@ impl Contract {
         if iah_proof.is_empty() || !(iah_proof.len() == 1 && iah_proof[0].1.len() == 1) {
             (false, 0)
         } else {
-            (true, *iah_proof[0].1.get(0).unwrap())
+            (true, *iah_proof[0].1.first().unwrap())
         }
     }
 
@@ -1046,7 +1046,7 @@ mod unit_tests {
         let mut res = ctr.accepted_policy(admin());
         assert!(res.is_none());
         ctx.attached_deposit = ACCEPT_POLICY_COST;
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         ctr.accept_fair_voting_policy(policy1());
 
         res = ctr.accepted_policy(admin());
@@ -1150,7 +1150,7 @@ mod unit_tests {
         assert_eq!(res, Some(ProposalStatus::COOLDOWN));
 
         ctx.block_timestamp = (START + 111) * MSECOND;
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
 
         res = ctr.proposal_status(prop_id);
         assert_eq!(res, Some(ProposalStatus::ENDED));
@@ -1253,7 +1253,7 @@ mod unit_tests {
             Err(RevokeVoteError::NotVoted) => (),
             x => panic!("expected NotVoted, got: {:?}", x),
         }
-        assert!(test_utils::get_logs().len() == 0);
+        assert!(test_utils::get_logs().is_empty());
     }
 
     #[test]
@@ -1275,7 +1275,7 @@ mod unit_tests {
         ctx.block_timestamp = (START + 2) * MSECOND;
         ctx.attached_deposit = BOND_AMOUNT;
         ctx.predecessor_account_id = sbt_registry();
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         ctr.bond(admin(), mk_human_sbt(1), Value::String("".to_string()));
 
         // vote on proposal 1
@@ -1318,7 +1318,7 @@ mod unit_tests {
         ctx.block_timestamp = (START + 2) * MSECOND;
         ctx.attached_deposit = BOND_AMOUNT;
         ctx.predecessor_account_id = sbt_registry();
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         ctr.bond(alice(), mk_human_sbt(1), Value::String("".to_string()));
 
         match ctr.on_vote_verified(
@@ -1353,7 +1353,7 @@ mod unit_tests {
             Some(AccountFlag::Verified),
             prop_id,
             alice(),
-            vote.clone(),
+            vote,
         ) {
             Ok(_) => (),
             x => panic!("expected OK, got: {:?}", x),
@@ -1394,7 +1394,7 @@ mod unit_tests {
         ctx.block_timestamp = (START + 2) * MSECOND;
         ctx.attached_deposit = BOND_AMOUNT;
         ctx.predecessor_account_id = sbt_registry();
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         ctr.bond(admin(), mk_human_sbt(1), Value::String("".to_string()));
 
         // first vote (voting not yet completed)
@@ -1521,7 +1521,7 @@ mod unit_tests {
             Some(AccountFlag::Verified),
             prop_id,
             alice(),
-            vote.clone(),
+            vote,
         ) {
             Ok(_) => (),
             x => panic!("expected OK, got: {:?}", x),
@@ -1565,7 +1565,7 @@ mod unit_tests {
             Err(RevokeVoteError::NotVoted) => (),
             x => panic!("expected NotVoted, got: {:?}", x),
         }
-        assert!(test_utils::get_logs().len() == 0);
+        assert!(test_utils::get_logs().is_empty());
     }
 
     #[test]
