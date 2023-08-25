@@ -1,7 +1,9 @@
 use near_sdk::{Balance, Gas};
 
-pub const MICRO_NEAR: Balance = 1_000_000_000_000_000_000; // 1e18 yoctoNEAR
-pub const MILI_NEAR: Balance = 1_000 * MICRO_NEAR;
+// pub const MICRO_NEAR: Balance = 1_000_000_000_000_000_000; // 1e18 yoctoNEAR
+// pub const MILI_NEAR: Balance = 1_000 * MICRO_NEAR;
+pub const MILI_NEAR: Balance = 1_000_000_000_000_000_000_000;
+pub const NEAR: Balance = 1_000 * MILI_NEAR;
 
 // storage cost: 1E19 yoctoNEAR ( = 10 microN) per byte --> 1miliN per 100B --> 1 NEAR per 100kB
 // vote: max to tokenIDs: 2* (8bytes(tokenID) + prefix(1byte + 4bytes)) = 26B
@@ -13,9 +15,11 @@ pub const VOTE_COST: Balance = MILI_NEAR;
 pub const ACCEPT_POLICY_COST: Balance = MILI_NEAR;
 pub const ACCEPT_POLICY_GAS: Gas = Gas(70 * Gas::ONE_TERA.0);
 
-pub const BOND_AMOUNT: Balance = 3 * MICRO_NEAR;
-pub const GRAY_BOND_AMOUNT: Balance = 300 * MICRO_NEAR;
+pub const BOND_AMOUNT: Balance = 3 * NEAR;
+pub const GRAY_BOND_AMOUNT: Balance = 300 * NEAR;
+pub const MINT_COST: Balance = 10 * MILI_NEAR;
 
+pub const MINT_GAS: Gas = Gas(9 * Gas::ONE_TERA.0);
 pub const VOTE_GAS: Gas = Gas(110 * Gas::ONE_TERA.0);
 pub const VOTE_GAS_CALLBACK: Gas = Gas(10 * Gas::ONE_TERA.0);
 pub const REVOKE_VOTE_GAS_CALLBACK: Gas = Gas(5 * Gas::ONE_TERA.0);

@@ -23,6 +23,8 @@ pub trait ExtSelf {
 pub trait ExtSbtRegistry {
     fn is_human(&self, account: AccountId) -> HumanSBTs;
     fn account_flagged(&self, account: AccountId) -> Option<AccountFlag>;
+
+    fn sbt_mint(&mut self, token_spec: Vec<(AccountId, Vec<TokenMetadata>)>) -> Vec<TokenId>;
 }
 
 // TODO: use SBT crate once it is published
@@ -40,8 +42,8 @@ pub struct OwnedToken {
 
 /// TokenMetadata defines attributes for each SBT token.
 
-#[derive(Deserialize)]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Serialize, Debug))]
+#[derive(Deserialize, Serialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
 #[serde(crate = "near_sdk::serde")]
 pub struct TokenMetadata {
     pub class: u64,

@@ -247,11 +247,6 @@ impl Contract {
             return Self::fail("cannot unbond: election is still in progress");
         }
 
-        let unbond_amount = self
-            .bonded_amounts
-            .remove(&token_id)
-            .expect("Voter didn't bond");
-
         // cleanup votes, policy data from caller
         for i in 1..self.prop_counter {
             let proposal = self.proposals.get(&i);
@@ -261,6 +256,26 @@ impl Contract {
             }
             self.accepted_policy.remove(&caller);
         }
+
+        let unbond_amount = self
+            .bonded_amounts
+            .remove(&token_id)
+            .expect("Voter didn't bond")
+            - MINT_COST;
+
+        ext_sbtreg::ext(self.sbt_registry.clone())
+            .with_static_gas(MINT_GAS)
+            .with_attached_deposit(MINT_COST)
+            .sbt_mint(vec![(
+                caller.clone(),
+                vec![TokenMetadata {
+                    class: 1,
+                    issued_at: None,
+                    expires_at: None,
+                    reference: None,
+                    reference_hash: None,
+                }],
+            )]);
 
         Promise::new(caller).transfer(unbond_amount)
     }
