@@ -1,5 +1,4 @@
 use std::cmp::max;
-use std::collections::HashSet;
 
 use events::{emit_revoke_vote, emit_vote};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
@@ -66,8 +65,8 @@ impl Contract {
             bonded_amounts: LookupMap::new(StorageKey::BondedAmount),
             total_slashed: 0,
             prop_counter: 0,
-            policy: policy,
-            finish_time: finish_time,
+            policy,
+            finish_time,
         }
     }
 
@@ -95,12 +94,16 @@ impl Contract {
         min_candidate_support: u64,
     ) -> u32 {
         self.assert_admin();
-        let min_start = env::block_timestamp_ms();
+        let candidates_len = candidates.len();
         require!(
-            min_start < start,
-            format!("proposal start must be in the future")
+            env::block_timestamp_ms() < start,
+            "proposal start must be in the future"
         );
         require!(start < end, "proposal start must be before end");
+        require!(
+            0 < seats && seats <= candidates_len as u16,
+            "require 0 < seats <= candidates.length"
+        );
         require!(
             MIN_REF_LINK_LEN <= ref_link.len() && ref_link.len() <= MAX_REF_LINK_LEN,
             format!(
@@ -108,20 +111,19 @@ impl Contract {
                 MIN_REF_LINK_LEN, MAX_REF_LINK_LEN
             )
         );
+
         if typ == ProposalType::SetupPackage {
-            require!(
-                candidates.is_empty(),
-                "setup_package candidates must be an empty list"
-            );
-            require!(seats == 0, "setup_package seats must be 0");
+            validate_setup_package(seats, &candidates);
         }
 
-        let cs: HashSet<&AccountId> = HashSet::from_iter(candidates.iter());
-        require!(cs.len() == candidates.len(), "duplicated candidates");
         candidates.sort();
+        let mut c1 = &candidates[0];
+        for c in candidates.iter().skip(1) {
+            require!(c1 != c, "duplicated candidates");
+            c1 = c;
+        }
 
         self.prop_counter += 1;
-        let l = candidates.len();
         let p = Proposal {
             typ,
             start,
@@ -131,7 +133,7 @@ impl Contract {
             ref_link,
             seats,
             candidates,
-            result: vec![0; l],
+            result: vec![0; candidates_len],
             voters: LookupMap::new(StorageKey::ProposalVoters(self.prop_counter)),
             voters_num: 0,
             min_candidate_support,
@@ -188,9 +190,9 @@ impl Contract {
         validate_vote(&vote, p.seats, &p.candidates);
         // call SBT registry to verify SBT
         let sbt_promise = ext_sbtreg::ext(self.sbt_registry.clone()).is_human(user.clone());
-        let check_flag = ext_sbtreg::ext(self.sbt_registry.clone()).account_flagged(user.clone());
+        let acc_flag = ext_sbtreg::ext(self.sbt_registry.clone()).account_flagged(user.clone());
 
-        sbt_promise.and(check_flag).then(
+        sbt_promise.and(acc_flag).then(
             ext_self::ext(env::current_account_id())
                 .with_static_gas(VOTE_GAS_CALLBACK)
                 .on_vote_verified(prop_id, user, vote),
@@ -323,10 +325,9 @@ impl Contract {
             None => GRAY_BOND_AMOUNT,
         };
 
-        let bond_deposited = self.bonded_amounts.get(&token_id);
-        if let Some(bond_value) = bond_deposited {
-            if bond_value < required_bond {
-                return Err(VoteError::MinBond(required_bond, bond_value));
+        if let Some(bond) = self.bonded_amounts.get(&token_id) {
+            if bond < required_bond {
+                return Err(VoteError::MinBond(required_bond, bond));
             }
         } else {
             return Err(VoteError::NoBond);
@@ -401,6 +402,18 @@ impl Contract {
     }
 }
 
+fn validate_setup_package(seats: u16, cs: &Vec<AccountId>) {
+    // Users can vote to at most one option
+    require!(seats == 1, "SetupPackage seats must equal 1");
+    require!(
+        cs.len() == 3
+            && cs[0].as_str() == "yes"
+            && cs[1].as_str() == "no"
+            && cs[2].as_str() == "abstain",
+        "SetupPackage candidates must be ['yes', 'no', 'abstain']"
+    );
+}
+
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod unit_tests {
     use near_sdk::{
@@ -413,8 +426,15 @@ mod unit_tests {
 
     /// 1ms in nano seconds
     const MSECOND: u64 = 1_000_000;
-
     const START: u64 = 10;
+
+    fn setup_package_candidates() -> Vec<AccountId> {
+        vec![
+            AccountId::try_from("yes".to_string()).unwrap(),
+            AccountId::try_from("no".to_string()).unwrap(),
+            AccountId::try_from("abstain".to_string()).unwrap(),
+        ]
+    }
 
     fn alice() -> AccountId {
         AccountId::new_unchecked("alice.near".to_string())
@@ -536,8 +556,8 @@ mod unit_tests {
             100,
             String::from("ref_link.io"),
             2,
-            0,
-            vec![],
+            1,
+            setup_package_candidates(),
             2,
         )
     }
@@ -641,7 +661,7 @@ mod unit_tests {
             100,
             String::from("short"),
             2,
-            2,
+            1,
             vec![candidate(1)],
             2,
         );
@@ -666,24 +686,43 @@ mod unit_tests {
     }
 
     #[test]
-    #[should_panic(expected = "setup_package candidates must be an empty list")]
-    fn create_proposal_setup_package() {
+    #[should_panic(expected = "require 0 < seats <= candidates.length")]
+    fn create_proposal_zero_seats() {
         let (_, mut ctr) = setup(&admin());
-
-        let n = ctr.create_proposal(
-            crate::ProposalType::SetupPackage,
+        ctr.create_proposal(
+            crate::ProposalType::HouseOfMerit,
             START + 1,
             START + 10,
             100,
             String::from("ref_link.io"),
             2,
             0,
-            vec![],
-            2,
+            vec![candidate(1), candidate(1)],
+            1,
         );
-        assert_eq!(n, 1);
+    }
 
-        // this should fail because setup package requires candidates=[]
+    #[test]
+    #[should_panic(expected = "require 0 < seats <= candidates.length")]
+    fn create_proposal_not_enough_candidates() {
+        let (_, mut ctr) = setup(&admin());
+        ctr.create_proposal(
+            crate::ProposalType::HouseOfMerit,
+            START + 1,
+            START + 10,
+            100,
+            String::from("ref_link.io"),
+            2,
+            3,
+            vec![candidate(1), candidate(1)],
+            1,
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "SetupPackage seats must equal 1")]
+    fn create_proposal_setup_package_wrong_seats() {
+        let (_, mut ctr) = setup(&admin());
         ctr.create_proposal(
             crate::ProposalType::SetupPackage,
             START + 1,
@@ -692,7 +731,81 @@ mod unit_tests {
             String::from("ref_link.io"),
             2,
             2,
-            vec![candidate(1)],
+            setup_package_candidates(),
+            2,
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "SetupPackage candidates must be ['yes', 'no', 'abstain']")]
+    fn create_proposal_setup_package_wrong_candidates() {
+        let (_, mut ctr) = setup(&admin());
+        ctr.create_proposal(
+            crate::ProposalType::SetupPackage,
+            START + 1,
+            START + 10,
+            100,
+            String::from("ref_link.io"),
+            2,
+            1,
+            setup_package_candidates()[..=1].to_vec(),
+            2,
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "SetupPackage candidates must be ['yes', 'no', 'abstain']")]
+    fn create_proposal_setup_package_wrong_candidates2() {
+        let (_, mut ctr) = setup(&admin());
+        ctr.create_proposal(
+            crate::ProposalType::SetupPackage,
+            START + 1,
+            START + 10,
+            100,
+            String::from("ref_link.io"),
+            2,
+            1,
+            vec![candidate(1), candidate(2), candidate(3)],
+            2,
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "SetupPackage candidates must be ['yes', 'no', 'abstain']")]
+    fn create_proposal_setup_package_wrong_candidates3() {
+        let (_, mut ctr) = setup(&admin());
+        let mut cs = setup_package_candidates();
+        cs.push("no2".to_string().try_into().unwrap());
+        ctr.create_proposal(
+            crate::ProposalType::SetupPackage,
+            START + 1,
+            START + 10,
+            100,
+            String::from("ref_link.io"),
+            2,
+            1,
+            cs,
+            2,
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "SetupPackage candidates must be ['yes', 'no', 'abstain']")]
+    fn create_proposal_setup_package_wrong_candidates_order() {
+        let (_, mut ctr) = setup(&admin());
+        let mut cs = setup_package_candidates();
+        let c = cs[0].clone();
+        cs[0] = cs[1].clone();
+        cs[1] = c;
+        ctr.create_proposal(
+            crate::ProposalType::SetupPackage,
+            START + 1,
+            START + 10,
+            100,
+            String::from("ref_link.io"),
+            2,
+            1,
+            cs,
             2,
         );
     }
@@ -892,7 +1005,7 @@ mod unit_tests {
             Some(AccountFlag::Verified),
             prop_sp,
             charlie(),
-            vec![],
+            setup_package_candidates()[1..=1].to_vec(),
         ) {
             Ok(_) => (),
             x => panic!("expected OK, got: {:?}", x),
@@ -900,7 +1013,7 @@ mod unit_tests {
         let p = ctr._proposal(prop_sp);
         assert!(p.voters.contains_key(&22), "token id should be recorded");
         assert_eq!(p.voters_num, 1, "voters num should  increment");
-        assert!(p.result.is_empty(), "vote should be counted");
+        assert_eq!(p.result, vec![0, 1, 0], "vote should be counted");
     }
 
     #[test]
