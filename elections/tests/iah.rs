@@ -69,7 +69,7 @@ async fn init(
     let token_metadata_short_expire_at = TokenMetadata {
         class: 1,
         issued_at: Some(0),
-        expires_at: Some(now + 7000),
+        expires_at: Some(now + 9000),
         reference: None,
         reference_hash: None,
     };
@@ -233,9 +233,6 @@ async fn vote_without_accepting_policy() -> anyhow::Result<()> {
     Ok(())
 }
 
-// This test can be uncommented after mainnet e2e. Because for mainnet e2e storage cost of ACCEPT_POLICY is higher than
-// BOND_AMOUNT or GRAY_BOND so error can't be created. I have tested it with original values. 3N and 300N
-#[ignore]
 #[tokio::test]
 async fn vote_without_deposit_bond() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
@@ -307,8 +304,6 @@ async fn unbond_amount_before_election_end() -> anyhow::Result<()> {
     Ok(())
 }
 
-// This test assumes bond amount to be 3N and 300N. Tested
-#[ignore]
 #[tokio::test]
 async fn unbond_amount() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
