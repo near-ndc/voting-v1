@@ -263,6 +263,7 @@ impl Contract {
             .expect("Voter didn't bond")
             - MINT_COST;
 
+// call to registry to mint `I Voted` SBT
         ext_sbtreg::ext(self.sbt_registry.clone())
             .with_static_gas(MINT_GAS)
             .with_attached_deposit(MINT_COST)
