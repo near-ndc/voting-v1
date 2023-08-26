@@ -1,7 +1,5 @@
 use near_sdk::{Balance, Gas};
 
-// pub const MICRO_NEAR: Balance = 1_000_000_000_000_000_000; // 1e18 yoctoNEAR
-// pub const MILI_NEAR: Balance = 1_000 * MICRO_NEAR;
 pub const MILI_NEAR: Balance = 1_000_000_000_000_000_000_000;
 pub const NEAR: Balance = 1_000 * MILI_NEAR;
 
@@ -17,7 +15,7 @@ pub const ACCEPT_POLICY_GAS: Gas = Gas(70 * Gas::ONE_TERA.0);
 
 pub const BOND_AMOUNT: Balance = 3 * NEAR;
 pub const GRAY_BOND_AMOUNT: Balance = 300 * NEAR;
-pub const MINT_COST: Balance = 10 * MILI_NEAR;
+pub const MINT_COST: Balance = 10 * MILI_NEAR; // 0.01 NEAR
 
 pub const MINT_GAS: Gas = Gas(9 * Gas::ONE_TERA.0);
 pub const VOTE_GAS: Gas = Gas(110 * Gas::ONE_TERA.0);
