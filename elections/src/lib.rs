@@ -1499,7 +1499,17 @@ mod unit_tests {
         testing_env!(ctx.clone());
 
         ctr.unbond(alice(), mk_human_sbt(1), Value::String("".to_string()));
+        // Verify cleanup
         assert_eq!(ctr.bonded_amounts.get(&1), None);
+        assert_eq!(ctr.accepted_policy.get(&alice()), None);
+
+        for i in 1..=ctr.prop_counter {
+            let proposal = ctr.proposals.get(&i);
+            if let Some(prop) = proposal {
+                assert_eq!(prop.user_sbt.get(&alice()), None);
+                assert_eq!(prop.voters.get(&1), None);
+            }
+        }
     }
 
     #[test]
