@@ -4,9 +4,7 @@ use events::{emit_revoke_vote, emit_vote};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::LookupMap;
 use near_sdk::json_types::U128;
-use near_sdk::{
-    env, near_bindgen, require, AccountId, PanicOnDefault, Promise, PromiseOrValue,
-};
+use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise, PromiseOrValue};
 
 mod constants;
 mod errors;
@@ -253,14 +251,14 @@ impl Contract {
             .expect("Voter didn't bond");
 
         // cleanup votes, policy data from caller
-        for i in 1..self.prop_counter {
+        for i in 1..=self.prop_counter {
             let proposal = self.proposals.get(&i);
             if let Some(mut prop) = proposal {
                 prop.user_sbt.remove(&caller);
                 prop.voters.remove(&token_id);
             }
-            self.accepted_policy.remove(&caller);
         }
+        self.accepted_policy.remove(&caller);
 
         Promise::new(caller).transfer(unbond_amount)
     }
