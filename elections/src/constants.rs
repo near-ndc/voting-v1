@@ -1,7 +1,6 @@
-use near_sdk::{Balance, Gas};
+use near_sdk::{Balance, Gas, ONE_NEAR};
 
-pub const MILI_NEAR: Balance = 1_000_000_000_000_000_000_000;
-pub const NEAR: Balance = 1_000 * MILI_NEAR;
+pub const MILI_NEAR: Balance = ONE_NEAR / 1_000;
 
 // storage cost: 1E19 yoctoNEAR ( = 10 microN) per byte --> 1miliN per 100B --> 1 NEAR per 100kB
 // vote: max to tokenIDs: 2* (8bytes(tokenID) + prefix(1byte + 4bytes)) = 26B
@@ -13,8 +12,8 @@ pub const VOTE_COST: Balance = MILI_NEAR;
 pub const ACCEPT_POLICY_COST: Balance = MILI_NEAR;
 pub const ACCEPT_POLICY_GAS: Gas = Gas(70 * Gas::ONE_TERA.0);
 
-pub const BOND_AMOUNT: Balance = 3 * NEAR;
-pub const GRAY_BOND_AMOUNT: Balance = 300 * NEAR;
+pub const BOND_AMOUNT: Balance = 3 * ONE_NEAR;
+pub const GRAY_BOND_AMOUNT: Balance = 300 * ONE_NEAR;
 pub const MINT_COST: Balance = 10 * MILI_NEAR; // 0.01 NEAR
 
 pub const MINT_GAS: Gas = Gas(9 * Gas::ONE_TERA.0);
