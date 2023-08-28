@@ -1,9 +1,9 @@
 use integrations::setup_registry;
 use near_sdk::serde::{Serialize, Deserialize};
-use near_sdk::AccountId;
+//use near_sdk::AccountId;
 use near_units::parse_near;
 use serde_json::json;
-use workspaces::{Account, Contract, DevNetwork, Worker};
+use workspaces::{Account, Contract, DevNetwork, Worker, AccountId};
 
 /// 1ms in nano seconds
 //extern crate elections;
@@ -359,10 +359,9 @@ async fn unbond_amount() -> anyhow::Result<()> {
         min_diff
     );
 
-    // TODO: check if the SBT is minted
-
     // verify voter has i_voted sbt
-    // verify_i_voted_sbt_tokens_by_owner();
+    verify_i_voted_sbt_tokens_by_owner(registry_contract.id(), ndc_elections_contract.id(), alice).await?;
+
     Ok(())
 }
 
@@ -483,53 +482,28 @@ async fn accept_policy_and_bond(
 }
 
 pub async fn verify_i_voted_sbt_tokens_by_owner(
-    iah_registry: Account,
-    issuer: Account,
+    iah_registry: &AccountId,
+    issuer: &AccountId,
     owner: Account,
-    tokens_ids: &[u64],
 ) -> anyhow::Result<()> {
     let res = owner
-        .view(iah_registry.id(), "sbt_tokens_by_owner")
+        .view(iah_registry, "sbt_tokens_by_owner")
         .args_json(json!({
           "account": owner.id(),
-          "issuer": issuer.id(),
+          "issuer": issuer,
         }))
         .await?
         .json::<Vec<(AccountId, Vec<OwnedToken>)>>()?;
 
-    match res.first() {
-        Some((issuer_id_result, tokens_result))
-            if issuer_id_result.as_str() != issuer.id().as_str()
-                && compare_slices(
-                    &tokens_result
-                        .iter()
-                        .map(|token_res| token_res.token)
-                        .collect::<Vec<_>>(),
-                    tokens_ids,
-                ) =>
-        {
-            Err(anyhow::Error::msg(format!(
-                "User `{}` do not have I_VOTED SBT",
-                owner.id()
-            )))
-        }
-        _ => Ok(()),
+    if res[0].0.clone() != issuer.clone() || res[0].1.is_empty() {
+        Err(anyhow::Error::msg("User does not have I_VOTED SBT"))
+    } else {
+        Ok(())
     }
 }
 
 fn policy1() -> String {
     "f1c09f8686fe7d0d798517111a66675da0012d8ad1693a47e0e2a7d3ae1c69d4".to_owned()
-}
-
-// TODO: pass iterators instead
-fn compare_slices<T: PartialEq>(sl1: &[T], sl2: &[T]) -> bool {
-    let count = sl1
-        .iter()
-        .zip(sl2)
-        .filter(|&(item1, item2)| item1 == item2)
-        .count();
-
-    count == sl1.len() && count == sl2.len()
 }
 
 #[derive(Deserialize, Serialize)]
