@@ -33,7 +33,7 @@ async fn init(
         admin.clone(),
         auth_flagger,
         iah_issuer.clone(),
-        None,
+        vec![],
     )
     .await?;
 

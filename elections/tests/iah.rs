@@ -7,7 +7,7 @@ use workspaces::{Account, Contract, DevNetwork, Worker};
 //extern crate elections;
 use elections::{
     proposal::{ProposalType, VOTE_COST},
-    ProposalView, TokenMetadata, BOND_AMOUNT, ACCEPT_POLICY_COST, MILI_NEAR,
+    ProposalView, TokenMetadata, ACCEPT_POLICY_COST, BOND_AMOUNT, MILI_NEAR,
 };
 
 /// 1ms in seconds
@@ -32,7 +32,7 @@ async fn init(
         admin.clone(),
         auth_flagger.clone(),
         iah_issuer.clone(),
-        None,
+        vec![ndc_elections_contract.id().clone()],
     )
     .await?;
 
@@ -74,8 +74,8 @@ async fn init(
         reference_hash: None,
     };
 
-     // mint IAH sbt to bob
-     let token_metadata_bob = TokenMetadata {
+    // mint IAH sbt to bob
+    let token_metadata_bob = TokenMetadata {
         class: 1,
         issued_at: Some(0),
         expires_at: Some(expires_at),
@@ -109,12 +109,26 @@ async fn init(
         .max_gas()
         .transact();
 
-    accept_policy_and_bond(registry_contract.clone(), ndc_elections_contract.clone(), john.clone(), policy1()).await?;
-    accept_policy_and_bond(registry_contract.clone(), ndc_elections_contract.clone(), alice.clone(), policy1()).await?;
+    accept_policy_and_bond(
+        registry_contract.clone(),
+        ndc_elections_contract.clone(),
+        john.clone(),
+        policy1(),
+    )
+    .await?;
+    accept_policy_and_bond(
+        registry_contract.clone(),
+        ndc_elections_contract.clone(),
+        alice.clone(),
+        policy1(),
+    )
+    .await?;
 
     let res3 = auth_flagger
         .call(registry_contract.id(), "admin_flag_accounts")
-        .args_json(json!({ "flag": "Verified", "accounts": [john.id(), alice.id(), bob.id()], "memo": ""}))
+        .args_json(
+            json!({ "flag": "Verified", "accounts": [john.id(), alice.id(), bob.id()], "memo": ""}),
+        )
         .max_gas()
         .transact()
         .await?;
@@ -158,7 +172,7 @@ async fn vote_by_human() -> anyhow::Result<()> {
 async fn vote_by_non_human() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
     let (ndc_elections_contract, _, _, john, _, _, proposal_id) = init(&worker).await?;
-    
+
     let non_human = worker.dev_create_account().await?;
     // fast forward to the voting period
     worker.fast_forward(12).await?;
@@ -262,11 +276,7 @@ async fn vote_without_deposit_bond() -> anyhow::Result<()> {
         .await?;
     assert!(res.is_failure(), "resp should be a failure {:?}", res);
     let failures = format!("{:?}", res.receipt_failures());
-    assert!(
-        failures.contains("Voter didn't bond"),
-        "{}",
-        failures
-    );
+    assert!(failures.contains("Voter didn't bond"), "{}", failures);
 
     Ok(())
 }
@@ -274,7 +284,8 @@ async fn vote_without_deposit_bond() -> anyhow::Result<()> {
 #[tokio::test]
 async fn unbond_amount_before_election_end() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
-    let (ndc_elections_contract, registry_contract, alice, _, john, _, proposal_id) = init(&worker).await?;
+    let (ndc_elections_contract, registry_contract, alice, _, john, _, proposal_id) =
+        init(&worker).await?;
 
     // fast forward to the voting period
     worker.fast_forward(12).await?;
@@ -289,8 +300,10 @@ async fn unbond_amount_before_election_end() -> anyhow::Result<()> {
     assert!(res.is_success(), "{:?}", res);
 
     let res1 = alice
-         .call(registry_contract.id(), "is_human_call")
-        .args_json(json!({"ctr": ndc_elections_contract.id(), "function": "unbond", "payload": "{}"}))
+        .call(registry_contract.id(), "is_human_call")
+        .args_json(
+            json!({"ctr": ndc_elections_contract.id(), "function": "unbond", "payload": "{}"}),
+        )
         .max_gas()
         .transact()
         .await?;
@@ -307,7 +320,8 @@ async fn unbond_amount_before_election_end() -> anyhow::Result<()> {
 #[tokio::test]
 async fn unbond_amount() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
-    let (ndc_elections_contract, registry_contract, alice, _, john, _, proposal_id) = init(&worker).await?;
+    let (ndc_elections_contract, registry_contract, alice, _, john, _, proposal_id) =
+        init(&worker).await?;
 
     // fast forward to the voting period
     worker.fast_forward(12).await?;
@@ -327,7 +341,9 @@ async fn unbond_amount() -> anyhow::Result<()> {
 
     let res1 = alice
         .call(registry_contract.id(), "is_human_call")
-        .args_json(json!({"ctr": ndc_elections_contract.id(), "function": "unbond", "payload": "{}"}))
+        .args_json(
+            json!({"ctr": ndc_elections_contract.id(), "function": "unbond", "payload": "{}"}),
+        )
         .max_gas()
         .transact()
         .await?;
@@ -336,6 +352,8 @@ async fn unbond_amount() -> anyhow::Result<()> {
     let balance_after = alice.view_account().await?;
     // Make sure you get back your NEAR - Some fees - Storage
     assert!(balance_after.balance - balance_before.balance > BOND_AMOUNT - 10 * MILI_NEAR);
+
+    // TODO: check if the SBT is minted
 
     Ok(())
 }
@@ -427,7 +445,12 @@ async fn revoke_vote() -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn accept_policy_and_bond(registry: Contract, election: Contract, user: Account, policy: String) -> anyhow::Result<()> {
+async fn accept_policy_and_bond(
+    registry: Contract,
+    election: Contract,
+    user: Account,
+    policy: String,
+) -> anyhow::Result<()> {
     let call_from = user.clone();
     let res = call_from
         .call(election.id(), "accept_fair_voting_policy")
