@@ -1,4 +1,4 @@
-use near_sdk::serde::Serialize;
+use near_sdk::{serde::Serialize, Balance};
 use serde_json::json;
 
 use common::{EventPayload, NearEvent};
@@ -10,6 +10,13 @@ fn emit_event<T: Serialize>(event: EventPayload<T>) {
         event,
     }
     .emit();
+}
+
+pub(crate) fn emit_bond(amount: Balance) {
+    emit_event(EventPayload {
+        event: "bond",
+        data: json!({ "amount": amount.to_string() }),
+    });
 }
 
 pub(crate) fn emit_vote(prop_id: u32) {
