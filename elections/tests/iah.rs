@@ -360,7 +360,7 @@ async fn unbond_amount() -> anyhow::Result<()> {
 
     // verify voter has i_voted sbt
     let sbt = verify_i_voted_sbt_tokens_by_owner(registry_contract.id(), ndc_elections_contract.id(), alice).await?;
-    assert_eq!(sbt, true);
+    assert!(sbt);
 
     Ok(())
 }
@@ -430,7 +430,7 @@ async fn sbt_mint_no_vote() -> anyhow::Result<()> {
     );
 
     let sbt = verify_i_voted_sbt_tokens_by_owner(registry_contract.id(), ndc_elections_contract.id(), alice).await?;
-    assert_eq!(sbt, false);
+    assert!(!sbt);
 
     Ok(())
 }

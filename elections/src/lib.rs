@@ -1492,7 +1492,7 @@ mod unit_tests {
         let iah_proof = vec![(alice(), vec![ALICE_SBT])];
         let flag = Some(AccountFlag::Verified);
         ctr.on_vote_verified(iah_proof.clone(), flag.clone(), prop1, alice(), vote1)?;
-        ctr.on_vote_verified(iah_proof.clone(), flag, prop_sp, alice(), vote_sp)?;
+        ctr.on_vote_verified(iah_proof, flag, prop_sp, alice(), vote_sp)?;
 
         ctx.block_timestamp = ctr.finish_time * 1000000000; // in nano
         ctx.predecessor_account_id = sbt_registry();
