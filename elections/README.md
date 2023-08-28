@@ -31,19 +31,27 @@
 - [SPEC](https://github.com/near-ndc/gov/blob/main/framework-v1/elections-voting.md#bonding)
 - Each verified voter must bond 3N to cast their vote. Each Non-verified voter must bond 300N to cast their vote.
 - Bond can be deposited during `accept_policy` operation or `bond` function can be used via i-am-human-call.
+
   ```rust
   near registry call is_human_call {"ctr": "elections.near", "function": "bond", "paylad": ""} --accountId YOU.near --deposit 3
   ```
+
 - One bond is enough to cast votes for all proposals.
 - `finish_time`: max(`finish_time`, `end` + `cooldown`) of all the proposals.
 - User can unbond after the `finish_time`. All tokens minus storage fees will be returned.
 - Bonded tokens can be slashed by executing `vote_revoke`. 100% of bonded tokens will be slashed and will be tracked in `total_slashed` variable.
 - `unbond`: To unbond deposit, unbond function needs to be called via IAH `registry.is_human_call`.
+
   ```rust
   near registry call is_human_call {"ctr": "elections.near", "function": "unbond", "payload": "" --accountId YOU.near
   ```
 
+  The `unbond` will also mint I VOTED SBT for [eligible voters](https://github.com/near-ndc/gov/blob/main/framework-v1/elections-voting.md#i-voted-sbt).
+
 ## Voting
+
+User who made sufficient bond and accepted Fair Voting Policy can call `vote` function to vote for an active proposal.
+User can vote at most once for each proposal, votes can not be updated. [Full specification](https://github.com/near-ndc/gov/blob/main/framework-v1/elections-voting.md)
 
 ### Setup Package
 
