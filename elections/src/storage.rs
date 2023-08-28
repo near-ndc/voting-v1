@@ -14,6 +14,7 @@ pub enum StorageKey {
 
 #[derive(PartialEq, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Clone))]
 pub enum AccountFlag {
     /// Account is "blacklisted" when it was marked as a scam or breaking the IAH rules.
     Blacklisted,

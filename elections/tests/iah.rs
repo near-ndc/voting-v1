@@ -6,8 +6,8 @@ use workspaces::{Account, Contract, DevNetwork, Worker};
 /// 1ms in nano seconds
 //extern crate elections;
 use elections::{
-    proposal::{ProposalType, VOTE_COST},
-    ProposalView, TokenMetadata, ACCEPT_POLICY_COST, BOND_AMOUNT, MILI_NEAR,
+    proposal::ProposalType, ProposalView, TokenMetadata, ACCEPT_POLICY_COST, BOND_AMOUNT,
+    MILI_NEAR, MINT_COST,
 };
 
 /// 1ms in seconds
@@ -159,7 +159,6 @@ async fn vote_by_human() -> anyhow::Result<()> {
     let res = alice
         .call(ndc_elections_contract.id(), "vote")
         .args_json(json!({"prop_id": proposal_id, "vote": [john.id()],}))
-        .deposit(VOTE_COST)
         .max_gas()
         .transact()
         .await?;
@@ -180,7 +179,6 @@ async fn vote_by_non_human() -> anyhow::Result<()> {
     let res = non_human
         .call(ndc_elections_contract.id(), "vote")
         .args_json(json!({"prop_id": proposal_id, "vote": [john.id()],}))
-        .deposit(VOTE_COST)
         .max_gas()
         .transact()
         .await?;
@@ -206,7 +204,6 @@ async fn vote_expired_iah_token() -> anyhow::Result<()> {
     let res = john
         .call(ndc_elections_contract.id(), "vote")
         .args_json(json!({"prop_id": proposal_id, "vote": [alice.id()],}))
-        .deposit(VOTE_COST)
         .max_gas()
         .transact()
         .await?;
@@ -232,7 +229,6 @@ async fn vote_without_accepting_policy() -> anyhow::Result<()> {
     let res = zen_acc
         .call(ndc_elections_contract.id(), "vote")
         .args_json(json!({"prop_id": proposal_id, "vote": [john.id()],}))
-        .deposit(VOTE_COST)
         .max_gas()
         .transact()
         .await?;
@@ -270,7 +266,6 @@ async fn vote_without_deposit_bond() -> anyhow::Result<()> {
     let res = bob
         .call(ndc_elections_contract.id(), "vote")
         .args_json(json!({"prop_id": proposal_id, "vote": [john.id()],}))
-        .deposit(VOTE_COST)
         .max_gas()
         .transact()
         .await?;
@@ -293,7 +288,6 @@ async fn unbond_amount_before_election_end() -> anyhow::Result<()> {
     let res = alice
         .call(ndc_elections_contract.id(), "vote")
         .args_json(json!({"prop_id": proposal_id, "vote": [john.id()],}))
-        .deposit(VOTE_COST)
         .max_gas()
         .transact()
         .await?;
@@ -329,7 +323,6 @@ async fn unbond_amount() -> anyhow::Result<()> {
     let res = alice
         .call(ndc_elections_contract.id(), "vote")
         .args_json(json!({"prop_id": proposal_id, "vote": [john.id()],}))
-        .deposit(VOTE_COST)
         .max_gas()
         .transact()
         .await?;
@@ -350,8 +343,19 @@ async fn unbond_amount() -> anyhow::Result<()> {
     assert!(res1.is_success(), "{:?}", res1);
 
     let balance_after = alice.view_account().await?;
-    // Make sure you get back your NEAR - Some fees - Storage
-    assert!(balance_after.balance - balance_before.balance > BOND_AMOUNT - 10 * MILI_NEAR);
+    /*
+    Make sure you get back your NEAR - Tx fees - Storage
+    There is only one proposal, so all storage fees should be returned minus Tx fees and SBT Mint storage
+    */
+    let balance_diff = balance_after.balance - balance_before.balance;
+    let tx_fees = 3 * MILI_NEAR;
+    let min_diff = BOND_AMOUNT - MINT_COST - tx_fees;
+    assert!(
+        balance_diff > min_diff,
+        "diff: {}, min_diff: {}",
+        balance_diff,
+        min_diff
+    );
 
     // TODO: check if the SBT is minted
 
@@ -377,7 +381,6 @@ async fn state_change() -> anyhow::Result<()> {
     let res = alice
         .call(ndc_elections_contract.id(), "vote")
         .args_json(json!({"prop_id": proposal_id, "vote": [john.id()],}))
-        .deposit(VOTE_COST)
         .max_gas()
         .transact()
         .await?;
@@ -409,7 +412,6 @@ async fn revoke_vote() -> anyhow::Result<()> {
     let res = alice
         .call(ndc_elections_contract.id(), "vote")
         .args_json(json!({"prop_id": proposal_id, "vote": [john.id()],}))
-        .deposit(VOTE_COST)
         .max_gas()
         .transact()
         .await?;

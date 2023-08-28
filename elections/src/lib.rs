@@ -161,21 +161,12 @@ impl Contract {
 
     /// Election vote using a seat-selection mechanism.
     /// For the `SetupPackage` proposal, vote must be an empty list.
-    #[payable]
+    // NOTE: we don't need to take storage deposit because user is required to bond at least
+    // 3N, that will way more than what's needed to vote for few proposals.
     pub fn vote(&mut self, prop_id: u32, vote: Vote) -> Promise {
         let user = env::predecessor_account_id();
         let p = self._proposal(prop_id);
         p.assert_active();
-        if p.typ == ProposalType::SetupPackage {
-            require!(vote.is_empty(), "setup_package vote must be an empty list");
-        }
-        require!(
-            env::attached_deposit() >= VOTE_COST,
-            format!(
-                "requires {} yocto deposit for storage fees for every new vote",
-                VOTE_COST
-            )
-        );
         require!(
             env::prepaid_gas() >= VOTE_GAS,
             format!("not enough gas, min: {:?}", VOTE_GAS)
@@ -185,7 +176,7 @@ impl Contract {
             "user didn't accept the voting policy, or the accepted voting policy doesn't match the required one"
         );
 
-        validate_vote(&vote, p.seats, &p.candidates);
+        validate_vote(p.typ, &vote, p.seats, &p.candidates);
         // call SBT registry to verify SBT
         let sbt_promise = ext_sbtreg::ext(self.sbt_registry.clone()).is_human(user.clone());
         let acc_flag = ext_sbtreg::ext(self.sbt_registry.clone()).account_flagged(user.clone());
@@ -457,6 +448,8 @@ mod unit_tests {
         ]
     }
 
+    const ALICE_SBT: u64 = 1;
+
     fn alice() -> AccountId {
         AccountId::new_unchecked("alice.near".to_string())
     }
@@ -601,9 +594,9 @@ mod unit_tests {
         testing_env!(ctx.clone());
         ctr.accept_fair_voting_policy(policy1());
 
-        bond_amount_call(ctx, ctr, alice(), 1);
+        bond_amount_call(ctx, ctr, alice(), ALICE_SBT);
 
-        ctx.attached_deposit = VOTE_COST;
+        ctx.attached_deposit = 0;
         ctx.block_timestamp = (START + 2) * MSECOND;
         ctx.prepaid_gas = VOTE_GAS;
         testing_env!(ctx.clone());
@@ -1052,22 +1045,13 @@ mod unit_tests {
     fn accepted_policy_deposit_ok() {
         let (mut ctx, mut ctr) = setup(&admin());
 
-        ctx.attached_deposit = ACCEPT_POLICY_COST;
-        testing_env!(ctx);
-
-        ctr.accept_fair_voting_policy(policy1());
-        // should be able to accept more then once
-        ctr.accept_fair_voting_policy(policy1());
-    }
-
-    #[test]
-    fn accepted_policy_query() {
-        let (mut ctx, mut ctr) = setup(&admin());
-
         let mut res = ctr.accepted_policy(admin());
         assert!(res.is_none());
+
         ctx.attached_deposit = ACCEPT_POLICY_COST;
         testing_env!(ctx);
+        ctr.accept_fair_voting_policy(policy1());
+        // should be able to accept more then once
         ctr.accept_fair_voting_policy(policy1());
 
         res = ctr.accepted_policy(admin());
@@ -1091,24 +1075,8 @@ mod unit_tests {
         let (mut ctx, mut ctr) = setup(&admin());
 
         let prop_id = mk_proposal(&mut ctr);
-        ctx.attached_deposit = VOTE_COST;
         ctx.block_timestamp = (START + 2) * MSECOND;
         ctx.prepaid_gas = Gas(10 * Gas::ONE_TERA.0);
-        testing_env!(ctx);
-
-        ctr.vote(prop_id, vec![candidate(1)]);
-    }
-
-    #[test]
-    #[should_panic(
-        expected = "requires 1000000000000000000000 yocto deposit for storage fees for every new vote"
-    )]
-    fn vote_wrong_deposit() {
-        let (mut ctx, mut ctr) = setup(&admin());
-
-        let prop_id = mk_proposal(&mut ctr);
-        ctx.attached_deposit = VOTE_COST - 1;
-        ctx.block_timestamp = (START + 2) * MSECOND;
         testing_env!(ctx);
 
         ctr.vote(prop_id, vec![candidate(1)]);
@@ -1122,7 +1090,6 @@ mod unit_tests {
         let (mut ctx, mut ctr) = setup(&admin());
 
         let prop_id = mk_proposal(&mut ctr);
-        ctx.attached_deposit = VOTE_COST;
         ctx.block_timestamp = (START + 2) * MSECOND;
         ctx.prepaid_gas = VOTE_GAS;
         testing_env!(ctx);
@@ -1142,7 +1109,7 @@ mod unit_tests {
         ctr.accept_fair_voting_policy(policy2());
 
         let prop_id = mk_proposal(&mut ctr);
-        ctx.attached_deposit = VOTE_COST;
+        ctx.attached_deposit = 0;
         ctx.block_timestamp = (START + 2) * MSECOND;
         ctx.prepaid_gas = VOTE_GAS;
         testing_env!(ctx);
@@ -1178,27 +1145,17 @@ mod unit_tests {
     }
 
     #[test]
-    #[should_panic(expected = "double vote for the same candidate")]
+    #[should_panic(expected = "double vote for the same option")]
     fn vote_double_vote_same_candidate() {
         let (mut ctx, mut ctr) = setup(&admin());
 
-        ctx.attached_deposit = ACCEPT_POLICY_COST;
-        testing_env!(ctx.clone());
-        ctr.accept_fair_voting_policy(policy1());
-
-        bond_amount_call(&mut ctx, &mut ctr, alice(), 1);
-
         let prop_id = mk_proposal(&mut ctr);
-        ctx.attached_deposit = VOTE_COST;
-        ctx.block_timestamp = (START + 2) * MSECOND;
-        ctx.prepaid_gas = VOTE_GAS;
-        testing_env!(ctx);
-
+        alice_voting_context(&mut ctx, &mut ctr);
         ctr.vote(prop_id, vec![candidate(1), candidate(1)]);
     }
 
     #[test]
-    #[should_panic(expected = "vote for unknown candidate")]
+    #[should_panic(expected = "vote for unknown option")]
     fn vote_unknown_candidate() {
         let (mut ctx, mut ctr) = setup(&admin());
 
@@ -1229,7 +1186,17 @@ mod unit_tests {
     }
 
     #[test]
-    #[should_panic(expected = "setup_package vote must be an empty list")]
+    #[should_panic(expected = "setup package vote must be non empty")]
+    fn vote_empty_vote_setup_package() {
+        let (mut ctx, mut ctr) = setup(&admin());
+
+        let prop_id = mk_proposal_setup_package(&mut ctr);
+        alice_voting_context(&mut ctx, &mut ctr);
+        ctr.vote(prop_id, vec![]);
+    }
+
+    #[test]
+    #[should_panic(expected = "vote for unknown option")]
     fn vote_wrong_setup_package_vote() {
         let (mut ctx, mut ctr) = setup(&admin());
 
@@ -1247,7 +1214,7 @@ mod unit_tests {
         let prop_hom2 = mk_proposal(&mut ctr);
         alice_voting_context(&mut ctx, &mut ctr);
 
-        ctr.vote(prop_sp, vec![]);
+        ctr.vote(prop_sp, setup_package_candidates()[0..=0].to_vec());
         ctr.vote(prop_hom1, vec![]);
         // need to setup new context, otherwise we have a gas error
         alice_voting_context(&mut ctx, &mut ctr);
@@ -1508,21 +1475,39 @@ mod unit_tests {
     }
 
     #[test]
-    fn unbond_amount() {
+    fn vote_unbond_full_flow() -> Result<(), VoteError> {
         let (mut ctx, mut ctr) = setup(&admin());
 
+        let prop1 = mk_proposal(&mut ctr);
         let prop_sp = mk_proposal_setup_package(&mut ctr);
-        alice_voting_context(&mut ctx, &mut ctr);
+        let vote_sp = setup_package_candidates()[0..=0].to_vec(); // abstain
+        let vote1 = vec![candidate(3), candidate(1)];
 
+        alice_voting_context(&mut ctx, &mut ctr);
         assert_eq!(ctr.bonded_amounts.get(&1), Some(BOND_AMOUNT));
-        ctr.vote(prop_sp, vec![]);
+
+        // cast a vote and call on_vote_verified callbacks.
+        ctr.vote(prop_sp, vote_sp.clone());
+        ctr.vote(prop1, vote1.clone());
+        let iah_proof = vec![(alice(), vec![ALICE_SBT])];
+        let flag = Some(AccountFlag::Verified);
+        ctr.on_vote_verified(iah_proof.clone(), flag.clone(), prop1, alice(), vote1)?;
+        ctr.on_vote_verified(iah_proof.clone(), flag, prop_sp, alice(), vote_sp)?;
 
         ctx.block_timestamp = ctr.finish_time * 1000000000; // in nano
         ctx.predecessor_account_id = sbt_registry();
         testing_env!(ctx.clone());
 
+        assert_eq!(
+            ctr.user_votes(alice()),
+            vec![Some(vec![2, 0]), Some(vec![2])] // votes are alphabetically, yes==2
+        );
+
         ctr.unbond(alice(), mk_human_sbt(1), Value::String("".to_string()));
         assert_eq!(ctr.bonded_amounts.get(&1), None);
+        assert_eq!(ctr.user_votes(alice()), vec![None, None]);
+
+        Ok(())
     }
 
     #[test]
