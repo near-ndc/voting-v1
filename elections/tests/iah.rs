@@ -1,5 +1,4 @@
 use integrations::setup_registry;
-use near_sdk::serde::{Serialize, Deserialize};
 use near_units::parse_near;
 use serde_json::json;
 use workspaces::{Account, Contract, DevNetwork, Worker, AccountId};
@@ -8,7 +7,7 @@ use workspaces::{Account, Contract, DevNetwork, Worker, AccountId};
 //extern crate elections;
 use elections::{
     proposal::{ProposalType},
-    ProposalView, TokenMetadata, ACCEPT_POLICY_COST, BOND_AMOUNT, MILI_NEAR, MINT_COST,
+    ProposalView, TokenMetadata, ACCEPT_POLICY_COST, BOND_AMOUNT, MILI_NEAR, MINT_COST, OwnedToken
 };
 
 /// 1ms in seconds
@@ -16,7 +15,7 @@ const MSECOND: u64 = 1_000_000;
 
 async fn init(
     worker: &Worker<impl DevNetwork>,
-) -> anyhow::Result<(Contract, Contract, Account, Account, Account, Account, u32)> {
+) -> anyhow::Result<(Contract, Contract, Account, Account, Account, Account, Account, u32)> {
     // deploy contracts
     let ndc_elections_contract = worker.dev_deploy(include_bytes!("../../res/elections.wasm"));
     let ndc_elections_contract = ndc_elections_contract.await?;
@@ -145,6 +144,7 @@ async fn init(
         bob,
         john,
         auth_flagger,
+        admin,
         proposal_id,
     ))
 }
@@ -152,7 +152,7 @@ async fn init(
 #[tokio::test]
 async fn vote_by_human() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
-    let (ndc_elections_contract, _, alice, _, john, _, proposal_id) = init(&worker).await?;
+    let (ndc_elections_contract, _, alice, _, john, _, _, proposal_id) = init(&worker).await?;
 
     // fast forward to the voting period
     worker.fast_forward(10).await?;
@@ -171,7 +171,7 @@ async fn vote_by_human() -> anyhow::Result<()> {
 #[tokio::test]
 async fn vote_by_non_human() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
-    let (ndc_elections_contract, _, _, john, _, _, proposal_id) = init(&worker).await?;
+    let (ndc_elections_contract, _, _, john, _, _, _, proposal_id) = init(&worker).await?;
 
     let non_human = worker.dev_create_account().await?;
     // fast forward to the voting period
@@ -197,7 +197,7 @@ async fn vote_by_non_human() -> anyhow::Result<()> {
 #[tokio::test]
 async fn vote_expired_iah_token() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
-    let (ndc_elections_contract, _, alice, _, john, _, proposal_id) = init(&worker).await?;
+    let (ndc_elections_contract, _, alice, _, john, _, _, proposal_id) = init(&worker).await?;
 
     // fast forward to the voting period
     worker.fast_forward(70).await?;
@@ -222,7 +222,7 @@ async fn vote_expired_iah_token() -> anyhow::Result<()> {
 #[tokio::test]
 async fn vote_without_accepting_policy() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
-    let (ndc_elections_contract, _, _, _, john, _, proposal_id) = init(&worker).await?;
+    let (ndc_elections_contract, _, _, _, john, _, _, proposal_id) = init(&worker).await?;
     let zen_acc = worker.dev_create_account().await?;
     // fast forward to the voting period
     worker.fast_forward(10).await?;
@@ -247,7 +247,7 @@ async fn vote_without_accepting_policy() -> anyhow::Result<()> {
 #[tokio::test]
 async fn vote_without_deposit_bond() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
-    let (ndc_elections_contract, _, _, bob, john, _, proposal_id) = init(&worker).await?;
+    let (ndc_elections_contract, _, _, bob, john, _, _, proposal_id) = init(&worker).await?;
 
     let res = bob
         .call(ndc_elections_contract.id(), "accept_fair_voting_policy")
@@ -280,7 +280,7 @@ async fn vote_without_deposit_bond() -> anyhow::Result<()> {
 #[tokio::test]
 async fn unbond_amount_before_election_end() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
-    let (ndc_elections_contract, registry_contract, alice, _, john, _, proposal_id) =
+    let (ndc_elections_contract, registry_contract, alice, _, john, _, _, proposal_id) =
         init(&worker).await?;
 
     // fast forward to the voting period
@@ -315,7 +315,7 @@ async fn unbond_amount_before_election_end() -> anyhow::Result<()> {
 #[tokio::test]
 async fn unbond_amount() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
-    let (ndc_elections_contract, registry_contract, alice, _, john, _, proposal_id) =
+    let (ndc_elections_contract, registry_contract, alice, _, john, _, _, proposal_id) =
         init(&worker).await?;
 
     // fast forward to the voting period
@@ -359,7 +359,78 @@ async fn unbond_amount() -> anyhow::Result<()> {
     );
 
     // verify voter has i_voted sbt
-    verify_i_voted_sbt_tokens_by_owner(registry_contract.id(), ndc_elections_contract.id(), alice).await?;
+    let sbt = verify_i_voted_sbt_tokens_by_owner(registry_contract.id(), ndc_elections_contract.id(), alice).await?;
+    assert_eq!(sbt, true);
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn sbt_mint_no_vote() -> anyhow::Result<()> {
+    let worker = workspaces::sandbox().await?;
+    let (ndc_elections_contract, registry_contract, alice, _, john, _, admin, proposal_id) =
+        init(&worker).await?;
+
+    let block = worker.view_block().await?;
+    let now = block.timestamp() / MSECOND; // timestamp in seconds
+    // create second proposal
+    let prop2 = admin
+    .call(ndc_elections_contract.id(), "create_proposal")
+    .args_json(json!({
+        "typ": ProposalType::CouncilOfAdvisors, "start": now + 20 * 1000,
+        "end": now + 25 * 1000, "cooldown": 1, "ref_link": "test.io", "quorum": 10,
+        "credits": 5, "seats": 1, "candidates": [john.id(), alice.id()],
+        "min_candidate_support": 2,
+    }))
+    .max_gas()
+    .transact()
+    .await?;
+    assert!(prop2.is_success(), "{:?}", prop2);
+
+    // fast forward to the voting period
+    worker.fast_forward(12).await?;
+
+    // Vote only on one proposal
+    let res = alice
+        .call(ndc_elections_contract.id(), "vote")
+        .args_json(json!({"prop_id": proposal_id, "vote": [john.id()],}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success(), "{:?}", res);
+
+    let balance_before = alice.view_account().await?;
+    // fast forward to the end of voting + cooldown period
+    worker.fast_forward(200).await?;
+
+    let res1 = alice
+        .call(registry_contract.id(), "is_human_call")
+        .args_json(
+            json!({"ctr": ndc_elections_contract.id(), "function": "unbond", "payload": "{}"}),
+        )
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res1.is_success(), "{:?}", res1);
+
+    let balance_after = alice.view_account().await?;
+    /*
+    Make sure you get back your NEAR - Tx fees - Storage
+    There is only one proposal, so all storage fees should be returned minus Tx fees and SBT Mint storage
+    even if sbt is not minted
+    */
+    let balance_diff = balance_after.balance - balance_before.balance;
+    let tx_fees = 3 * MILI_NEAR;
+    let min_diff = BOND_AMOUNT - MINT_COST - tx_fees;
+    assert!(
+        balance_diff > min_diff,
+        "diff: {}, min_diff: {}",
+        balance_diff,
+        min_diff
+    );
+
+    let sbt = verify_i_voted_sbt_tokens_by_owner(registry_contract.id(), ndc_elections_contract.id(), alice).await?;
+    assert_eq!(sbt, false);
 
     Ok(())
 }
@@ -367,7 +438,7 @@ async fn unbond_amount() -> anyhow::Result<()> {
 #[tokio::test]
 async fn state_change() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
-    let (ndc_elections_contract, _, alice, _, john, _, proposal_id) = init(&worker).await?;
+    let (ndc_elections_contract, _, alice, _, john, _, _, proposal_id) = init(&worker).await?;
 
     // fast forward to the voting period
     worker.fast_forward(10).await?;
@@ -404,7 +475,7 @@ async fn state_change() -> anyhow::Result<()> {
 #[tokio::test]
 async fn revoke_vote() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
-    let (ndc_elections_contract, registry_contract, alice, _, john, auth_flagger, proposal_id) =
+    let (ndc_elections_contract, registry_contract, alice, _, john, auth_flagger, _, proposal_id) =
         init(&worker).await?;
 
     // fast forward to the voting period
@@ -480,11 +551,11 @@ async fn accept_policy_and_bond(
     Ok(())
 }
 
-pub async fn verify_i_voted_sbt_tokens_by_owner(
+async fn verify_i_voted_sbt_tokens_by_owner(
     iah_registry: &AccountId,
     issuer: &AccountId,
     owner: Account,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<bool> {
     let res = owner
         .view(iah_registry, "sbt_tokens_by_owner")
         .args_json(json!({
@@ -494,20 +565,13 @@ pub async fn verify_i_voted_sbt_tokens_by_owner(
         .await?
         .json::<Vec<(AccountId, Vec<OwnedToken>)>>()?;
 
-    if res[0].0.clone() != issuer.clone() || res[0].1.is_empty() {
-        Err(anyhow::Error::msg("User does not have I_VOTED SBT"))
+    if res.is_empty() || res[0].0.clone() != issuer.clone() || res[0].1.is_empty() {
+        Ok(false)
     } else {
-        Ok(())
+        Ok(true)
     }
 }
 
 fn policy1() -> String {
     "f1c09f8686fe7d0d798517111a66675da0012d8ad1693a47e0e2a7d3ae1c69d4".to_owned()
-}
-
-#[derive(Deserialize, Serialize)]
-#[serde(crate = "near_sdk::serde")]
-pub struct OwnedToken {
-    pub token: u64,
-    pub metadata: TokenMetadata,
 }
