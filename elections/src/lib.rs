@@ -1,6 +1,6 @@
 use std::cmp::max;
 
-use events::{emit_revoke_vote, emit_vote};
+use events::{emit_bond, emit_revoke_vote, emit_vote};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::LookupMap;
 use near_sdk::json_types::U128;
@@ -212,6 +212,8 @@ impl Contract {
                     .then(Self::fail("Not a human")),
             );
         }
+
+        emit_bond(deposit);
         self.bonded_amounts.insert(&token_id, &deposit);
         PromiseOrValue::Value(U128(deposit))
     }
@@ -862,6 +864,12 @@ mod unit_tests {
         ctx.predecessor_account_id = sbt_registry();
         testing_env!(ctx.clone());
         ctr.bond(alice(), mk_human_sbt(1), Value::String("".to_string()));
+        assert_eq!(
+            test_utils::get_logs(),
+            vec![
+                r#"EVENT_JSON:{"standard":"ndc-elections","version":"1.0.0","event":"bond","data":{"amount":"3000000000000000000000000"}}"#
+            ]
+        );
 
         // check initial state
         let p = ctr._proposal(prop_id);
