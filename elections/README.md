@@ -57,7 +57,7 @@ User can vote at most once for each proposal, votes can not be updated. [Full sp
 
 Setup Package proposal is a proposal with `seats=1` (at most one option can be selected) and `candidates = ["yes", "no", "abstain"]`.
 
-Voting for setup package uses the same API as voting for candidates. The vote must be either an empty list or a list of one element: `["yes"]` or `["no"]` or `["abstain"]`.
+Voting for setup package uses the same API as voting for candidates. The vote must be list of exactly one element: `["yes"]` or `["no"]` or `["abstain"]`.
 
 ## Usage
 
