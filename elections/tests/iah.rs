@@ -334,9 +334,11 @@ async fn unbond_amount() -> anyhow::Result<()> {
     assert!(res1.is_success(), "{:?}", res1);
 
     let balance_after = alice.view_account().await?;
-    // Make sure you get back your NEAR - Some fees - Storage
-    assert!(balance_after.balance - balance_before.balance > BOND_AMOUNT - 10 * MILI_NEAR);
+    // verify transfer is properly done, voters gets back BOND_AMOUNT - some fees(for above transaction) - mint cost
+    assert!(balance_after.balance - balance_before.balance > BOND_AMOUNT - 10 * MILI_NEAR - MINT_COST);
 
+    // verify voter has i_voted sbt
+    verify_i_voted_sbt_tokens_by_owner()
     Ok(())
 }
 
@@ -451,6 +453,41 @@ async fn accept_policy_and_bond(registry: Contract, election: Contract, user: Ac
         .await?;
     assert!(res1.is_success(), "{:?}", res1);
     Ok(())
+}
+
+pub async fn verify_i_voted_sbt_tokens_by_owner(
+    iah_registry_id: AccountId,
+    issuer_id: AccountId,
+    owner: Account,
+    tokens_ids: &[u64],
+) -> anyhow::Result<()> {
+    let res = owner
+        .view(iah_registry_id, "sbt_tokens_by_owner")
+        .args_json(json!({
+          "account": owner.id(),
+          "issuer": issuer_id,
+        }))
+        .await?
+        .json::<Vec<(AccountId, Vec<OwnedToken>)>>()?;
+
+    match res.first() {
+        Some((issuer_id_result, tokens_result))
+            if issuer_id_result.as_str() != issuer_id.as_str()
+                && compare_slices(
+                    &tokens_result
+                        .iter()
+                        .map(|token_res| token_res.token)
+                        .collect::<Vec<_>>(),
+                    tokens_ids,
+                ) =>
+        {
+            Err(anyhow::Error::msg(format!(
+                "User `{}` do not have I_VOTED SBT",
+                owner.id()
+            )))
+        }
+        _ => Ok(()),
+    }
 }
 
 fn policy1() -> String {
