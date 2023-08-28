@@ -1,6 +1,5 @@
 use integrations::setup_registry;
 use near_sdk::serde::{Serialize, Deserialize};
-//use near_sdk::AccountId;
 use near_units::parse_near;
 use serde_json::json;
 use workspaces::{Account, Contract, DevNetwork, Worker, AccountId};
