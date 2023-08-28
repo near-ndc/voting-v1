@@ -185,7 +185,15 @@ impl Proposal {
 pub type Vote = Vec<AccountId>;
 
 /// * valid_candidates must be a sorted slice.
-pub fn validate_vote(vs: &Vote, max_credits: u16, valid_candidates: &[AccountId]) {
+pub fn validate_vote(
+    typ: ProposalType,
+    vs: &Vote,
+    max_credits: u16,
+    valid_candidates: &[AccountId],
+) {
+    if typ == ProposalType::SetupPackage {
+        require!(!vs.is_empty(), "setup package vote must be non empty");
+    }
     require!(
         vs.len() <= max_credits as usize,
         format!("max vote is {} seats", max_credits)
@@ -194,11 +202,11 @@ pub fn validate_vote(vs: &Vote, max_credits: u16, valid_candidates: &[AccountId]
     for candidate in vs {
         require!(
             vote_for.insert(candidate),
-            "double vote for the same candidate"
+            "double vote for the same option"
         );
         require!(
             valid_candidates.binary_search(candidate).is_ok(),
-            "vote for unknown candidate"
+            "vote for unknown option"
         );
     }
 }
