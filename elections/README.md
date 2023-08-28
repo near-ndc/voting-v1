@@ -42,8 +42,12 @@
   ```rust
   near registry call is_human_call {"ctr": "elections.near", "function": "unbond", "payload": "" --accountId YOU.near
   ```
+  The `unbond` will also mint I VOTED SBT for [eligible voters](https://github.com/near-ndc/gov/blob/main/framework-v1/elections-voting.md#i-voted-sbt).
 
 ## Voting
+
+User who made sufficient bond and accepted Fair Voting Policy can call `vote` function to vote for an active proposal.
+User can vote at most once for each proposal, votes can not be updated. [Full specification](https://github.com/near-ndc/gov/blob/main/framework-v1/elections-voting.md)
 
 ### Setup Package
 
