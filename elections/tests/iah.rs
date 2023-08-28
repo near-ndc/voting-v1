@@ -151,12 +151,12 @@ async fn init(
     Ok(InitStruct {
         ndc_elections_contract: ndc_elections_contract.to_owned(),
         registry_contract: registry_contract.to_owned(),
-        alice: alice,
-        bob: bob,
-        john: john,
-        auth_flagger: auth_flagger,
-        admin: admin,
-        proposal_id: proposal_id,
+        alice,
+        bob,
+        john,
+        auth_flagger,
+        admin,
+        proposal_id,
     })
 }
 
