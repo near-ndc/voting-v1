@@ -161,7 +161,8 @@ impl Contract {
 
     /// Election vote using a seat-selection mechanism.
     /// For the `SetupPackage` proposal, vote must be an empty list.
-    #[payable]
+    // NOTE: we don't need to take storage deposit because user is required to bond at least
+    // 3N, that will way more than what's needed to vote for few proposals.
     pub fn vote(&mut self, prop_id: u32, vote: Vote) -> Promise {
         let user = env::predecessor_account_id();
         let p = self._proposal(prop_id);
@@ -169,13 +170,6 @@ impl Contract {
         if p.typ == ProposalType::SetupPackage {
             require!(vote.is_empty(), "setup_package vote must be an empty list");
         }
-        require!(
-            env::attached_deposit() >= VOTE_COST,
-            format!(
-                "requires {} yocto deposit for storage fees for every new vote",
-                VOTE_COST
-            )
-        );
         require!(
             env::prepaid_gas() >= VOTE_GAS,
             format!("not enough gas, min: {:?}", VOTE_GAS)
@@ -603,7 +597,7 @@ mod unit_tests {
 
         bond_amount_call(ctx, ctr, alice(), 1);
 
-        ctx.attached_deposit = VOTE_COST;
+        ctx.attached_deposit = 0;
         ctx.block_timestamp = (START + 2) * MSECOND;
         ctx.prepaid_gas = VOTE_GAS;
         testing_env!(ctx.clone());
@@ -1052,22 +1046,13 @@ mod unit_tests {
     fn accepted_policy_deposit_ok() {
         let (mut ctx, mut ctr) = setup(&admin());
 
-        ctx.attached_deposit = ACCEPT_POLICY_COST;
-        testing_env!(ctx);
-
-        ctr.accept_fair_voting_policy(policy1());
-        // should be able to accept more then once
-        ctr.accept_fair_voting_policy(policy1());
-    }
-
-    #[test]
-    fn accepted_policy_query() {
-        let (mut ctx, mut ctr) = setup(&admin());
-
         let mut res = ctr.accepted_policy(admin());
         assert!(res.is_none());
+
         ctx.attached_deposit = ACCEPT_POLICY_COST;
         testing_env!(ctx);
+        ctr.accept_fair_voting_policy(policy1());
+        // should be able to accept more then once
         ctr.accept_fair_voting_policy(policy1());
 
         res = ctr.accepted_policy(admin());
@@ -1091,24 +1076,8 @@ mod unit_tests {
         let (mut ctx, mut ctr) = setup(&admin());
 
         let prop_id = mk_proposal(&mut ctr);
-        ctx.attached_deposit = VOTE_COST;
         ctx.block_timestamp = (START + 2) * MSECOND;
         ctx.prepaid_gas = Gas(10 * Gas::ONE_TERA.0);
-        testing_env!(ctx);
-
-        ctr.vote(prop_id, vec![candidate(1)]);
-    }
-
-    #[test]
-    #[should_panic(
-        expected = "requires 1000000000000000000000 yocto deposit for storage fees for every new vote"
-    )]
-    fn vote_wrong_deposit() {
-        let (mut ctx, mut ctr) = setup(&admin());
-
-        let prop_id = mk_proposal(&mut ctr);
-        ctx.attached_deposit = VOTE_COST - 1;
-        ctx.block_timestamp = (START + 2) * MSECOND;
         testing_env!(ctx);
 
         ctr.vote(prop_id, vec![candidate(1)]);
@@ -1122,7 +1091,6 @@ mod unit_tests {
         let (mut ctx, mut ctr) = setup(&admin());
 
         let prop_id = mk_proposal(&mut ctr);
-        ctx.attached_deposit = VOTE_COST;
         ctx.block_timestamp = (START + 2) * MSECOND;
         ctx.prepaid_gas = VOTE_GAS;
         testing_env!(ctx);
@@ -1142,7 +1110,7 @@ mod unit_tests {
         ctr.accept_fair_voting_policy(policy2());
 
         let prop_id = mk_proposal(&mut ctr);
-        ctx.attached_deposit = VOTE_COST;
+        ctx.attached_deposit = 0;
         ctx.block_timestamp = (START + 2) * MSECOND;
         ctx.prepaid_gas = VOTE_GAS;
         testing_env!(ctx);
@@ -1189,7 +1157,7 @@ mod unit_tests {
         bond_amount_call(&mut ctx, &mut ctr, alice(), 1);
 
         let prop_id = mk_proposal(&mut ctr);
-        ctx.attached_deposit = VOTE_COST;
+        ctx.attached_deposit = 0;
         ctx.block_timestamp = (START + 2) * MSECOND;
         ctx.prepaid_gas = VOTE_GAS;
         testing_env!(ctx);
