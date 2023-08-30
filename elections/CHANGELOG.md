@@ -52,7 +52,9 @@ Change log entries are to be added to the Unreleased section. Example entry:
    pub fn accept_fair_voting_policy(&mut self, policy: String) -> Promise
    ```
 
-4. Returns the proposal status (view)
+* Now query methods:
+   * `proposal_status` - returns weather a proposal is active, at cooldown or finished.
+   * `accepted_policy` returns a blake32 policy hash of the most recent accepted policy by the user.
 
    ```rust
    pub fn proposal_status(&self, prop_id: u32) -> Option<ProposalStatus>
