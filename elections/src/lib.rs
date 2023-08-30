@@ -162,8 +162,8 @@ impl Contract {
 
     /// Election vote using a seat-selection mechanism.
     /// For the `SetupPackage` proposal, vote must be an empty list.
-    /// NOTE: we don't need to take storage deposit because user is required to bond at least
-    /// 3N, that will way more than what's needed to vote for few proposals.
+    // NOTE: we don't need to take storage deposit because user is required to bond at least
+    // 3N, that will way more than what's needed to vote for few proposals.
     pub fn vote(&mut self, prop_id: u32, vote: Vote) -> Promise {
         let user = env::predecessor_account_id();
         let p = self._proposal(prop_id);

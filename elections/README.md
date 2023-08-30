@@ -33,7 +33,7 @@
 - Bond can be deposited using `bond` function that must be used via is_human_call.
 
   ```rust
-  near call registry.near is_human_call '{"ctr": "elections.near", "function": "bond", "paylad": "{}"}' --accountId YOU.near --deposit 3
+  near call REGISTRY is_human_call '{"ctr": "elections.near", "function": "bond", "paylad": "{}"}' --accountId YOU.near --deposit 3
   ```
 
 - One bond is enough to cast votes for all proposals.
@@ -43,7 +43,7 @@
 - `unbond`: To unbond deposit, unbond function needs to be called via IAH `registry.is_human_call`.
 
   ```rust
-  near call registry.near is_human_call '{"ctr": "elections.near", "function": "unbond", "payload": "{}"}' --accountId YOU.near
+  near call REGISTRY is_human_call '{"ctr": "elections.near", "function": "unbond", "payload": "{}"}' --accountId YOU.near
   ```
 
   The `unbond` will also mint I VOTED SBT for [eligible voters](https://github.com/near-ndc/gov/blob/main/framework-v1/elections-voting.md#i-voted-sbt).

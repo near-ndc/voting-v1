@@ -20,7 +20,6 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ## Unreleased
 
-
 ### Features
 
 ### Breaking Changes
@@ -32,6 +31,8 @@ Change log entries are to be added to the Unreleased section. Example entry:
 ## v1.0.0-rc1 (2023-08-29)
 
 ### Features
+
+- `I VOTED` sbt will be minted to the user in while unbonding if voted for all the proposals.
 
 #### New call methods
 
@@ -49,5 +50,7 @@ Change log entries are to be added to the Unreleased section. Example entry:
 - `winners_by_house` - returns a list of winners of the proposal
 
 ### Breaking Changes
+
+- The user needs to both accept the voting policy and bond before being allowed to vote.
 
 ### Bug Fixes
