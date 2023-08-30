@@ -28,19 +28,19 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ### Bug Fixes
 
-- fix the calculated amount of bonded tokens in `bond`
+- fix the calculated amount of bonded tokens in `bond` method.
 
 ## v1.0.0-rc1 (2023-08-29)
 
 ### Features
 
-#### New call methods:
+#### New call methods
 
 - `bond` - method to allow users to bond and re-bond (increase their bond). Bonding is required to vote. [docs](https://github.com/near-ndc/gov/blob/main/framework-v1/elections-voting.md)
 - `unbond` - method to allow users to unbond the previosuly bonded amount. It is allowed only after the cooldown period. [docs](https://github.com/near-ndc/gov/blob/main/framework-v1/elections-voting.md)
 - `accept_fair_voting_policy` - method to allow users to accept the fair voting policy. It is required to vote. [docs](https://github.com/near-ndc/gov/blob/main/framework-v1/elections-voting.md).
 
-##### New query methods:
+##### New query methods
 
 - `proposal_status` - returns weather a proposal is active, at cooldown or finished.
 - `accepted_policy` - returns a blake32 policy hash of the most recent accepted policy by the user.
