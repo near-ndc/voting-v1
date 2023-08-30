@@ -213,6 +213,14 @@ impl Contract {
             );
         }
 
+        if self.bonded_amounts.contains_key(&token_id) {
+            return PromiseOrValue::Promise(
+                Promise::new(caller)
+                    .transfer(deposit)
+                    .then(Self::fail("user already bonded")),
+            );
+        }
+
         emit_bond(deposit);
         self.bonded_amounts.insert(&token_id, &deposit);
         PromiseOrValue::Value(U128(deposit))
