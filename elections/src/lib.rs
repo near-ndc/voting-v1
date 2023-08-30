@@ -32,6 +32,7 @@ pub struct Contract {
     pub accepted_policy: LookupMap<AccountId, [u8; 32]>,
     /// we assume that each account has at most one IAH token.
     pub bonded_amounts: LookupMap<TokenId, u128>,
+    /// total amount of near slashed due to violating the fair voting policy
     pub total_slashed: u128,
     /// Finish time is end + cooldown. This used in the `unbond` function: user can unbond only after this time.
     /// Unix timestamp (in milliseconds)
@@ -161,8 +162,8 @@ impl Contract {
 
     /// Election vote using a seat-selection mechanism.
     /// For the `SetupPackage` proposal, vote must be an empty list.
-    // NOTE: we don't need to take storage deposit because user is required to bond at least
-    // 3N, that will way more than what's needed to vote for few proposals.
+    /// NOTE: we don't need to take storage deposit because user is required to bond at least
+    /// 3N, that will way more than what's needed to vote for few proposals.
     pub fn vote(&mut self, prop_id: u32, vote: Vote) -> Promise {
         let user = env::predecessor_account_id();
         let p = self._proposal(prop_id);
@@ -188,6 +189,9 @@ impl Contract {
         )
     }
 
+    /// Allows user to bond before voting. The method needs to be called through registry.is_human_call
+    /// Panics if the caller is not registry
+    /// Emits bond event
     #[payable]
     pub fn bond(
         &mut self,
@@ -200,7 +204,7 @@ impl Contract {
             return PromiseOrValue::Promise(
                 Promise::new(caller)
                     .transfer(deposit)
-                    .then(Self::fail("Can only be called by registry")),
+                    .then(Self::fail("can only be called by registry")),
             );
         }
 
@@ -209,7 +213,7 @@ impl Contract {
             return PromiseOrValue::Promise(
                 Promise::new(caller)
                     .transfer(deposit)
-                    .then(Self::fail("Not a human")),
+                    .then(Self::fail("not a human")),
             );
         }
 
@@ -218,6 +222,10 @@ impl Contract {
         PromiseOrValue::Value(U128(deposit))
     }
 
+    /// Allows user to unbond after the elections is over.
+    /// Can only be called using registry.is_human_call
+    /// Panics if the caller is not registry
+    /// Panics if called before the elections is over
     #[payable]
     #[allow(unused_variables)] // `payload` is not used but it needs to be payload so that is_human_call works
     pub fn unbond(
@@ -227,12 +235,12 @@ impl Contract {
         payload: serde_json::Value,
     ) -> Promise {
         if env::predecessor_account_id() != self.sbt_registry {
-            return Self::fail("Can only be called by registry");
+            return Self::fail("can only be called by registry");
         }
 
         let (ok, token_id) = Self::is_human_issuer(&iah_proof);
         if !ok {
-            return Self::fail("Not a human");
+            return Self::fail("not a human");
         }
         if env::block_timestamp_ms() <= self.finish_time {
             return Self::fail("cannot unbond: election is still in progress");
@@ -255,7 +263,7 @@ impl Contract {
         let mut unbond_amount = self
             .bonded_amounts
             .remove(&token_id)
-            .expect("Voter didn't bond");
+            .expect("voter didn't bond");
 
         // call to registry to mint `I Voted` SBT
         if voted_for_all {

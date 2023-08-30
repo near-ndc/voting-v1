@@ -30,10 +30,10 @@
 
 - [SPEC](https://github.com/near-ndc/gov/blob/main/framework-v1/elections-voting.md#bonding)
 - Each verified voter must bond 3N to cast their vote. Each Non-verified voter must bond 300N to cast their vote.
-- Bond can be deposited during `accept_policy` operation or `bond` function can be used via i-am-human-call.
+- Bond can be deposited using `bond` function that must be used via i-am-human-call.
 
   ```rust
-  near registry call is_human_call {"ctr": "elections.near", "function": "bond", "paylad": ""} --accountId YOU.near --deposit 3
+  near call registry.near is_human_call '{"ctr": "elections.near", "function": "bond", "paylad": "{}"}' --accountId YOU.near --deposit 3
   ```
 
 - One bond is enough to cast votes for all proposals.
@@ -43,7 +43,7 @@
 - `unbond`: To unbond deposit, unbond function needs to be called via IAH `registry.is_human_call`.
 
   ```rust
-  near registry call is_human_call {"ctr": "elections.near", "function": "unbond", "payload": "" --accountId YOU.near
+  near call registry.near is_human_call '{"ctr": "elections.near", "function": "unbond", "payload": "{}"}' --accountId YOU.near
   ```
 
   The `unbond` will also mint I VOTED SBT for [eligible voters](https://github.com/near-ndc/gov/blob/main/framework-v1/elections-voting.md#i-voted-sbt).
@@ -88,7 +88,10 @@ near call $CTR accepted_policy '{"user": "alice.testnet"}' --accountId me.testne
 near call $CTR vote '{"prop_id": 1, "vote": ["candidate1.testnet", "candidate3.testnet"]}' --gas 70000000000000 --deposit 0.0005 --accountId me.testnet
 
 # revoke vote (authority only)
-near call $CTR revoke_vote '{"prop_id": 1, "token_id": 1}'
+near call $CTR admin_revoke_vote '{"prop_id": 1, "token_id": 1}'
+
+# revoke vote (anyone can call this method)
+near call $CTR revoke_vote '{"prop_id": 1, "user": "alice.testnet"}'
 ```
 
 ## Deployed Contracts
