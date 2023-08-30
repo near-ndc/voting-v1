@@ -20,7 +20,6 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ## Unreleased
 
-## v1.0.1-rc1 (2023-08-30)
 
 ### Features
 
