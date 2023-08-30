@@ -30,7 +30,7 @@
 
 - [SPEC](https://github.com/near-ndc/gov/blob/main/framework-v1/elections-voting.md#bonding)
 - Each verified voter must bond 3N to cast their vote. Each Non-verified voter must bond 300N to cast their vote.
-- Bond can be deposited using `bond` function that must be used via i-am-human-call.
+- Bond can be deposited using `bond` function that must be used via is_human_call.
 
   ```rust
   near call registry.near is_human_call '{"ctr": "elections.near", "function": "bond", "paylad": "{}"}' --accountId YOU.near --deposit 3
