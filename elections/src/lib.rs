@@ -226,6 +226,7 @@ impl Contract {
     /// Can only be called using registry.is_human_call
     /// Panics if the caller is not registry
     /// Panics if called before the elections is over
+    /// Panics if user didn't bond
     #[payable]
     #[allow(unused_variables)] // `payload` is not used but it needs to be payload so that is_human_call works
     pub fn unbond(
