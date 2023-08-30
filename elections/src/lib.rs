@@ -225,7 +225,7 @@ impl Contract {
 
     /// Allows user to unbond after the elections is over.
     /// Can only be called using registry.is_human_call
-    /// Panics if the caller is not registry
+    /// Panics if the `predecessor_account_id` is not registry
     /// Panics if called before the elections is over
     /// Panics if user didn't bond
     #[payable]
