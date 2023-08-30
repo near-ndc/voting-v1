@@ -218,7 +218,8 @@ impl Contract {
         }
 
         emit_bond(deposit);
-        self.bonded_amounts.insert(&token_id, &deposit);
+        let amount = self.bonded_amounts.get(&token_id).unwrap_or(0);
+        self.bonded_amounts.insert(&token_id, &(deposit + amount));
         PromiseOrValue::Value(U128(deposit))
     }
 
@@ -1633,5 +1634,19 @@ mod unit_tests {
         testing_env!(ctx.clone());
         let res = ctr.winners_by_house(prop_id);
         assert_eq!(res, vec![candidate(3), candidate(2), candidate(4)]);
+    }
+
+    #[test]
+    fn double_bond() {
+        let (mut ctx, mut ctr) = setup(&alice());
+
+        ctx.predecessor_account_id = sbt_registry();
+        ctx.attached_deposit = BOND_AMOUNT;
+        testing_env!(ctx);
+
+        ctr.bond(alice(), mk_human_sbt(2), Value::String("".to_string()));
+        ctr.bond(alice(), mk_human_sbt(2), Value::String("".to_string()));
+
+        assert_eq!(ctr.bonded_amounts.get(&2).unwrap(), 2 * BOND_AMOUNT);
     }
 }
