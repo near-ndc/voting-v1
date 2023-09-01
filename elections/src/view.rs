@@ -34,9 +34,7 @@ impl Contract {
 
     /// Returns the policy if user has accepted it otherwise returns None
     pub fn accepted_policy(&self, user: AccountId) -> Option<String> {
-        self.accepted_policy
-            .get(&user)
-            .map(hex::encode)
+        self.accepted_policy.get(&user).map(hex::encode)
     }
 
     /// Returns all the users votes for all the proposals. If user has not voted yet a vector with None values will be returned.
@@ -80,19 +78,14 @@ impl Contract {
             return Vec::new();
         }
 
-        let mut indexed_results: Vec<(usize, u64)> = proposal
-            .result
-            .iter()
-            .enumerate()
-            .map(|(i, &v)| (i, v))
-            .collect();
-
+        let mut indexed_results: Vec<(usize, u64)> =
+            proposal.result.into_iter().enumerate().collect();
         indexed_results.sort_by_key(|&(_, value)| std::cmp::Reverse(value));
 
         let mut winners = Vec::new();
-        for (idx, votes) in indexed_results[0..=proposal.seats as usize].iter() {
-            if votes >= &proposal.min_candidate_support {
-                let candidate = proposal.candidates.get(*idx).unwrap();
+        for (idx, votes) in indexed_results.into_iter().take(proposal.seats as usize) {
+            if votes >= proposal.min_candidate_support {
+                let candidate = proposal.candidates.get(idx).unwrap();
                 winners.push(candidate.clone());
             }
         }
