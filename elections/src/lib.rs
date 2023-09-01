@@ -512,7 +512,11 @@ mod unit_tests {
         testing_env!(ctx.clone());
     }
 
-    fn mock_proposal_and_votes(ctx: &mut VMContext, ctr: &mut Contract) -> u32 {
+    fn mock_proposal_and_votes(
+        ctx: &mut VMContext,
+        ctr: &mut Contract,
+        min_candidate_support: u64,
+    ) -> u32 {
         let mut candidates = Vec::new();
         for idx in 0..100 {
             candidates.push(candidate(idx));
@@ -527,7 +531,7 @@ mod unit_tests {
             10,
             5,
             candidates,
-            6,
+            min_candidate_support,
         );
         ctx.block_timestamp = (START + 2) * MSECOND;
         testing_env!(ctx.clone());
@@ -1606,7 +1610,7 @@ mod unit_tests {
     #[test]
     fn winners_by_house() {
         let (mut ctx, mut ctr) = setup(&admin());
-        let prop_id = mock_proposal_and_votes(&mut ctx, &mut ctr);
+        let prop_id = mock_proposal_and_votes(&mut ctx, &mut ctr, 6);
 
         // elections not over yet
         let res = ctr.winners_by_house(prop_id);
@@ -1634,6 +1638,29 @@ mod unit_tests {
         testing_env!(ctx.clone());
         let res = ctr.winners_by_house(prop_id);
         assert_eq!(res, vec![candidate(3), candidate(2), candidate(4)]);
+    }
+
+    #[test]
+    fn winners_by_house_lenght() {
+        let (mut ctx, mut ctr) = setup(&admin());
+        let prop_id = mock_proposal_and_votes(&mut ctx, &mut ctr, 0);
+
+        // min_candidate_support = 0
+        // seats = 5
+        ctx.block_timestamp = (START + 111) * MSECOND; // past cooldown
+        testing_env!(ctx.clone());
+        let res = ctr.winners_by_house(prop_id);
+        assert_eq!(res.len(), 5);
+        assert_eq!(
+            res,
+            vec![
+                candidate(3),
+                candidate(2),
+                candidate(4),
+                candidate(1),
+                candidate(5)
+            ]
+        );
     }
 
     #[test]
