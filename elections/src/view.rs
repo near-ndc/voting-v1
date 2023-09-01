@@ -84,8 +84,8 @@ impl Contract {
 
         let mut winners = Vec::new();
         for (idx, votes) in indexed_results.into_iter().take(proposal.seats as usize) {
-            if votes >= &proposal.min_candidate_support {
-                let candidate = proposal.candidates.get(*idx).unwrap();
+            if votes >= proposal.min_candidate_support {
+                let candidate = proposal.candidates.get(idx).unwrap();
                 winners.push(candidate.clone());
             }
         }
