@@ -27,6 +27,7 @@ Change log entries are to be added to the Unreleased section. Example entry:
 ### Bug Fixes
 
 - fix the calculated amount of bonded tokens in `bond` method.
+- fix the amount of winners returned. Bug in `winners_by_house` method.
 
 ## v1.0.0-rc1 (2023-08-29)
 

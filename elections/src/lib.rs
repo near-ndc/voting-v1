@@ -32,7 +32,6 @@ pub struct Contract {
     pub accepted_policy: LookupMap<AccountId, [u8; 32]>,
     /// we assume that each account has at most one IAH token.
     pub bonded_amounts: LookupMap<TokenId, u128>,
-    /// total amount of near slashed due to violating the fair voting policy
     pub total_slashed: u128,
     /// Finish time is end + cooldown. This used in the `unbond` function: user can unbond only after this time.
     /// Unix timestamp (in milliseconds)
@@ -189,9 +188,6 @@ impl Contract {
         )
     }
 
-    /// Allows user to bond before voting. The method needs to be called through registry.is_human_call
-    /// Panics if the caller is not registry
-    /// Emits bond event
     #[payable]
     pub fn bond(
         &mut self,
@@ -204,7 +200,7 @@ impl Contract {
             return PromiseOrValue::Promise(
                 Promise::new(caller)
                     .transfer(deposit)
-                    .then(Self::fail("can only be called by registry")),
+                    .then(Self::fail("Can only be called by registry")),
             );
         }
 
@@ -213,7 +209,7 @@ impl Contract {
             return PromiseOrValue::Promise(
                 Promise::new(caller)
                     .transfer(deposit)
-                    .then(Self::fail("not a human")),
+                    .then(Self::fail("Not a human")),
             );
         }
 
@@ -223,11 +219,6 @@ impl Contract {
         PromiseOrValue::Value(U128(deposit))
     }
 
-    /// Allows user to unbond after the elections is over.
-    /// Can only be called using registry.is_human_call
-    /// Panics if the `predecessor_account_id` is not registry
-    /// Panics if called before the elections is over
-    /// Panics if user didn't bond
     #[payable]
     #[allow(unused_variables)] // `payload` is not used but it needs to be payload so that is_human_call works
     pub fn unbond(
@@ -237,12 +228,12 @@ impl Contract {
         payload: serde_json::Value,
     ) -> Promise {
         if env::predecessor_account_id() != self.sbt_registry {
-            return Self::fail("can only be called by registry");
+            return Self::fail("Can only be called by registry");
         }
 
         let (ok, token_id) = Self::is_human_issuer(&iah_proof);
         if !ok {
-            return Self::fail("not a human");
+            return Self::fail("Not a human");
         }
         if env::block_timestamp_ms() <= self.finish_time {
             return Self::fail("cannot unbond: election is still in progress");
@@ -265,7 +256,7 @@ impl Contract {
         let mut unbond_amount = self
             .bonded_amounts
             .remove(&token_id)
-            .expect("voter didn't bond");
+            .expect("Voter didn't bond");
 
         // call to registry to mint `I Voted` SBT
         if voted_for_all {
@@ -512,7 +503,11 @@ mod unit_tests {
         testing_env!(ctx.clone());
     }
 
-    fn mock_proposal_and_votes(ctx: &mut VMContext, ctr: &mut Contract) -> u32 {
+    fn mock_proposal_and_votes(
+        ctx: &mut VMContext,
+        ctr: &mut Contract,
+        min_candidate_support: u64,
+    ) -> u32 {
         let mut candidates = Vec::new();
         for idx in 0..100 {
             candidates.push(candidate(idx));
@@ -527,7 +522,7 @@ mod unit_tests {
             10,
             5,
             candidates,
-            6,
+            min_candidate_support,
         );
         ctx.block_timestamp = (START + 2) * MSECOND;
         testing_env!(ctx.clone());
@@ -1606,7 +1601,7 @@ mod unit_tests {
     #[test]
     fn winners_by_house() {
         let (mut ctx, mut ctr) = setup(&admin());
-        let prop_id = mock_proposal_and_votes(&mut ctx, &mut ctr);
+        let prop_id = mock_proposal_and_votes(&mut ctx, &mut ctr, 6);
 
         // elections not over yet
         let res = ctr.winners_by_house(prop_id);
@@ -1634,6 +1629,29 @@ mod unit_tests {
         testing_env!(ctx.clone());
         let res = ctr.winners_by_house(prop_id);
         assert_eq!(res, vec![candidate(3), candidate(2), candidate(4)]);
+    }
+
+    #[test]
+    fn winners_by_house_lenght() {
+        let (mut ctx, mut ctr) = setup(&admin());
+        let prop_id = mock_proposal_and_votes(&mut ctx, &mut ctr, 0);
+
+        // min_candidate_support = 0
+        // seats = 5
+        ctx.block_timestamp = (START + 111) * MSECOND; // past cooldown
+        testing_env!(ctx.clone());
+        let res = ctr.winners_by_house(prop_id);
+        assert_eq!(res.len(), 5);
+        assert_eq!(
+            res,
+            vec![
+                candidate(3),
+                candidate(2),
+                candidate(4),
+                candidate(1),
+                candidate(5)
+            ]
+        );
     }
 
     #[test]
