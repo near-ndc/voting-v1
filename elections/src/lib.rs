@@ -515,6 +515,7 @@ mod unit_tests {
     fn mock_proposal_and_votes(
         ctx: &mut VMContext,
         ctr: &mut Contract,
+        seats: u16,
         min_candidate_support: u64,
     ) -> u32 {
         let mut candidates = Vec::new();
@@ -529,7 +530,7 @@ mod unit_tests {
             100,
             String::from("ref_link.io"),
             10,
-            5,
+            seats,
             candidates,
             min_candidate_support,
         );
@@ -539,13 +540,16 @@ mod unit_tests {
         let vote1 = vec![candidate(1), candidate(2), candidate(3)];
         let vote2 = vec![candidate(2), candidate(3), candidate(4)];
         let vote3 = vec![candidate(3), candidate(4), candidate(5)];
+        let vote4 = vec![candidate(6), candidate(7), candidate(8)];
         let mut current_vote = &vote1;
 
-        for i in 1..=15u32 {
+        for i in 1..=17u32 {
             if i == 6 {
                 current_vote = &vote2;
             } else if i == 11 {
                 current_vote = &vote3;
+            } else if i == 16 {
+                current_vote = &vote4;
             }
 
             bond_amount_call(ctx, ctr, candidate(i), i as u64);
@@ -1610,7 +1614,7 @@ mod unit_tests {
     #[test]
     fn winners_by_house() {
         let (mut ctx, mut ctr) = setup(&admin());
-        let prop_id = mock_proposal_and_votes(&mut ctx, &mut ctr, 6);
+        let prop_id = mock_proposal_and_votes(&mut ctx, &mut ctr, 5, 6);
 
         // elections not over yet
         let res = ctr.winners_by_house(prop_id);
@@ -1622,13 +1626,16 @@ mod unit_tests {
         let res = ctr.winners_by_house(prop_id);
         assert_eq!(res, vec![]);
 
-        // candiate    | votes
+        // candidate    | votes
         // -------------------
-        // candiate(1) | 5
-        // candiate(2) | 10
-        // candiate(3) | 15
-        // candiate(4) | 10
-        // candiate(5) | 5
+        // candidate(1) | 5
+        // candidate(2) | 10
+        // candidate(3) | 15
+        // candidate(4) | 10
+        // candidate(5) | 5
+        // candidate(6) | 2
+        // candidate(7) | 2
+        // candidate(8) | 2
 
         // min_candidate_support = 6
         // seats = 5
@@ -1641,9 +1648,72 @@ mod unit_tests {
     }
 
     #[test]
+    fn winners_by_house_tie_1() {
+        let (mut ctx, mut ctr) = setup(&admin());
+        let prop_id = mock_proposal_and_votes(&mut ctx, &mut ctr, 4, 0);
+
+        // candidate    | votes
+        // -------------------
+        // candidate(1) | 5
+        // candidate(2) | 10
+        // candidate(3) | 15
+        // candidate(4) | 10
+        // candidate(5) | 5
+        // candidate(6) | 2
+        // candidate(7) | 2
+        // candidate(8) | 2
+
+        // min_candidate_support = 0
+        // seats = 4
+        // the method should return only the candiadtes that are definitive winners,
+        // if there is a tie at the end none of the candidates should be returned.
+        // thats why we have only 3 winners rather than 4
+        ctx.block_timestamp = (START + 111) * MSECOND; // past cooldown
+        testing_env!(ctx.clone());
+        let res = ctr.winners_by_house(prop_id);
+        assert_eq!(res, vec![candidate(3), candidate(2), candidate(4)]);
+    }
+
+    #[test]
+    fn winners_by_house_tie_2() {
+        let (mut ctx, mut ctr) = setup(&admin());
+        let prop_id = mock_proposal_and_votes(&mut ctx, &mut ctr, 7, 0);
+
+        // candidate    | votes
+        // -------------------
+        // candidate(1) | 5
+        // candidate(2) | 10
+        // candidate(3) | 15
+        // candidate(4) | 10
+        // candidate(5) | 5
+        // candidate(6) | 2
+        // candidate(7) | 2
+        // candidate(8) | 2
+
+        // min_candidate_support = 0
+        // seats = 7
+        // the method should return only the candiadtes that are definitive winners,
+        // if there is a tie at the end none of the candidates should be returned.
+        // thats why we have only 5 winners rather than 7
+        ctx.block_timestamp = (START + 111) * MSECOND; // past cooldown
+        testing_env!(ctx.clone());
+        let res = ctr.winners_by_house(prop_id);
+        assert_eq!(
+            res,
+            vec![
+                candidate(3),
+                candidate(2),
+                candidate(4),
+                candidate(1),
+                candidate(5)
+            ]
+        );
+    }
+
+    #[test]
     fn winners_by_house_lenght() {
         let (mut ctx, mut ctr) = setup(&admin());
-        let prop_id = mock_proposal_and_votes(&mut ctx, &mut ctr, 0);
+        let prop_id = mock_proposal_and_votes(&mut ctx, &mut ctr, 5, 0);
 
         // min_candidate_support = 0
         // seats = 5

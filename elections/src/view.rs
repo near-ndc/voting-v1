@@ -82,8 +82,32 @@ impl Contract {
             proposal.result.into_iter().enumerate().collect();
         indexed_results.sort_by_key(|&(_, value)| std::cmp::Reverse(value));
 
+        // Get the n biggest values
+        let top_n: Vec<(usize, u64)> = indexed_results
+            .iter()
+            .take(proposal.seats as usize + 1)
+            .cloned()
+            .collect();
+
+        let last_idx = proposal.seats;
+        let second_last_idx = proposal.seats - 1;
+        let filtered_top_n: Vec<(usize, u64)>;
+
+        let last_elem = top_n[last_idx as usize].1;
+        if last_elem == top_n[second_last_idx as usize].1 {
+            // Remove all elements equal to the last element
+            filtered_top_n = top_n
+                .into_iter()
+                .filter(|&(_, value)| value != last_elem)
+                .collect();
+        } else {
+            // Remove only the last element
+            filtered_top_n = top_n[..top_n.len() - 1].to_vec();
+        }
+
         let mut winners = Vec::new();
-        for (idx, votes) in indexed_results.into_iter().take(proposal.seats as usize) {
+
+        for (idx, votes) in filtered_top_n.into_iter() {
             if votes >= proposal.min_candidate_support {
                 let candidate = proposal.candidates.get(idx).unwrap();
                 winners.push(candidate.clone());
