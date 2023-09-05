@@ -1,7 +1,7 @@
-use near_sdk::{env, near_bindgen, AccountId};
+use near_sdk::{env, near_bindgen, AccountId, Balance};
 use uint::hex;
 
-use crate::proposal::*;
+use crate::{proposal::*, TokenId};
 use crate::{Contract, ContractExt};
 
 #[near_bindgen]
@@ -55,6 +55,11 @@ impl Contract {
             }
         }
         to_return
+    }
+
+    /// Returns bond amount by SBT TokenID.
+    pub fn bond_by_sbt(&self, sbt: TokenId) -> Balance {
+        self.bonded_amounts.get(&sbt).unwrap_or(0)
     }
 
     /// Returns true if user has voted on all proposals, otherwise false.
