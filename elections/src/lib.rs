@@ -1625,7 +1625,7 @@ mod unit_tests {
     fn winners_by_proposal() {
         let (mut ctx, mut ctr) = setup(&admin());
 
-        // more seats then candidates
+        // more seats than candidates
         let prop_id = mock_proposal_and_votes(&mut ctx, &mut ctr, 8, 6);
 
         // elections not over yet
