@@ -20,7 +20,13 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ## Unreleased
 
+## v1.0.0 (2023-09-06)
+
 ### Features
+
+New methods:
+
+- `bond_by_sbt` query to check if a holder of given SBT bonded.
 
 ### Breaking Changes
 
