@@ -558,7 +558,7 @@ mod unit_tests {
                 &vote1
             } else if i < 11 {
                 &vote2
-            } else if i == 1 {
+            } else if i == 11 {
                 &vote3
             } else {
                 &vote4
@@ -1642,7 +1642,7 @@ mod unit_tests {
         testing_env!(ctx.clone());
         assert_eq!(
             ctr.winners_by_proposal(prop_id),
-            vec![candidate(3), candidate(2), candidate(4), candidate(6),]
+            vec![candidate(3), candidate(6), candidate(2), candidate(4)]
         );
     }
 
@@ -1655,20 +1655,19 @@ mod unit_tests {
         let prop_id2 = mock_proposal_and_votes(&mut ctx, &mut ctr, 2, 0);
         // top 4, all seats have min support
         let prop_id3 = mock_proposal_and_votes(&mut ctx, &mut ctr, 4, 10);
-        // top 4, candidate 5&6 are in tie at the end, so both will be rejected and last seat is not take.
+        // top 4, candidate 5&6 are in tie at the end, so both will be rejected and last seat is not taken.
         let prop_id4 = mock_proposal_and_votes(&mut ctx, &mut ctr, 5, 0);
 
         ctx.block_timestamp = (START + 111) * MSECOND; // past cooldown
         testing_env!(ctx.clone());
         let all = vec![
             candidate(3),
+            candidate(6),
             candidate(2),
             candidate(4),
-            candidate(6),
             candidate(1),
             candidate(5),
         ];
-
         assert_eq!(ctr.winners_by_proposal(prop_id1), all);
         assert_eq!(ctr.winners_by_proposal(prop_id2), all[0..2]);
         assert_eq!(ctr.winners_by_proposal(prop_id3), all[0..4]);

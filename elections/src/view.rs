@@ -81,7 +81,7 @@ impl Contract {
     pub fn winners_by_proposal(&self, prop_id: u32) -> Vec<AccountId> {
         let proposal = self._proposal(prop_id);
 
-        if !proposal.is_past_cooldown() || proposal.voters_num < proposal.quorum {
+        if !(proposal.is_past_cooldown() && proposal.voters_num >= proposal.quorum) {
             return Vec::new();
         }
 
@@ -90,8 +90,15 @@ impl Contract {
         indexed_results.sort_by_key(|&(_, value)| std::cmp::Reverse(value));
 
         let mut winners = Vec::new();
-        for (idx, votes) in indexed_results.into_iter().take(proposal.seats as usize) {
-            if votes >= proposal.min_candidate_support {
+        let last_out_idx = proposal.seats as usize;
+        let last_out_votes = if indexed_results.len() > last_out_idx {
+            indexed_results[last_out_idx].1
+        } else {
+            indexed_results[0].1 + 1 // max +1
+        };
+        for (idx, votes) in indexed_results.into_iter().take(last_out_idx) {
+            // we need to filter out tie in the tail if it could exceed the seats
+            if proposal.min_candidate_support <= votes && last_out_votes < votes {
                 let candidate = proposal.candidates.get(idx).unwrap();
                 winners.push(candidate.clone());
             }
