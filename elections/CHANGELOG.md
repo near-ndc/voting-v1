@@ -24,6 +24,8 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ### Breaking Changes
 
+- `winners_by_house` renamed to ``winners_by_proposal`
+
 ### Bug Fixes
 
 - fix the calculated amount of bonded tokens in `bond` method.
