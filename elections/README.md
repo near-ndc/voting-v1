@@ -1,5 +1,13 @@
 # Elections Smart Contract
 
+## Deployments
+
+|   environment   |                           address |
+| :-------------: | --------------------------------: |
+|  mainnet prod   |          `elections.ndc-gwg.near` |
+| mainnet testing | `elections-v1-1.gwg-testing.near` |
+|     testnet     |        `elections-v1.gwg.testnet` |
+
 ## Requirements
 
 - Only I Am Human verified accounts can vote.
@@ -84,6 +92,11 @@ near call $CTR accept_fair_voting_policy '{"policy": "f1c09f8686fe7d0d798517111a
 # query the accepted policy by user. Returns the latest policy user accepted or `None` if user did not accept any policy
 near call $CTR accepted_policy '{"user": "alice.testnet"}' --accountId me.testnet
 
+# bonding - see a section above how to bond and unbond
+
+# query if a IAH holder bonded (by IAH SBT)
+near view $CTR has_voted_on_all_proposals '{"sbt": 123}'
+
 # vote
 near call $CTR vote '{"prop_id": 1, "vote": ["candidate1.testnet", "candidate3.testnet"]}' --gas 70000000000000 --deposit 0.0005 --accountId me.testnet
 
@@ -92,6 +105,15 @@ near call $CTR admin_revoke_vote '{"prop_id": 1, "token_id": 1}'
 
 # revoke vote (anyone can call this method)
 near call $CTR revoke_vote '{"prop_id": 1, "user": "alice.testnet"}'
+
+# check if a user voted for all proposals (note user votes with SBTs, so it may happen that
+# we should query by TokenID instead)
+near view $CTR has_voted_on_all_proposals '{"user": "alice.testnet"}'
+
+# query winners by a proposal
+# NOTE: the function doesn't return "ongoing" winners, it only returns a valid response once
+# the proposal finished (voting ended and is past the cooldown).
+near view $CTR winners_by_proposal '{"prop_id": 1}'
 ```
 
 ## Deployed Contracts
