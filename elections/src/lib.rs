@@ -369,6 +369,7 @@ impl Contract {
         env::panic_str(&error)
     }
 
+    #[private]
     #[handle_result]
     pub fn on_revoke_verified(
         &mut self,
@@ -392,8 +393,7 @@ impl Contract {
      * INTERNAL
      ****************/
 
-    #[private]
-    pub fn slash_bond(&mut self, token_id: TokenId) {
+    fn slash_bond(&mut self, token_id: TokenId) {
         let bond_amount = self.bonded_amounts.remove(&token_id);
         if let Some(value) = bond_amount {
             self.total_slashed += value;
@@ -512,15 +512,27 @@ mod unit_tests {
         testing_env!(ctx.clone());
     }
 
+    // candiate    | votes
+    // -------------------
+    // candiate(1) | 5
+    // candiate(2) | 10
+    // candiate(3) | 15
+    // candiate(4) | 10
+    // candiate(5) | 5
+    // candiate(6) | 11
     fn mock_proposal_and_votes(
         ctx: &mut VMContext,
         ctr: &mut Contract,
+        seats: u16,
         min_candidate_support: u64,
     ) -> u32 {
         let mut candidates = Vec::new();
         for idx in 0..100 {
             candidates.push(candidate(idx));
         }
+
+        ctx.block_timestamp = (START) * MSECOND;
+        testing_env!(ctx.clone());
 
         let prop_id = ctr.create_proposal(
             crate::ProposalType::HouseOfMerit,
@@ -529,37 +541,39 @@ mod unit_tests {
             100,
             String::from("ref_link.io"),
             10,
-            5,
+            seats,
             candidates,
             min_candidate_support,
         );
         ctx.block_timestamp = (START + 2) * MSECOND;
         testing_env!(ctx.clone());
 
-        let vote1 = vec![candidate(1), candidate(2), candidate(3)];
-        let vote2 = vec![candidate(2), candidate(3), candidate(4)];
-        let vote3 = vec![candidate(3), candidate(4), candidate(5)];
-        let mut current_vote = &vote1;
+        let vote1 = vec![candidate(6), candidate(1), candidate(2), candidate(3)];
+        let vote2 = vec![candidate(6), candidate(2), candidate(3), candidate(4)];
+        let vote3 = vec![candidate(6), candidate(3), candidate(4), candidate(5)];
+        let vote4 = vec![candidate(3), candidate(4), candidate(5)];
 
         for i in 1..=15u32 {
-            if i == 6 {
-                current_vote = &vote2;
-            } else if i == 11 {
-                current_vote = &vote3;
-            }
+            let current_vote = if i < 6 {
+                &vote1
+            } else if i < 11 {
+                &vote2
+            } else if i == 1 {
+                &vote3
+            } else {
+                &vote4
+            };
 
             bond_amount_call(ctx, ctr, candidate(i), i as u64);
 
-            match ctr.on_vote_verified(
+            let res = ctr.on_vote_verified(
                 mk_human_sbt(i as u64),
                 Some(AccountFlag::Verified),
                 prop_id,
                 candidate(i),
                 current_vote.to_vec(),
-            ) {
-                Ok(_) => (),
-                x => panic!("expected OK, got: {:?}", x),
-            };
+            );
+            assert!(res.is_ok(), "expected OK, got: {:?}", res);
         }
         prop_id
     }
@@ -1608,59 +1622,57 @@ mod unit_tests {
     }
 
     #[test]
-    fn winners_by_house() {
+    fn winners_by_proposal() {
         let (mut ctx, mut ctr) = setup(&admin());
-        let prop_id = mock_proposal_and_votes(&mut ctx, &mut ctr, 6);
+
+        // more seats then candidates
+        let prop_id = mock_proposal_and_votes(&mut ctx, &mut ctr, 8, 6);
 
         // elections not over yet
-        let res = ctr.winners_by_house(prop_id);
-        assert_eq!(res, vec![]);
+        assert_eq!(ctr.winners_by_proposal(prop_id), vec![]);
 
         // voting over but cooldown not yet
         ctx.block_timestamp = (START + 11) * MSECOND;
         testing_env!(ctx.clone());
-        let res = ctr.winners_by_house(prop_id);
-        assert_eq!(res, vec![]);
+        assert_eq!(ctr.winners_by_proposal(prop_id), vec![]);
 
-        // candiate    | votes
-        // -------------------
-        // candiate(1) | 5
-        // candiate(2) | 10
-        // candiate(3) | 15
-        // candiate(4) | 10
-        // candiate(5) | 5
-
-        // min_candidate_support = 6
-        // seats = 5
         // the method should return only the candiadtes that reach min_candidate support
-        // thats why we have only 3 winners rather than 5
+        // thats why we have only 4 winners rather than 5
         ctx.block_timestamp = (START + 111) * MSECOND; // past cooldown
         testing_env!(ctx.clone());
-        let res = ctr.winners_by_house(prop_id);
-        assert_eq!(res, vec![candidate(3), candidate(2), candidate(4)]);
+        assert_eq!(
+            ctr.winners_by_proposal(prop_id),
+            vec![candidate(3), candidate(2), candidate(4), candidate(6),]
+        );
     }
 
     #[test]
-    fn winners_by_house_lenght() {
+    fn winners_by_proposal_tie() {
         let (mut ctx, mut ctr) = setup(&admin());
-        let prop_id = mock_proposal_and_votes(&mut ctx, &mut ctr, 0);
+        // all candidates
+        let prop_id1 = mock_proposal_and_votes(&mut ctx, &mut ctr, 6, 0);
+        // top two, no tie
+        let prop_id2 = mock_proposal_and_votes(&mut ctx, &mut ctr, 2, 0);
+        // top 4, all seats have min support
+        let prop_id3 = mock_proposal_and_votes(&mut ctx, &mut ctr, 4, 10);
+        // top 4, candidate 5&6 are in tie at the end, so both will be rejected and last seat is not take.
+        let prop_id4 = mock_proposal_and_votes(&mut ctx, &mut ctr, 5, 0);
 
-        // min_candidate_support = 0
-        // seats = 5
         ctx.block_timestamp = (START + 111) * MSECOND; // past cooldown
         testing_env!(ctx.clone());
-        let res = ctr.winners_by_house(prop_id);
-        assert_eq!(res.len(), 5);
-        assert_eq!(
-            res,
-            vec![
-                candidate(3),
-                candidate(2),
-                candidate(4),
-                candidate(1),
-                candidate(5)
-            ]
-        );
+        let all = vec![
+            candidate(3),
+            candidate(2),
+            candidate(4),
+            candidate(6),
+            candidate(1),
+            candidate(5),
+        ];
+
+        assert_eq!(ctr.winners_by_proposal(prop_id1), all);
+        assert_eq!(ctr.winners_by_proposal(prop_id2), all[0..2]);
+        assert_eq!(ctr.winners_by_proposal(prop_id3), all[0..4]);
+        assert_eq!(ctr.winners_by_proposal(prop_id4), all[0..4]);
     }
 
     #[test]

@@ -76,7 +76,9 @@ impl Contract {
     /// A candidate is considered the winner only if he reached the `min_candidate_support`.
     /// If the number of returned winners is smaller than the number of seats it means some of the candidates
     /// did not reach the required minimum support.
-    pub fn winners_by_house(&self, prop_id: u32) -> Vec<AccountId> {
+    /// If there is a tie break at the tail and it exceeds the number of seats, the accounts
+    /// in tie at the tail are not considered winners.
+    pub fn winners_by_proposal(&self, prop_id: u32) -> Vec<AccountId> {
         let proposal = self._proposal(prop_id);
 
         if !proposal.is_past_cooldown() || proposal.voters_num < proposal.quorum {
