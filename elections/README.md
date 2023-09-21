@@ -41,7 +41,7 @@
 - Bond can be deposited using `bond` function that must be used via is_human_call.
 
   ```rust
-  near call REGISTRY is_human_call '{"ctr": "elections.near", "function": "bond", "paylad": "{}"}' --accountId YOU.near --deposit 3
+  near call REGISTRY is_human_call '{"ctr": "elections.near", "function": "bond", "payload": "{}"}' --accountId YOU.near --deposit 3
   ```
 
 - One bond is enough to cast votes for all proposals.
