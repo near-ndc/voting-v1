@@ -94,7 +94,7 @@ impl Contract {
      * TRANSACTIONS
      **********/
 
-    /// Creates a new empty proposal. `start` and `end` is Unix Time in milliseconds.
+    /// Creates a new proposal. `start` and `end` is Unix Time in milliseconds.
     /// Returns the new proposal ID.
     /// NOTE: storage is paid from the account state
     #[payable]
