@@ -226,7 +226,8 @@ impl Contract {
     pub fn veto_hook(&mut self, id: u32) {
         self.assert_hook_perm(&env::predecessor_account_id(), &HookPerm::Veto);
         let proposal = self.assert_proposal(id);
-        // TODO: check cooldown
+        // TODO: check cooldown. Cooldown finishes at
+        // min(proposal.start+self.voting_duration, time when proposal passed) + self.cooldown
 
         match proposal.status {
             ProposalStatus::InProgress | ProposalStatus::Failed => {
