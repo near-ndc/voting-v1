@@ -15,7 +15,7 @@ mod events;
 mod ext;
 pub mod proposal;
 mod storage;
-// mod view;
+mod view;
 
 pub use crate::constants::*;
 pub use crate::errors::*;
