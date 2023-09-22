@@ -6,21 +6,22 @@ use near_sdk::collections::{LazyOption, LookupMap};
 use near_sdk::json_types::U128;
 use near_sdk::{
     env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseOrValue,
+    PromiseResult,
 };
 
 mod constants;
 mod errors;
 mod events;
+mod ext;
 pub mod proposal;
 mod storage;
-// mod ext;
 // mod view;
 
 pub use crate::constants::*;
 pub use crate::errors::*;
+pub use crate::ext::*;
 pub use crate::proposal::*;
 use crate::storage::*;
-// pub use crate::ext::*;
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -140,6 +141,7 @@ impl Contract {
         self.prop_counter
     }
 
+    // TODO: add immediate execution
     pub fn vote(&mut self, id: u32, vote: Vote) {
         let user = env::predecessor_account_id();
         let (members, _) = self.members.get().unwrap();
@@ -157,12 +159,16 @@ impl Contract {
 
     pub fn execute(&mut self, id: u32) -> PromiseOrValue<()> {
         let mut prop = self.assert_proposal(id);
-        require!(matches!(prop.status, ProposalStatus::Approved));
+        require!(matches!(
+            prop.status,
+            // if the previous proposal execution failed, we should be able to re-execute it
+            ProposalStatus::Approved | ProposalStatus::Failed
+        ));
         if self.cooldown > 0 {
             require!(
                 prop.submission_time + self.voting_duration + self.cooldown
                     > env::block_timestamp_ms(),
-                "voting time is over"
+                "can be executed only after cooldown"
             );
         }
 
@@ -192,8 +198,16 @@ impl Contract {
 
         // TODO:
         // + return bond
-        // + callback to check if Tx succeeded
-        //    -> in callback set status to failed if tx failed.
+        match result {
+            PromiseOrValue::Promise(promise) => promise
+                .then(
+                    ext_self::ext(env::current_account_id())
+                        .with_static_gas(EXECUTE_CALLBACK_GAS)
+                        .on_execute(id),
+                )
+                .into(),
+            _ => result,
+        }
     }
 
     /// Veto proposal hook
@@ -253,6 +267,24 @@ impl Contract {
 
     fn assert_proposal(&self, id: u32) -> Proposal {
         self.proposals.get(&id).expect("proposal does not exist")
+    }
+
+    #[private]
+    pub fn on_execute(&mut self, prop_id: u32) {
+        assert_eq!(
+            env::promise_results_count(),
+            1,
+            "ERR_UNEXPECTED_CALLBACK_PROMISES"
+        );
+        match env::promise_result(0) {
+            PromiseResult::NotReady => unreachable!(),
+            PromiseResult::Successful(_) => (),
+            PromiseResult::Failed => {
+                let mut prop = self.assert_proposal(prop_id);
+                prop.status = ProposalStatus::Failed;
+                self.proposals.insert(&prop_id, &prop);
+            }
+        };
     }
 }
 
