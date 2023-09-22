@@ -109,7 +109,7 @@ impl Contract {
             "proposal kind not allowed"
         );
 
-        let now = env::block_timestamp_ms().into();
+        let now = env::block_timestamp_ms();
         match kind {
             PropKind::FundingRequest(b) => {
                 require!(

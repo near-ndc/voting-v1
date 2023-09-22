@@ -108,7 +108,7 @@ pub enum ProposalStatus {
 
 /// Votes recorded in the proposal.
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[cfg_attr(test, derive(Debug, PartialEq, Clone))]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Clone, Debug, PartialEq))]
 #[serde(crate = "near_sdk::serde")]
 pub enum Vote {
     Approve = 0x0,
