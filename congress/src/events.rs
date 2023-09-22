@@ -1,7 +1,7 @@
 use near_sdk::{serde::Serialize, AccountId};
 use serde_json::json;
 
-use crate::proposal::ProposalKind;
+use crate::proposal::PropKind;
 
 use common::{EventPayload, NearEvent};
 
@@ -14,7 +14,7 @@ fn emit_event<T: Serialize>(event: EventPayload<T>) {
     .emit();
 }
 
-pub(crate) fn emit_prop_created(prop_id: u32, kind: &ProposalKind) {
+pub(crate) fn emit_prop_created(prop_id: u32, kind: &PropKind) {
     emit_event(EventPayload {
         event: "new-poposal",
         data: json!({ "prop_id": prop_id, "kind": kind.to_name() }),

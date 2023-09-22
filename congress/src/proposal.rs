@@ -15,7 +15,7 @@ pub struct Proposal {
     /// Description of this proposal.
     pub description: String,
     /// Kind of proposal with relevant information.
-    pub kind: ProposalKind,
+    pub kind: PropKind,
     /// Current status of the proposal.
     pub status: ProposalStatus,
     pub approve: u8,
@@ -51,7 +51,7 @@ impl Proposal {
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Clone, Debug))]
 #[serde(crate = "near_sdk::serde")]
-pub enum ProposalKind {
+pub enum PropKind {
     /// Calls `receiver_id` with list of method names in a single promise.
     /// Allows this contract to execute any arbitrary set of actions in other contracts.
     FunctionCall {
@@ -59,33 +59,36 @@ pub enum ProposalKind {
         actions: Vec<ActionCall>,
     },
     /// a default, text based proposal.
+    /// Note: SetupBudget is modeled using Text.
     // NOTE: in Sputnik this is Vote
     Text,
+    /// Single funding request.
+    FundingRequest(Balance),
+    /// Funding request that will renew every month until the end of the terms. The balance
+    /// parameter is the size of the single month spending for this funding request.
+    RecurrentFundingRequest(Balance),
+    // TODO: support self upgrade.
     // /// Upgrade this contract with given hash from blob store.
     // UpgradeSelf { hash: Base58CryptoHash },
-
-    // SetupBudget is modeled using Budget
-    Budget(Balance),
-    RecurrentBudget(Balance),
 }
 
-impl ProposalKind {
+impl PropKind {
     pub fn required_perm(&self) -> PropPerm {
         match self {
-            ProposalKind::FunctionCall { .. } => PropPerm::FunctionCall,
-            ProposalKind::Text { .. } => PropPerm::Text,
-            ProposalKind::Budget { .. } => PropPerm::Budget,
-            ProposalKind::RecurrentBudget { .. } => PropPerm::RecurrentBudget,
+            PropKind::FunctionCall { .. } => PropPerm::FunctionCall,
+            PropKind::Text { .. } => PropPerm::Text,
+            PropKind::FundingRequest { .. } => PropPerm::FundingRequest,
+            PropKind::RecurrentFundingRequest { .. } => PropPerm::RecurrentFundingRequest,
         }
     }
 
     /// name of the kind
     pub fn to_name(&self) -> String {
         match self {
-            ProposalKind::FunctionCall { .. } => "function-call".to_string(),
-            ProposalKind::Text { .. } => "text".to_string(),
-            ProposalKind::Budget { .. } => "budget".to_string(),
-            ProposalKind::RecurrentBudget { .. } => "recurrent-budget".to_string(),
+            PropKind::FunctionCall { .. } => "function-call".to_string(),
+            PropKind::Text { .. } => "text".to_string(),
+            PropKind::FundingRequest { .. } => "funding-request".to_string(),
+            PropKind::RecurrentFundingRequest { .. } => "recurrent-funding-request".to_string(),
         }
     }
 }
@@ -124,15 +127,15 @@ pub struct ActionCall {
     pub gas: U64,
 }
 
-/// Permissions for creating proposals
+/// Permissions for creating proposals. See PropposalKind for more information.
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Clone, Debug))]
 #[serde(crate = "near_sdk::serde")]
 pub enum PropPerm {
     FunctionCall,
     Text,
-    Budget,
-    RecurrentBudget,
+    FundingRequest,
+    RecurrentFundingRequest,
 }
 
 /// Permissions for calling hooks

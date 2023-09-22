@@ -98,7 +98,7 @@ impl Contract {
     /// Returns the new proposal ID.
     /// NOTE: storage is paid from the account state
     #[payable]
-    pub fn create_proposal(&mut self, kind: ProposalKind, description: String) -> u32 {
+    pub fn create_proposal(&mut self, kind: PropKind, description: String) -> u32 {
         let user = env::predecessor_account_id();
         let (members, perms) = self.members.get().unwrap();
         // TODO: add storage usage checks and return excess of deposit
@@ -110,13 +110,13 @@ impl Contract {
 
         let now = env::block_timestamp_ms().into();
         match kind {
-            ProposalKind::Budget(b) => {
+            PropKind::FundingRequest(b) => {
                 require!(
                     self.budget_spent + b < self.budget_cap,
                     "budget cap overflow"
                 )
             }
-            ProposalKind::RecurrentBudget(b) => {
+            PropKind::RecurrentFundingRequest(b) => {
                 require!(
                     self.budget_spent + b * (self.remaining_months(now) as u128) < self.budget_cap,
                     "budget cap overflow"
@@ -179,7 +179,7 @@ impl Contract {
         let mut result = PromiseOrValue::Value(());
         let mut budget = 0;
         match &prop.kind {
-            ProposalKind::FunctionCall {
+            PropKind::FunctionCall {
                 receiver_id,
                 actions,
             } => {
@@ -194,9 +194,11 @@ impl Contract {
                 }
                 result = promise.into();
             }
-            ProposalKind::Budget(b) => budget = *b,
-            ProposalKind::RecurrentBudget(b) => budget = *b * self.remaining_months(now) as u128,
-            ProposalKind::Text => (),
+            PropKind::FundingRequest(b) => budget = *b,
+            PropKind::RecurrentFundingRequest(b) => {
+                budget = *b * self.remaining_months(now) as u128
+            }
+            PropKind::Text => (),
         };
         if budget != 0 {
             self.budget_spent += budget;
