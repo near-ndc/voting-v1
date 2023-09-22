@@ -78,6 +78,16 @@ impl ProposalKind {
             ProposalKind::RecurrentBudget { .. } => PropPerm::RecurrentBudget,
         }
     }
+
+    /// name of the kind
+    pub fn to_name(&self) -> String {
+        match self {
+            ProposalKind::FunctionCall { .. } => "function-call".to_string(),
+            ProposalKind::Text { .. } => "text".to_string(),
+            ProposalKind::Budget { .. } => "budget".to_string(),
+            ProposalKind::RecurrentBudget { .. } => "recurrent-budget".to_string(),
+        }
+    }
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]

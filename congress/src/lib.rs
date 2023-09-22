@@ -189,9 +189,11 @@ impl Contract {
             ProposalKind::Text => (),
         };
         self.proposals.insert(&id, &prop);
-        // TODO: return bond
 
-        result
+        // TODO:
+        // + return bond
+        // + callback to check if Tx succeeded
+        //    -> in callback set status to failed if tx failed.
     }
 
     /// Veto proposal hook
