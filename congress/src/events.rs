@@ -1,5 +1,7 @@
-use near_sdk::{serde::Serialize, Balance};
+use near_sdk::serde::Serialize;
 use serde_json::json;
+
+use crate::proposal::ProposalKind;
 
 use common::{EventPayload, NearEvent};
 
@@ -10,6 +12,13 @@ fn emit_event<T: Serialize>(event: EventPayload<T>) {
         event,
     }
     .emit();
+}
+
+pub(crate) fn emit_prop_created(prop_id: u32, kind: &ProposalKind) {
+    emit_event(EventPayload {
+        event: "vote",
+        data: json!({ "prop_id": prop_id, "kind": kind }),
+    });
 }
 
 pub(crate) fn emit_vote(prop_id: u32) {

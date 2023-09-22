@@ -4,7 +4,7 @@ use events::*;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap};
 use near_sdk::json_types::U128;
-use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise, PromiseOrValue};
+use near_sdk::{env, near_bindgen, require, AccountId, Balance, PanicOnDefault};
 
 mod constants;
 mod errors;
@@ -41,7 +41,11 @@ pub struct Contract {
     pub start_time: u64,
     pub end_time: u64,
     pub cooldown: u64,
-    pub prop_bond: u128,
+
+    pub prop_bond: Balance,
+    pub balance_spent: Balance,
+    pub balance_cap: Balance,
+    pub big_budget_balance: Balance,
 }
 
 #[near_bindgen]
@@ -56,6 +60,8 @@ impl Contract {
         member_perms: Vec<PropPerm>,
         hook_auth: HashMap<AccountId, Vec<HookPerm>>,
         prop_bond: U128,
+        balance_cap: U128,
+        big_budget_balance: U128,
     ) -> Self {
         require!(members.len() < 100);
         let threshold = (members.len() / 2) as u8 + 1;
@@ -71,6 +77,9 @@ impl Contract {
             end_time,
             cooldown,
             prop_bond: prop_bond.0,
+            balance_spent: 0,
+            balance_cap: balance_cap.0,
+            big_budget_balance: big_budget_balance.0,
         }
     }
 
@@ -86,20 +95,42 @@ impl Contract {
     /// Returns the new proposal ID.
     /// NOTE: storage is paid from the account state
     #[payable]
-    pub fn create_proposal(&mut self, kind: ProposalKind) -> u32 {
-        let user = &env::predecessor_account_id();
+    pub fn create_proposal(&mut self, kind: ProposalKind, description: String) -> u32 {
+        let user = env::predecessor_account_id();
         let (members, perms) = self.members.get().unwrap();
         require!(
             env::attached_deposit() == self.prop_bond,
             "must attach correct amount of bond"
         );
-        require!(members.binary_search(user).is_ok(), "not a member");
+        require!(members.binary_search(&user).is_ok(), "not a member");
         require!(
             perms.contains(&kind.required_perm()),
             "proposal kind not allowed"
         );
 
-        // TODO: create proposal
+        match kind {
+            ProposalKind::Budget(b) => require!(self.balance_spent + b < self.balance_cap),
+            ProposalKind::RecurrentBudget(_) => {
+                // TODO: need to multiply by remaining months and check for overlap
+            }
+            _ => (),
+        };
+
+        self.prop_counter += 1;
+        emit_prop_created(self.prop_counter, &kind);
+        self.proposals.insert(
+            &self.prop_counter,
+            &Proposal {
+                proposer: user,
+                description,
+                kind,
+                status: ProposalStatus::InProgress,
+                approve: 0,
+                reject: 0,
+                votes: HashMap::new(),
+                submission_time: env::block_timestamp_ms().into(),
+            },
+        );
 
         self.prop_counter
     }

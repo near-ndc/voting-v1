@@ -49,7 +49,7 @@ pub enum ProposalKind {
 }
 
 impl ProposalKind {
-    pub fn required_perm(self) -> PropPerm {
+    pub fn required_perm(&self) -> PropPerm {
         match self {
             ProposalKind::FunctionCall { .. } => PropPerm::FunctionCall,
             ProposalKind::Text { .. } => PropPerm::Text,
@@ -98,7 +98,6 @@ pub struct ActionCall {
 #[cfg_attr(not(target_arch = "wasm32"), derive(Clone, Debug))]
 #[serde(crate = "near_sdk::serde")]
 pub enum PropPerm {
-    // create proposal roles
     FunctionCall,
     Text,
     Budget,
