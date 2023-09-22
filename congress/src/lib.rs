@@ -152,6 +152,29 @@ impl Contract {
         emit_veto(id);
     }
 
+    pub fn dissolve_hook(&mut self) {
+        self.assert_hook_perm(&env::predecessor_account_id(), &HookPerm::Dissolve);
+        self.dissolved = true;
+        emit_dissolve();
+    }
+
+    pub fn dismiss_hook(&mut self, member: AccountId) {
+        self.assert_hook_perm(&env::predecessor_account_id(), &HookPerm::Dismiss);
+        let (mut members, perms) = self.members.get().unwrap();
+        let idx = members.binary_search(&member);
+        require!(idx.is_ok(), "not found");
+        members[idx.unwrap()] = members.pop().unwrap();
+
+        emit_dismiss(&member);
+        // If DAO doesn't have required threshold, then we dissolve.
+        if members.len() < self.threshold as usize {
+            self.dissolved = true;
+            emit_dissolve();
+        }
+
+        self.members.set(&(members, perms));
+    }
+
     /*****************
      * INTERNAL
      ****************/

@@ -1,4 +1,4 @@
-use near_sdk::serde::Serialize;
+use near_sdk::{serde::Serialize, AccountId};
 use serde_json::json;
 
 use crate::proposal::ProposalKind;
@@ -32,5 +32,19 @@ pub(crate) fn emit_veto(prop_id: u32) {
     emit_event(EventPayload {
         event: "veto",
         data: json!({ "prop_id": prop_id }),
+    });
+}
+
+pub(crate) fn emit_dissolve() {
+    emit_event(EventPayload {
+        event: "dissolve",
+        data: "",
+    });
+}
+
+pub(crate) fn emit_dismiss(member: &AccountId) {
+    emit_event(EventPayload {
+        event: "dismiss",
+        data: json!({ "member": member }),
     });
 }
