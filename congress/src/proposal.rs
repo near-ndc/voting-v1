@@ -37,14 +37,26 @@ pub enum ProposalKind {
         receiver_id: AccountId,
         actions: Vec<ActionCall>,
     },
-    // a default, text based proposal.
-    Vote,
+    /// a default, text based proposal.
+    // NOTE: in Sputnik this is Vote
+    Text,
     // /// Upgrade this contract with given hash from blob store.
     // UpgradeSelf { hash: Base58CryptoHash },
 
     // SetupBudget is modeled using Budget
     Budget(Balance),
-    RecurrentBudgetItem(Balance),
+    RecurrentBudget(Balance),
+}
+
+impl ProposalKind {
+    pub fn required_perm(self) -> PropPerm {
+        match self {
+            ProposalKind::FunctionCall { .. } => PropPerm::FunctionCall,
+            ProposalKind::Text { .. } => PropPerm::Text,
+            ProposalKind::Budget { .. } => PropPerm::Budget,
+            ProposalKind::RecurrentBudget { .. } => PropPerm::RecurrentBudget,
+        }
+    }
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
@@ -82,22 +94,22 @@ pub struct ActionCall {
 }
 
 /// Permissions for creating proposals
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Clone, Debug))]
 #[serde(crate = "near_sdk::serde")]
-pub enum PropPerms {
+pub enum PropPerm {
     // create proposal roles
-    PropFunctionCall,
-    PropVote,
-    PropBudget,
-    PropRecurrentBudgetItem,
+    FunctionCall,
+    Text,
+    Budget,
+    RecurrentBudget,
 }
 
 /// Permissions for calling hooks
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Clone, Debug))]
 #[serde(crate = "near_sdk::serde")]
-pub enum HookPerms {
+pub enum HookPerm {
     Veto,
     Dismiss,
     Dissolve,

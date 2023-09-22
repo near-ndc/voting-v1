@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-//use events::{emit_bond, emit_revoke_vote, emit_vote};
+use events::*;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap};
 use near_sdk::json_types::U128;
@@ -30,17 +30,18 @@ pub struct Contract {
     /// Map of accounts authorized create proposals and vote for proposals
     // We can use single object rather than LookupMap because the maximum amount of members
     // is 17 (for HoM: 15 + 2)
-    pub members: LazyOption<(Vec<AccountId>, Vec<PropPerms>)>,
+    pub members: LazyOption<(Vec<AccountId>, Vec<PropPerm>)>,
     // minimum amount of members to approve the proposal
     pub threshold: u8,
 
     /// Map of accounts authorized to call hooks.
-    pub hook_auth: LazyOption<HashMap<AccountId, Vec<HookPerms>>>,
+    pub hook_auth: LazyOption<HashMap<AccountId, Vec<HookPerm>>>,
 
     // all times below are in miliseconds
     pub start_time: u64,
     pub end_time: u64,
     pub cooldown: u64,
+    pub prop_bond: u128,
 }
 
 #[near_bindgen]
@@ -52,8 +53,9 @@ impl Contract {
         end_time: u64,
         cooldown: u64,
         #[allow(unused_mut)] mut members: Vec<AccountId>,
-        member_perms: Vec<PropPerms>,
-        hook_auth: HashMap<AccountId, Vec<HookPerms>>,
+        member_perms: Vec<PropPerm>,
+        hook_auth: HashMap<AccountId, Vec<HookPerm>>,
+        prop_bond: U128,
     ) -> Self {
         require!(members.len() < 100);
         let threshold = (members.len() / 2) as u8 + 1;
@@ -68,6 +70,7 @@ impl Contract {
             start_time,
             end_time,
             cooldown,
+            prop_bond: prop_bond.0,
         }
     }
 
@@ -83,17 +86,57 @@ impl Contract {
     /// Returns the new proposal ID.
     /// NOTE: storage is paid from the account state
     #[payable]
-    pub fn create_proposal(&mut self, typ: ProposalKind) -> u32 {
+    pub fn create_proposal(&mut self, kind: ProposalKind) -> u32 {
         let user = &env::predecessor_account_id();
         let (members, perms) = self.members.get().unwrap();
+        require!(
+            env::attached_deposit() == self.prop_bond,
+            "must attach correct amount of bond"
+        );
         require!(members.binary_search(user).is_ok(), "not a member");
+        require!(
+            perms.contains(&kind.required_perm()),
+            "proposal kind not allowed"
+        );
+
+        // TODO: create proposal
 
         self.prop_counter
+    }
+
+    /// Veto proposal hook
+    /// Removes proposal
+    /// * `id`: proposal id
+    pub fn veto_hook(&mut self, id: u32) {
+        self.assert_hook_perm(&env::predecessor_account_id(), &HookPerm::Veto);
+        let proposal = self.assert_proposal(id);
+        match proposal.status {
+            ProposalStatus::InProgress | ProposalStatus::Failed => {
+                self.proposals.remove(&id);
+            }
+            _ => {
+                panic!("Proposal finalized");
+            }
+        }
+        emit_veto(id);
     }
 
     /*****************
      * INTERNAL
      ****************/
+
+    fn assert_hook_perm(&self, user: &AccountId, perm: &HookPerm) {
+        let auth_hook = self.hook_auth.get().unwrap();
+        let perms = auth_hook.get(user);
+        require!(
+            perms.is_some() && perms.unwrap().contains(perm),
+            "not authorized"
+        );
+    }
+
+    fn assert_proposal(&self, id: u32) -> Proposal {
+        self.proposals.get(&id).expect("proposal does not exist")
+    }
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]

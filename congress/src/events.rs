@@ -18,3 +18,10 @@ pub(crate) fn emit_vote(prop_id: u32) {
         data: json!({ "prop_id": prop_id }),
     });
 }
+
+pub(crate) fn emit_veto(prop_id: u32) {
+    emit_event(EventPayload {
+        event: "veto",
+        data: json!({ "prop_id": prop_id }),
+    });
+}
