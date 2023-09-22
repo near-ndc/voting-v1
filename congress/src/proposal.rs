@@ -108,10 +108,10 @@ pub enum Vote {
 #[cfg_attr(not(target_arch = "wasm32"), derive(Clone, Debug))]
 #[serde(crate = "near_sdk::serde")]
 pub struct ActionCall {
-    method_name: String,
-    args: Base64VecU8,
-    deposit: U128,
-    gas: U64,
+    pub method_name: String,
+    pub args: Base64VecU8,
+    pub deposit: U128,
+    pub gas: U64,
 }
 
 /// Permissions for creating proposals

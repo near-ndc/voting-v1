@@ -4,7 +4,9 @@ use events::*;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap};
 use near_sdk::json_types::U128;
-use near_sdk::{env, near_bindgen, require, AccountId, Balance, PanicOnDefault};
+use near_sdk::{
+    env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseOrValue,
+};
 
 mod constants;
 mod errors;
@@ -151,6 +153,45 @@ impl Contract {
         prop.add_vote(user, vote, self.threshold);
         self.proposals.insert(&id, &prop);
         emit_vote(id);
+    }
+
+    pub fn execute(&mut self, id: u32) -> PromiseOrValue<()> {
+        let mut prop = self.assert_proposal(id);
+        require!(matches!(prop.status, ProposalStatus::Approved));
+        if self.cooldown > 0 {
+            require!(
+                prop.submission_time + self.voting_duration + self.cooldown
+                    > env::block_timestamp_ms(),
+                "voting time is over"
+            );
+        }
+
+        prop.status = ProposalStatus::Executed;
+        let mut result = PromiseOrValue::Value(());
+        match &prop.kind {
+            ProposalKind::FunctionCall {
+                receiver_id,
+                actions,
+            } => {
+                let mut promise = Promise::new(receiver_id.clone());
+                for action in actions {
+                    promise = promise.function_call(
+                        action.method_name.clone(),
+                        action.args.clone().into(),
+                        action.deposit.0,
+                        Gas(action.gas.0),
+                    );
+                }
+                result = promise.into();
+            }
+            ProposalKind::Budget(b) => self.balance_spent += b,
+            ProposalKind::RecurrentBudget(b) => self.balance_spent += b, // TODO: calculate amount of months
+            ProposalKind::Text => (),
+        };
+        self.proposals.insert(&id, &prop);
+        // TODO: return bond
+
+        result
     }
 
     /// Veto proposal hook
