@@ -99,6 +99,7 @@ impl Contract {
     /// NOTE: storage is paid from the account state
     #[payable]
     pub fn create_proposal(&mut self, kind: PropKind, description: String) -> u32 {
+        self.assert_not_dissolved();
         let user = env::predecessor_account_id();
         let (members, perms) = self.members.get().unwrap();
         // TODO: add storage usage checks and return excess of deposit
@@ -146,6 +147,7 @@ impl Contract {
 
     // TODO: add immediate execution
     pub fn vote(&mut self, id: u32, vote: Vote) {
+        self.assert_not_dissolved();
         let user = env::predecessor_account_id();
         let (members, _) = self.members.get().unwrap();
         require!(members.binary_search(&user).is_ok(), "not a member");
@@ -161,6 +163,7 @@ impl Contract {
     }
 
     pub fn execute(&mut self, id: u32) -> PromiseOrValue<()> {
+        self.assert_not_dissolved();
         let mut prop = self.assert_proposal(id);
         require!(matches!(
             prop.status,
@@ -224,6 +227,7 @@ impl Contract {
     /// Removes proposal
     /// * `id`: proposal id
     pub fn veto_hook(&mut self, id: u32) {
+        self.assert_not_dissolved();
         self.assert_hook_perm(&env::predecessor_account_id(), &HookPerm::Veto);
         let proposal = self.assert_proposal(id);
         // TODO: check cooldown. Cooldown finishes at
@@ -247,6 +251,7 @@ impl Contract {
     }
 
     pub fn dismiss_hook(&mut self, member: AccountId) {
+        self.assert_not_dissolved();
         self.assert_hook_perm(&env::predecessor_account_id(), &HookPerm::Dismiss);
         let (mut members, perms) = self.members.get().unwrap();
         let idx = members.binary_search(&member);
@@ -278,6 +283,10 @@ impl Contract {
 
     fn assert_proposal(&self, id: u32) -> Proposal {
         self.proposals.get(&id).expect("proposal does not exist")
+    }
+
+    fn assert_not_dissolved(&self) {
+        require!(!self.dissolved, "dao is dissolved");
     }
 
     fn remaining_months(&self, now: u64) -> u64 {
