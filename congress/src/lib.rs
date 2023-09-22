@@ -41,6 +41,7 @@ pub struct Contract {
     pub start_time: u64,
     pub end_time: u64,
     pub cooldown: u64,
+    pub voting_duration: u64,
 
     pub prop_bond: Balance,
     pub balance_spent: Balance,
@@ -56,6 +57,7 @@ impl Contract {
         start_time: u64,
         end_time: u64,
         cooldown: u64,
+        voting_duration: u64,
         #[allow(unused_mut)] mut members: Vec<AccountId>,
         member_perms: Vec<PropPerm>,
         hook_auth: HashMap<AccountId, Vec<HookPerm>>,
@@ -76,6 +78,7 @@ impl Contract {
             start_time,
             end_time,
             cooldown,
+            voting_duration,
             prop_bond: prop_bond.0,
             balance_spent: 0,
             balance_cap: balance_cap.0,
@@ -135,12 +138,29 @@ impl Contract {
         self.prop_counter
     }
 
+    pub fn vote(&mut self, id: u32, vote: Vote) {
+        let user = env::predecessor_account_id();
+        let (members, _) = self.members.get().unwrap();
+        require!(members.binary_search(&user).is_ok(), "not a member");
+        let mut prop = self.assert_proposal(id);
+        require!(matches!(prop.status, ProposalStatus::InProgress));
+        require!(
+            prop.submission_time + self.voting_duration < env::block_timestamp_ms(),
+            "voting time is over"
+        );
+        prop.add_vote(user, vote, self.threshold);
+        self.proposals.insert(&id, &prop);
+        emit_vote(id);
+    }
+
     /// Veto proposal hook
     /// Removes proposal
     /// * `id`: proposal id
     pub fn veto_hook(&mut self, id: u32) {
         self.assert_hook_perm(&env::predecessor_account_id(), &HookPerm::Veto);
         let proposal = self.assert_proposal(id);
+        // TODO: check cooldown
+
         match proposal.status {
             ProposalStatus::InProgress | ProposalStatus::Failed => {
                 self.proposals.remove(&id);

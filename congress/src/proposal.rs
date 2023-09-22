@@ -18,12 +18,33 @@ pub struct Proposal {
     pub kind: ProposalKind,
     /// Current status of the proposal.
     pub status: ProposalStatus,
-    pub approve: u32,
-    pub reject: u32,
+    pub approve: u8,
+    pub reject: u8,
     /// Map of who voted and how.
     pub votes: HashMap<AccountId, Vote>,
     /// Submission time (for voting period).
-    pub submission_time: U64,
+    pub submission_time: u64,
+}
+
+impl Proposal {
+    pub fn add_vote(&mut self, user: AccountId, vote: Vote, threshold: u8) {
+        require!(!self.votes.contains_key(&user), "user already voted");
+        match vote {
+            Vote::Approve => {
+                self.approve += 1;
+                if self.approve >= threshold {
+                    self.status = ProposalStatus::Approved;
+                }
+            }
+            Vote::Reject => {
+                self.reject += 1;
+                if self.reject >= threshold {
+                    self.status = ProposalStatus::Rejected;
+                }
+            }
+        }
+        self.votes.insert(user, vote);
+    }
 }
 
 /// Kinds of proposals, doing different action.
