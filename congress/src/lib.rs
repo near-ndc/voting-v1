@@ -46,8 +46,8 @@ pub struct Contract {
     pub cooldown: u64,
     pub voting_duration: u64,
 
-    pub balance_spent: Balance,
-    pub balance_cap: Balance,
+    pub budget_spent: Balance,
+    pub budget_cap: Balance,
     pub big_budget_balance: Balance,
 }
 
@@ -63,7 +63,7 @@ impl Contract {
         #[allow(unused_mut)] mut members: Vec<AccountId>,
         member_perms: Vec<PropPerm>,
         hook_auth: HashMap<AccountId, Vec<HookPerm>>,
-        balance_cap: U128,
+        budget_cap: U128,
         big_budget_balance: U128,
     ) -> Self {
         require!(members.len() < 100);
@@ -80,8 +80,8 @@ impl Contract {
             end_time,
             cooldown,
             voting_duration,
-            balance_spent: 0,
-            balance_cap: balance_cap.0,
+            budget_spent: 0,
+            budget_cap: budget_cap.0,
             big_budget_balance: big_budget_balance.0,
         }
     }
@@ -108,10 +108,19 @@ impl Contract {
             "proposal kind not allowed"
         );
 
+        let now = env::block_timestamp_ms().into();
         match kind {
-            ProposalKind::Budget(b) => require!(self.balance_spent + b < self.balance_cap),
-            ProposalKind::RecurrentBudget(_) => {
-                // TODO: need to multiply by remaining months and check for overlap
+            ProposalKind::Budget(b) => {
+                require!(
+                    self.budget_spent + b < self.budget_cap,
+                    "budget cap overflow"
+                )
+            }
+            ProposalKind::RecurrentBudget(b) => {
+                require!(
+                    self.budget_spent + b * (self.remaining_months(now) as u128) < self.budget_cap,
+                    "budget cap overflow"
+                )
             }
             _ => (),
         };
@@ -128,7 +137,7 @@ impl Contract {
                 approve: 0,
                 reject: 0,
                 votes: HashMap::new(),
-                submission_time: env::block_timestamp_ms().into(),
+                submission_time: now,
             },
         );
 
@@ -158,16 +167,17 @@ impl Contract {
             // if the previous proposal execution failed, we should be able to re-execute it
             ProposalStatus::Approved | ProposalStatus::Failed
         ));
+        let now = env::block_timestamp_ms();
         if self.cooldown > 0 {
             require!(
-                prop.submission_time + self.voting_duration + self.cooldown
-                    > env::block_timestamp_ms(),
+                prop.submission_time + self.voting_duration + self.cooldown > now,
                 "can be executed only after cooldown"
             );
         }
 
         prop.status = ProposalStatus::Executed;
         let mut result = PromiseOrValue::Value(());
+        let mut budget = 0;
         match &prop.kind {
             ProposalKind::FunctionCall {
                 receiver_id,
@@ -184,10 +194,14 @@ impl Contract {
                 }
                 result = promise.into();
             }
-            ProposalKind::Budget(b) => self.balance_spent += b,
-            ProposalKind::RecurrentBudget(b) => self.balance_spent += b, // TODO: calculate amount of months
+            ProposalKind::Budget(b) => budget = *b,
+            ProposalKind::RecurrentBudget(b) => budget = *b * self.remaining_months(now) as u128,
             ProposalKind::Text => (),
         };
+        if budget != 0 {
+            self.budget_spent += budget;
+            require!(self.budget_spent <= self.budget_cap, "budget cap overflow")
+        }
         self.proposals.insert(&id, &prop);
 
         // TODO:
@@ -197,7 +211,7 @@ impl Contract {
                 .then(
                     ext_self::ext(env::current_account_id())
                         .with_static_gas(EXECUTE_CALLBACK_GAS)
-                        .on_execute(id),
+                        .on_execute(id, budget.into()),
                 )
                 .into(),
             _ => result,
@@ -263,8 +277,17 @@ impl Contract {
         self.proposals.get(&id).expect("proposal does not exist")
     }
 
+    fn remaining_months(&self, now: u64) -> u64 {
+        if self.end_time <= now {
+            return 0;
+        }
+        // TODO: make correct calculation.
+        // Need to check if recurrent budget can start immeidately or from the next month.
+        (now - self.end_time) / 30 / 24 / 3600 / 1000
+    }
+
     #[private]
-    pub fn on_execute(&mut self, prop_id: u32) {
+    pub fn on_execute(&mut self, prop_id: u32, budget: U128) {
         assert_eq!(
             env::promise_results_count(),
             1,
@@ -275,6 +298,7 @@ impl Contract {
             PromiseResult::Successful(_) => (),
             PromiseResult::Failed => {
                 let mut prop = self.assert_proposal(prop_id);
+                self.budget_spent -= budget.0;
                 prop.status = ProposalStatus::Failed;
                 self.proposals.insert(&prop_id, &prop);
             }
