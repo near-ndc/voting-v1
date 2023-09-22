@@ -46,7 +46,6 @@ pub struct Contract {
     pub cooldown: u64,
     pub voting_duration: u64,
 
-    pub prop_bond: Balance,
     pub balance_spent: Balance,
     pub balance_cap: Balance,
     pub big_budget_balance: Balance,
@@ -64,7 +63,6 @@ impl Contract {
         #[allow(unused_mut)] mut members: Vec<AccountId>,
         member_perms: Vec<PropPerm>,
         hook_auth: HashMap<AccountId, Vec<HookPerm>>,
-        prop_bond: U128,
         balance_cap: U128,
         big_budget_balance: U128,
     ) -> Self {
@@ -82,7 +80,6 @@ impl Contract {
             end_time,
             cooldown,
             voting_duration,
-            prop_bond: prop_bond.0,
             balance_spent: 0,
             balance_cap: balance_cap.0,
             big_budget_balance: big_budget_balance.0,
@@ -97,17 +94,14 @@ impl Contract {
      * TRANSACTIONS
      **********/
 
-    /// Creates a new empty proposal. `start` and `end`are timestamps in milliseconds.
+    /// Creates a new empty proposal. `start` and `end` is Unix Time in milliseconds.
     /// Returns the new proposal ID.
     /// NOTE: storage is paid from the account state
     #[payable]
     pub fn create_proposal(&mut self, kind: ProposalKind, description: String) -> u32 {
         let user = env::predecessor_account_id();
         let (members, perms) = self.members.get().unwrap();
-        require!(
-            env::attached_deposit() == self.prop_bond,
-            "must attach correct amount of bond"
-        );
+        // TODO: add storage usage checks and return excess of deposit
         require!(members.binary_search(&user).is_ok(), "not a member");
         require!(
             perms.contains(&kind.required_perm()),
