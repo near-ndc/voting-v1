@@ -270,6 +270,7 @@ impl Contract {
         // call to registry to mint `I Voted` SBT
         if voted_for_all {
             unbond_amount -= MINT_COST;
+            // No need to "chain" NEAR transfer.
             Promise::new(caller.clone()).transfer(unbond_amount);
             ext_sbtreg::ext(self.sbt_registry.clone())
                 .with_static_gas(MINT_GAS)
