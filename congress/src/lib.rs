@@ -1,8 +1,10 @@
 use std::collections::HashMap;
 
+use common::finalize_storage_check;
 use events::*;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap};
+use near_sdk::env::panic_str;
 use near_sdk::json_types::U128;
 use near_sdk::{
     env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseOrValue,
@@ -96,13 +98,15 @@ impl Contract {
 
     /// Creates a new proposal. `start` and `end` is Unix Time in milliseconds.
     /// Returns the new proposal ID.
+    /// Caller is required to attach enough deposit to cover the proposal storage as well as all
+    /// possible votes (2*self.threshold - 1).
     /// NOTE: storage is paid from the account state
     #[payable]
     pub fn create_proposal(&mut self, kind: PropKind, description: String) -> u32 {
         self.assert_not_dissolved();
+        let storage_start = env::storage_usage();
         let user = env::predecessor_account_id();
         let (members, perms) = self.members.get().unwrap();
-        // TODO: add storage usage checks and return excess of deposit
         require!(members.binary_search(&user).is_ok(), "not a member");
         require!(
             perms.contains(&kind.required_perm()),
@@ -131,7 +135,7 @@ impl Contract {
         self.proposals.insert(
             &self.prop_counter,
             &Proposal {
-                proposer: user,
+                proposer: user.clone(),
                 description,
                 kind,
                 status: ProposalStatus::InProgress,
@@ -141,6 +145,12 @@ impl Contract {
                 submission_time: now,
             },
         );
+
+        // max amount of votes is threshold + threshold-1.
+        let extra_storage = VOTE_STORAGE * (2 * self.threshold - 1) as u64;
+        if let Err(reason) = finalize_storage_check(storage_start, extra_storage, user) {
+            panic_str(&reason);
+        }
 
         self.prop_counter
     }
@@ -209,8 +219,6 @@ impl Contract {
         }
         self.proposals.insert(&id, &prop);
 
-        // TODO:
-        // + return bond
         match result {
             PromiseOrValue::Promise(promise) => promise
                 .then(
