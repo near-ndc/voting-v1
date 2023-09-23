@@ -7,6 +7,7 @@ use near_sdk::serde::{Deserialize, Serialize};
 use crate::{proposal::*};
 use crate::{Contract, ContractExt};
 
+/// This is format of output via JSON for the proposal.
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
 pub struct ProposalOutput {
