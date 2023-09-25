@@ -180,7 +180,7 @@ impl Contract {
         if !matches!(prop.status, ProposalStatus::InProgress) {
             return Err(VoteError::NotInProgress);
         }
-        if env::block_timestamp_ms() < prop.submission_time + self.voting_duration {
+        if env::block_timestamp_ms() > prop.submission_time + self.voting_duration {
             return Err(VoteError::NotActive);
         }
         prop.add_vote(user, vote, self.threshold)?;
@@ -389,8 +389,54 @@ mod unit_tests {
     /// 1ms in nano seconds
     const MSECOND: u64 = 1_000_000;
     const START: u64 = 10;
+    // 5 Min in milliseconds
+    const FIVE_MIN: u64 = 60 * 60 * 5 * 1000;
 
     fn acc(idx: u8) -> AccountId {
         AccountId::new_unchecked(format!("user-{}.near", idx))
+    }
+
+    fn community_fund() -> AccountId {
+        AccountId::new_unchecked(format!("community-fund.near"))
+    }
+
+    fn voting_body() -> AccountId {
+        AccountId::new_unchecked(format!("voting-body.near"))
+    }
+
+    fn coa() -> AccountId {
+        AccountId::new_unchecked(format!("coa.near"))
+    }
+
+    fn setup_ctr() -> (VMContext, Contract, u32) {
+        let mut context = VMContextBuilder::new();
+        let start_time = env::block_timestamp_ms();
+        let end_time = start_time + FIVE_MIN;
+        let mut hash_map = HashMap::new();
+        hash_map.insert(coa(), vec![HookPerm::Veto]);
+        hash_map.insert(voting_body(), vec![HookPerm::Dismiss, HookPerm::Dissolve]);
+
+        let mut contract = Contract::new(
+            community_fund(),
+            start_time,
+            end_time,
+            FIVE_MIN,
+            FIVE_MIN,
+            vec![acc(1), acc(2), acc(3), acc(4)],
+            vec![PropPerm::Text, PropPerm::RecurrentFundingRequest, PropPerm::FundingRequest],
+            hash_map,
+            U128(10000),
+            U128(100000)
+        );
+        testing_env!(context.predecessor_account_id(acc(1)).build());
+
+        let id = contract.create_proposal(PropKind::Text, "Proposal unit test 1".to_string()).unwrap();
+        (context.build(), contract, id)
+    }
+
+    #[test]
+    fn test_basics() {
+        let (ctx, contract, id) = setup_ctr();
+        
     }
 }

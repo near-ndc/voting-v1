@@ -22,7 +22,6 @@ pub struct MembersOutput {
     pub permissions: Vec<PropPerm>,
 }
 
-
 #[near_bindgen]
 impl Contract {
     /**********
