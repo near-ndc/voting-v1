@@ -388,7 +388,7 @@ mod unit_tests {
 
     /// 1ms in nano seconds
     const MSECOND: u64 = 1_000_000;
-    const START: u64 = 10;
+
     // 5 Min in milliseconds
     const FIVE_MIN: u64 = 60 * 5 * 1000;
 
@@ -411,7 +411,7 @@ mod unit_tests {
     fn setup_ctr() -> (VMContext, Contract, u32) {
         let mut context = VMContextBuilder::new().build();
         let start_time = FIVE_MIN;
-        let end_time = start_time + FIVE_MIN;
+        let end_time = start_time + 2*FIVE_MIN;
         let mut hash_map = HashMap::new();
         hash_map.insert(coa(), vec![HookPerm::Veto]);
         hash_map.insert(voting_body(), vec![HookPerm::Dismiss, HookPerm::Dissolve]);
@@ -438,12 +438,66 @@ mod unit_tests {
     }
 
     #[test]
-    fn test_basics() {
-        let (ctx, contract, id) = setup_ctr();
-        let prop = contract.get_proposal(id);
+    fn test_basic_flow() {
+        let (mut ctx, mut contract, id) = setup_ctr();
+        let mut prop = contract.get_proposal(id);
         assert!(prop.is_some());
         assert_eq!(prop.unwrap().proposal.status, ProposalStatus::InProgress);
 
-        
+        ctx.predecessor_account_id = acc(1);
+        testing_env!(ctx.clone());
+        let mut res = contract.vote(id, Vote::Approve);
+        assert!(res.is_ok());
+        ctx.predecessor_account_id = acc(2);
+        testing_env!(ctx.clone());
+        res = contract.vote(id, Vote::Approve);
+        assert!(res.is_ok());
+        ctx.predecessor_account_id = acc(3);
+        testing_env!(ctx.clone());
+        res = contract.vote(id, Vote::Approve);
+        assert!(res.is_ok());
+
+        prop = contract.get_proposal(id);
+        assert!(prop.is_some());
+        assert_eq!(prop.unwrap().proposal.status, ProposalStatus::Approved);
+
+        ctx.predecessor_account_id = acc(4);
+        testing_env!(ctx);
+        match contract.vote(id, Vote::Approve) {
+            Err(VoteError::NotInProgress) => (),
+            x => panic!("expected NotInProgress, got: {:?}", x),
+        }
+    }
+
+    #[test]
+    fn test_vote_errors() {
+        let (mut ctx, mut contract, id) = setup_ctr();
+        ctx.predecessor_account_id = acc(1);
+        testing_env!(ctx.clone());
+        let res = contract.vote(id, Vote::Approve);
+        assert!(res.is_ok());
+
+        match contract.vote(id, Vote::Approve) {
+            Err(VoteError::DoubleVote) => (),
+            x => panic!("expected DoubleVoted, got: {:?}", x),
+        }
+
+        ctx.block_timestamp = (contract.start_time + contract.voting_duration + 1) * MSECOND;
+        testing_env!(ctx.clone());
+        match contract.vote(id, Vote::Approve) {
+            Err(VoteError::NotActive) => (),
+            x => panic!("expected NotActive, got: {:?}", x),
+        }
+
+        ctx.predecessor_account_id = acc(5);
+        testing_env!(ctx.clone());
+        match contract.vote(id, Vote::Approve) {
+            Err(VoteError::NotAuthorized) => (),
+            x => panic!("expected NotAuthorized, got: {:?}", x),
+        }
+    }
+
+    #[test]
+    fn test_proposal_execution() {
     }
 }
