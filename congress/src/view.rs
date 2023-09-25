@@ -16,6 +16,14 @@ pub struct ProposalOutput {
     pub proposal: Proposal,
 }
 
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct MembersOutput {
+    /// Id of the proposal.
+    pub members: Vec<AccountId>,
+    pub permissions: Vec<PropPerm>,
+}
+
 
 #[near_bindgen]
 impl Contract {
@@ -46,29 +54,34 @@ impl Contract {
             .map(|proposal| ProposalOutput { id, proposal })
     }
 
-    /// Returns the proposal status
-    pub fn proposal_status(&self, prop_id: u32) -> Option<ProposalStatus> {
-        self.proposals.get(&prop_id).map(|p| p.status)
-    }
-
     pub fn is_dissolve(&self) -> bool {
         self.dissolved
     }
 
+    /// Returns all members with permissions
+    pub fn get_members(&self) -> MembersOutput {
+        let (members, permissions) = self.members.get().unwrap();
+        return MembersOutput { members, permissions }
+    }
+
     /// Returns permissions of a given member.
-    /// Returns `None` if not a member.
-    pub fn member_permissions(&self, member: AccountId) -> Option<Vec<PropPerm>> {
+    /// Returns empty list `[]` if not a member.
+    pub fn member_permissions(&self, member: AccountId) -> Vec<PropPerm> {
         let (members, perms) = self.members.get().unwrap();
         if members.binary_search(&member).is_ok() {
-            return Some(perms);
+            return perms;
         }
-        None
+        vec![]
     }
 
     /// Returns hook permissions for given account
-    /// None if doesn't exist in hook
-    pub fn hook_permissions(&self, user: AccountId) -> Option<Vec<HookPerm>> {
+    /// Returns empty list `[]` if not a hook.
+    pub fn hook_permissions(&self, user: AccountId) -> Vec<HookPerm> {
         let hooks = self.hook_auth.get().unwrap();
-        hooks.get(&user).cloned()
+        let res = hooks.get(&user).cloned();
+        if res.is_none() {
+            return vec![];
+        }
+        res.unwrap()
     }
 }
