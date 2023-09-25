@@ -4,8 +4,7 @@ use near_sdk::{near_bindgen, AccountId};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::serde::{Deserialize, Serialize};
 
-use crate::{proposal::*};
-use crate::{Contract, ContractExt};
+use crate::*;
 
 /// This is format of output via JSON for the proposal.
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
@@ -52,12 +51,12 @@ impl Contract {
         self.proposals.get(&prop_id).map(|p| p.status)
     }
 
-    pub fn dissolve_status(&self) -> bool {
+    pub fn is_dissolve(&self) -> bool {
         self.dissolved
     }
 
-    /// Returns permissions of any member
-    /// None if not a member
+    /// Returns permissions of a given member.
+    /// Returns `None` if not a member.
     pub fn member_permissions(&self, member: AccountId) -> Option<Vec<PropPerm>> {
         let (members, perms) = self.members.get().unwrap();
         if members.binary_search(&member).is_ok() {
