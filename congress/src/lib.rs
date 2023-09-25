@@ -4,10 +4,9 @@ use common::finalize_storage_check;
 use events::*;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap};
-use near_sdk::env::panic_str;
 use near_sdk::json_types::U128;
 use near_sdk::{
-    env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseOrValue,
+    env, near_bindgen, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseOrValue,
     PromiseResult,
 };
 
@@ -72,7 +71,9 @@ impl Contract {
         budget_cap: U128,
         big_budget_balance: U128,
     ) -> Self {
-        require!(members.len() < 100);
+        // we can support up to 255 with the limitation of the proposal type, but setting 100
+        // here because this is more than enough for what we need to test for Congress.
+        near_sdk::require!(members.len() <= 100, "max amount of members is 100");
         let threshold = (members.len() / 2) as u8 + 1;
         members.sort();
         Self {
@@ -107,33 +108,37 @@ impl Contract {
     /// possible votes (2*self.threshold - 1).
     /// NOTE: storage is paid from the account state
     #[payable]
-    pub fn create_proposal(&mut self, kind: PropKind, description: String) -> u32 {
+    #[handle_result]
+    pub fn create_proposal(
+        &mut self,
+        kind: PropKind,
+        description: String,
+    ) -> Result<u32, CreatePropError> {
         self.assert_active();
         let storage_start = env::storage_usage();
         let user = env::predecessor_account_id();
         let (members, perms) = self.members.get().unwrap();
-        require!(members.binary_search(&user).is_ok(), "not a member");
-        require!(
-            perms.contains(&kind.required_perm()),
-            "proposal kind not allowed"
-        );
+        if members.binary_search(&user).is_err() {
+            return Err(CreatePropError::NotAuthorized);
+        }
+        if !perms.contains(&kind.required_perm()) {
+            return Err(CreatePropError::KindNotAllowed);
+        }
 
         let now = env::block_timestamp_ms();
+        let mut new_budget = 0;
         match kind {
             PropKind::FundingRequest(b) => {
-                require!(
-                    self.budget_spent + b < self.budget_cap,
-                    "budget cap overflow"
-                )
+                new_budget = self.budget_spent + b;
             }
             PropKind::RecurrentFundingRequest(b) => {
-                require!(
-                    self.budget_spent + b * (self.remaining_months(now) as u128) < self.budget_cap,
-                    "budget cap overflow"
-                )
+                new_budget = self.budget_spent + b * (self.remaining_months(now) as u128);
             }
             _ => (),
         };
+        if new_budget > self.budget_cap {
+            return Err(CreatePropError::BudgetOverflow);
+        }
 
         self.prop_counter += 1;
         emit_prop_created(self.prop_counter, &kind);
@@ -154,43 +159,53 @@ impl Contract {
         // max amount of votes is threshold + threshold-1.
         let extra_storage = VOTE_STORAGE * (2 * self.threshold - 1) as u64;
         if let Err(reason) = finalize_storage_check(storage_start, extra_storage, user) {
-            panic_str(&reason);
+            return Err(CreatePropError::Storage(reason));
         }
 
-        self.prop_counter
+        Ok(self.prop_counter)
     }
 
-    // TODO: add immediate execution
-    pub fn vote(&mut self, id: u32, vote: Vote) {
+    // TODO: add immediate execution. Note can be automatically executed only when
+    // contract.cooldown == 0
+    #[handle_result]
+    pub fn vote(&mut self, id: u32, vote: Vote) -> Result<(), VoteError> {
         self.assert_active();
         let user = env::predecessor_account_id();
         let (members, _) = self.members.get().unwrap();
-        require!(members.binary_search(&user).is_ok(), "not a member");
+        if members.binary_search(&user).is_err() {
+            return Err(VoteError::NotAuthorized);
+        }
         let mut prop = self.assert_proposal(id);
-        require!(matches!(prop.status, ProposalStatus::InProgress));
-        require!(
-            prop.submission_time + self.voting_duration < env::block_timestamp_ms(),
-            "voting time is over"
-        );
-        prop.add_vote(user, vote, self.threshold);
+
+        if !matches!(prop.status, ProposalStatus::InProgress) {
+            return Err(VoteError::NotInProgress);
+        }
+        if env::block_timestamp_ms() < prop.submission_time + self.voting_duration {
+            return Err(VoteError::NotActive);
+        }
+        prop.add_vote(user, vote, self.threshold)?;
         self.proposals.insert(&id, &prop);
         emit_vote(id);
+        Ok(())
     }
 
-    pub fn execute(&mut self, id: u32) -> PromiseOrValue<()> {
+    /// Allows anyone to execute proposal.
+    /// If `contract.cooldown` is set, then a proposal can be only executed after the cooldown:
+    /// (submission_time + voting_duration + cooldown).
+    #[handle_result]
+    pub fn execute(&mut self, id: u32) -> Result<PromiseOrValue<()>, ExecError> {
         self.assert_active();
         let mut prop = self.assert_proposal(id);
-        require!(matches!(
+        if !matches!(
             prop.status,
             // if the previous proposal execution failed, we should be able to re-execute it
             ProposalStatus::Approved | ProposalStatus::Failed
-        ));
+        ) {
+            return Err(ExecError::NotApproved);
+        }
         let now = env::block_timestamp_ms();
-        if self.cooldown > 0 {
-            require!(
-                prop.submission_time + self.voting_duration + self.cooldown > now,
-                "can be executed only after cooldown"
-            );
+        if self.cooldown > 0 && now <= prop.submission_time + self.voting_duration + self.cooldown {
+            return Err(ExecError::ExecTime);
         }
 
         prop.status = ProposalStatus::Executed;
@@ -220,11 +235,13 @@ impl Contract {
         };
         if budget != 0 {
             self.budget_spent += budget;
-            require!(self.budget_spent <= self.budget_cap, "budget cap overflow")
+            if self.budget_spent > self.budget_cap {
+                return Err(ExecError::BudgetOverflow);
+            }
         }
         self.proposals.insert(&id, &prop);
 
-        match result {
+        let result = match result {
             PromiseOrValue::Promise(promise) => promise
                 .then(
                     ext_self::ext(env::current_account_id())
@@ -233,15 +250,17 @@ impl Contract {
                 )
                 .into(),
             _ => result,
-        }
+        };
+        Ok(result)
     }
 
     /// Veto proposal hook
     /// Removes proposal
     /// * `id`: proposal id
-    pub fn veto_hook(&mut self, id: u32) {
+    #[handle_result]
+    pub fn veto_hook(&mut self, id: u32) -> Result<(), HookError> {
         self.assert_active();
-        self.assert_hook_perm(&env::predecessor_account_id(), &HookPerm::Veto);
+        self.assert_hook_perm(&env::predecessor_account_id(), &HookPerm::Veto)?;
         let proposal = self.assert_proposal(id);
         // TODO: check cooldown. Cooldown finishes at
         // min(proposal.start+self.voting_duration, time when proposal passed) + self.cooldown
@@ -255,24 +274,30 @@ impl Contract {
             }
         }
         emit_veto(id);
+        Ok(())
     }
 
     /// Dissolve and finalize the DAO. Will send the excess account funds back to the community
     /// fund. If the term is over can be called by anyone.
-    pub fn dissolve_hook(&mut self) {
+    #[handle_result]
+    pub fn dissolve_hook(&mut self) -> Result<(), HookError> {
         // only check permission if the DAO term is not over.
         if env::block_timestamp_ms() <= self.end_time {
-            self.assert_hook_perm(&env::predecessor_account_id(), &HookPerm::Dissolve);
+            self.assert_hook_perm(&env::predecessor_account_id(), &HookPerm::Dissolve)?;
         }
         self.dissolve_and_cleanup();
+        Ok(())
     }
 
-    pub fn dismiss_hook(&mut self, member: AccountId) {
+    #[handle_result]
+    pub fn dismiss_hook(&mut self, member: AccountId) -> Result<(), HookError> {
         self.assert_active();
-        self.assert_hook_perm(&env::predecessor_account_id(), &HookPerm::Dismiss);
+        self.assert_hook_perm(&env::predecessor_account_id(), &HookPerm::Dismiss)?;
         let (mut members, perms) = self.members.get().unwrap();
         let idx = members.binary_search(&member);
-        require!(idx.is_ok(), "not found");
+        if idx.is_err() {
+            return Err(HookError::NoMember);
+        }
         members[idx.unwrap()] = members.pop().unwrap();
 
         emit_dismiss(&member);
@@ -282,19 +307,20 @@ impl Contract {
         }
 
         self.members.set(&(members, perms));
+        Ok(())
     }
 
     /*****************
      * INTERNAL
      ****************/
 
-    fn assert_hook_perm(&self, user: &AccountId, perm: &HookPerm) {
+    fn assert_hook_perm(&self, user: &AccountId, perm: &HookPerm) -> Result<(), HookError> {
         let auth_hook = self.hook_auth.get().unwrap();
         let perms = auth_hook.get(user);
-        require!(
-            perms.is_some() && perms.unwrap().contains(perm),
-            "not authorized"
-        );
+        if perms.is_none() || !perms.unwrap().contains(perm) {
+            return Err(HookError::NotAuthorized);
+        }
+        Ok(())
     }
 
     fn assert_proposal(&self, id: u32) -> Proposal {
@@ -302,8 +328,8 @@ impl Contract {
     }
 
     fn assert_active(&self) {
-        require!(!self.dissolved, "dao is dissolved");
-        require!(
+        near_sdk::require!(!self.dissolved, "dao is dissolved");
+        near_sdk::require!(
             !self.end_time <= env::block_timestamp_ms(),
             "dao term is over, call dissolve_hook!"
         );
