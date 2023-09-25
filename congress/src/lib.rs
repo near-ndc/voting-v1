@@ -499,6 +499,11 @@ mod unit_tests {
     #[test]
     fn test_proposal_execution_text() {
         let (mut ctx, mut contract, id) = setup_ctr();
+        match contract.execute(id) {
+            Err(ExecError::NotApproved) => (),
+            Ok(_) => panic!("expected NotApproved, got: OK"),
+            _ => panic!("expected OK or error"),
+        }
         contract = vote(ctx.clone(), contract, [acc(1), acc(2), acc(3)].to_vec(), id);
 
         let mut prop = contract.get_proposal(id);
@@ -526,10 +531,50 @@ mod unit_tests {
 
     #[test]
     fn test_proposal_execution_funding_req() {
+        let (mut ctx, mut contract,_) = setup_ctr();
+
+        let id = contract.create_proposal(PropKind::FundingRequest(1000u128), "Funding req".to_owned()).unwrap();
+        contract = vote(ctx.clone(), contract, [acc(1), acc(2), acc(3)].to_vec(), id);
+
+        ctx.block_timestamp = (contract.start_time + contract.cooldown + contract.voting_duration + 1) * MSECOND;
+        testing_env!(ctx.clone());
+
+        assert_eq!(contract.budget_spent, 0);
+
+        match contract.execute(id) {
+            Ok(_) => (),
+            Err(x) => panic!("expected OK, got: {:?}", x),
+        }
+
+        assert_eq!(contract.budget_spent, 1000);
+
+        let res = contract.create_proposal(PropKind::FundingRequest(10000u128), "Funding req".to_owned());
+        match res {
+            Err(CreatePropError::BudgetOverflow) => (),
+            Ok(_) => panic!("expected BudgetOverflow, got: OK"),
+            Err(x) => panic!("expected BudgetOverflow, got: {:?}", x),
+        }
     }
 
     #[test]
     fn test_proposal_execution_rec_funding_req() {
+        let (mut ctx, mut contract,_) = setup_ctr();
+
+        let id = contract.create_proposal(PropKind::RecurrentFundingRequest(10u128), "Rec Funding req".to_owned()).unwrap();
+        contract = vote(ctx.clone(), contract, [acc(1), acc(2), acc(3)].to_vec(), id);
+
+        ctx.block_timestamp = (contract.start_time + contract.cooldown + contract.voting_duration + 1) * MSECOND;
+        testing_env!(ctx.clone());
+
+        assert_eq!(contract.budget_spent, 0);
+
+        match contract.execute(id) {
+            Ok(_) => (),
+            Err(x) => panic!("expected OK, got: {:?}", x),
+        }
+
+        // TODO: check remaining_months
+        assert_eq!(contract.budget_spent, 0);
     }
 
     #[test]
@@ -570,11 +615,67 @@ mod unit_tests {
     }
 
     #[test]
+    #[should_panic(expected = "dao is dissolved")]
     fn test_dissolve_hook() {
+        let (mut ctx, mut contract, _) = setup_ctr();
+
+        ctx.predecessor_account_id = acc(2);
+        testing_env!(ctx.clone());
+
+        match contract.dissolve_hook() {
+            Err(HookError::NotAuthorized) => (),
+            x => panic!("expected NotAuthorized, got: {:?}", x),
+        }
+
+        ctx.predecessor_account_id = voting_body();
+        testing_env!(ctx.clone());
+
+        match contract.dissolve_hook() {
+            Ok(_) => (),
+            x => panic!("expected Ok, got: {:?}", x),
+        }
+        let expected = r#"EVENT_JSON:{"standard":"ndc-congress","version":"1.0.0","event":"dissolve","data":""}"#;
+        assert_eq!(vec![expected], get_logs());
+
+        assert!(contract.dissolved);
+
+        let res = contract.create_proposal(PropKind::FundingRequest(10000u128), "Funding req".to_owned());
+        match res {
+            x => panic!("{:?}", x),
+        }
     }
 
     #[test]
     fn test_dismiss_hook() {
+        let (mut ctx, mut contract, _) = setup_ctr();
+
+        ctx.predecessor_account_id = acc(2);
+        testing_env!(ctx.clone());
+
+        match contract.dismiss_hook(acc(2)) {
+            Err(HookError::NotAuthorized) => (),
+            x => panic!("expected NotAuthorized, got: {:?}", x),
+        }
+
+        ctx.predecessor_account_id = voting_body();
+        testing_env!(ctx.clone());
+
+        match contract.dismiss_hook(acc(2)) {
+            Ok(_) => (),
+            x => panic!("expected Ok, got: {:?}", x),
+        }
+        let expected = r#"EVENT_JSON:{"standard":"ndc-congress","version":"1.0.0","event":"dismiss","data":{"member":"user-2.near"}}"#;
+        assert_eq!(vec![expected], get_logs());
+
+        assert_eq!(contract.member_permissions(acc(2)), vec![]);
+
+        // Remove more members to check dissolve
+        match contract.dismiss_hook(acc(1)) {
+            Ok(_) => (),
+            x => panic!("expected Ok, got: {:?}", x),
+        }
+
+        assert!(contract.dissolved);
     }
 
     #[test]
