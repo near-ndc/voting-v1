@@ -6,7 +6,7 @@ use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap};
 use near_sdk::json_types::U128;
 use near_sdk::{
-    env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseOrValue,
+    env, near_bindgen, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseOrValue,
     PromiseResult,
 };
 
@@ -73,7 +73,7 @@ impl Contract {
     ) -> Self {
         // we can support up to 255 with the limitation of the proposal type, but setting 100
         // here because this is more than enough for what we need to test for Congress.
-        require!(members.len() <= 100, "max amount of members is 100");
+        near_sdk::require!(members.len() <= 100, "max amount of members is 100");
         let threshold = (members.len() / 2) as u8 + 1;
         members.sort();
         Self {
@@ -328,8 +328,8 @@ impl Contract {
     }
 
     fn assert_active(&self) {
-        require!(!self.dissolved, "dao is dissolved");
-        require!(
+        near_sdk::require!(!self.dissolved, "dao is dissolved");
+        near_sdk::require!(
             !self.end_time <= env::block_timestamp_ms(),
             "dao term is over, call dissolve_hook!"
         );

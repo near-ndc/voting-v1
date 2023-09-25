@@ -1,8 +1,6 @@
 use near_sdk::env::panic_str;
 use near_sdk::FunctionError;
 
-use thiserror::Error;
-
 #[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq, Debug))]
 pub enum VoteError {
     NotAuthorized,
