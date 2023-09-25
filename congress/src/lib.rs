@@ -397,15 +397,15 @@ mod unit_tests {
     }
 
     fn community_fund() -> AccountId {
-        AccountId::new_unchecked(format!("community-fund.near"))
+        AccountId::new_unchecked("community-fund.near".to_string())
     }
 
     fn voting_body() -> AccountId {
-        AccountId::new_unchecked(format!("voting-body.near"))
+        AccountId::new_unchecked("voting-body.near".to_string())
     }
 
     fn coa() -> AccountId {
-        AccountId::new_unchecked(format!("coa.near"))
+        AccountId::new_unchecked("coa.near".to_string())
     }
 
     fn setup_ctr() -> (VMContext, Contract, u32) {
@@ -489,7 +489,7 @@ mod unit_tests {
         }
 
         ctx.predecessor_account_id = acc(5);
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         match contract.vote(id, Vote::Approve) {
             Err(VoteError::NotAuthorized) => (),
             x => panic!("expected NotAuthorized, got: {:?}", x),
@@ -537,7 +537,7 @@ mod unit_tests {
         contract = vote(ctx.clone(), contract, [acc(1), acc(2), acc(3)].to_vec(), id);
 
         ctx.block_timestamp = (contract.start_time + contract.cooldown + contract.voting_duration + 1) * MSECOND;
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
 
         assert_eq!(contract.budget_spent, 0);
 
@@ -564,7 +564,7 @@ mod unit_tests {
         contract = vote(ctx.clone(), contract, [acc(1), acc(2), acc(3)].to_vec(), id);
 
         ctx.block_timestamp = (contract.start_time + contract.cooldown + contract.voting_duration + 1) * MSECOND;
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
 
         assert_eq!(contract.budget_spent, 0);
 
@@ -602,7 +602,7 @@ mod unit_tests {
         }
 
         ctx.predecessor_account_id = coa();
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
 
         match contract.veto_hook(id) {
             Ok(_) => (),
@@ -628,7 +628,7 @@ mod unit_tests {
         }
 
         ctx.predecessor_account_id = voting_body();
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
 
         match contract.dissolve_hook() {
             Ok(_) => (),
@@ -658,7 +658,7 @@ mod unit_tests {
         }
 
         ctx.predecessor_account_id = voting_body();
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
 
         match contract.dismiss_hook(acc(2)) {
             Ok(_) => (),

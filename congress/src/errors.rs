@@ -55,7 +55,7 @@ impl FunctionError for CreatePropError {
             CreatePropError::BudgetOverflow => panic_str("budget cap overflow"),
             CreatePropError::NotAuthorized => panic_str("not authorized"),
             CreatePropError::KindNotAllowed => panic_str("proposal kind not allowed"),
-            CreatePropError::Storage(reason) => panic_str(&reason),
+            CreatePropError::Storage(reason) => panic_str(reason),
         }
     }
 }
