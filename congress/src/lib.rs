@@ -161,20 +161,24 @@ impl Contract {
     }
 
     // TODO: add immediate execution
-    pub fn vote(&mut self, id: u32, vote: Vote) {
+    #[handle_result]
+    pub fn vote(&mut self, id: u32, vote: Vote) -> Result<(), VoteError> {
         self.assert_active();
         let user = env::predecessor_account_id();
         let (members, _) = self.members.get().unwrap();
         require!(members.binary_search(&user).is_ok(), "not a member");
         let mut prop = self.assert_proposal(id);
-        require!(matches!(prop.status, ProposalStatus::InProgress));
-        require!(
-            prop.submission_time + self.voting_duration < env::block_timestamp_ms(),
-            "voting time is over"
-        );
-        prop.add_vote(user, vote, self.threshold);
+
+        if !matches!(prop.status, ProposalStatus::InProgress) {
+            return Err(VoteError::NotInProgress);
+        }
+        if prop.submission_time + self.voting_duration >= env::block_timestamp_ms() {
+            return Err(VoteError::NotActive);
+        }
+        prop.add_vote(user, vote, self.threshold)?;
         self.proposals.insert(&id, &prop);
         emit_vote(id);
+        Ok(())
     }
 
     pub fn execute(&mut self, id: u32) -> PromiseOrValue<()> {
@@ -224,7 +228,7 @@ impl Contract {
         }
         self.proposals.insert(&id, &prop);
 
-        match result {
+        let result = match result {
             PromiseOrValue::Promise(promise) => promise
                 .then(
                     ext_self::ext(env::current_account_id())
@@ -233,7 +237,8 @@ impl Contract {
                 )
                 .into(),
             _ => result,
-        }
+        };
+        result
     }
 
     /// Veto proposal hook

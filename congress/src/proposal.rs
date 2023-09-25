@@ -1,9 +1,11 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::json_types::{Base64VecU8, U128, U64};
 use near_sdk::serde::{Deserialize, Serialize};
-use near_sdk::{require, AccountId, Balance};
+use near_sdk::{AccountId, Balance};
 
 use std::collections::HashMap;
+
+use crate::VoteError;
 
 /// Proposal that are sent to this DAO.
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
@@ -27,8 +29,15 @@ pub struct Proposal {
 }
 
 impl Proposal {
-    pub fn add_vote(&mut self, user: AccountId, vote: Vote, threshold: u8) {
-        require!(!self.votes.contains_key(&user), "user already voted");
+    pub fn add_vote(
+        &mut self,
+        user: AccountId,
+        vote: Vote,
+        threshold: u8,
+    ) -> Result<(), VoteError> {
+        if self.votes.contains_key(&user) {
+            return Err(VoteError::DoubleVote);
+        }
         match vote {
             Vote::Approve => {
                 self.approve += 1;
@@ -44,6 +53,7 @@ impl Proposal {
             }
         }
         self.votes.insert(user, vote);
+        Ok(())
     }
 }
 
