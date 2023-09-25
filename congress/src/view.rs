@@ -16,7 +16,7 @@ pub struct ProposalOutput {
     pub proposal: Proposal,
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(Serialize)]
 #[serde(crate = "near_sdk::serde")]
 pub struct MembersOutput {
     /// Id of the proposal.
@@ -65,7 +65,7 @@ impl Contract {
     }
 
     /// Returns permissions of a given member.
-    /// Returns empty list `[]` if not a member.
+    /// Returns empty vector (`[]`) if not a member.
     pub fn member_permissions(&self, member: AccountId) -> Vec<PropPerm> {
         let (members, perms) = self.members.get().unwrap();
         if members.binary_search(&member).is_ok() {
@@ -75,7 +75,7 @@ impl Contract {
     }
 
     /// Returns hook permissions for given account
-    /// Returns empty list `[]` if not a hook.
+    /// Returns empty vector `[]` if not a hook.
     pub fn hook_permissions(&self, user: AccountId) -> Vec<HookPerm> {
         let hooks = self.hook_auth.get().unwrap();
         let res = hooks.get(&user).cloned();
