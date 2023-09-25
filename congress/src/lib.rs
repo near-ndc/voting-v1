@@ -379,7 +379,7 @@ impl Contract {
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod unit_tests {
     use near_sdk::{
-        test_utils::{VMContextBuilder},
+        test_utils::{VMContextBuilder, get_logs},
         testing_env, VMContext,
     };
     use near_units::parse_near;
@@ -411,7 +411,7 @@ mod unit_tests {
     fn setup_ctr() -> (VMContext, Contract, u32) {
         let mut context = VMContextBuilder::new().build();
         let start_time = FIVE_MIN;
-        let end_time = start_time + 2*FIVE_MIN;
+        let end_time = start_time + 3*FIVE_MIN;
         let mut hash_map = HashMap::new();
         hash_map.insert(coa(), vec![HookPerm::Veto]);
         hash_map.insert(voting_body(), vec![HookPerm::Dismiss, HookPerm::Dissolve]);
@@ -437,6 +437,16 @@ mod unit_tests {
         (context, contract, id)
     }
 
+    fn vote(mut ctx: VMContext, mut contract: Contract, accounts: Vec<AccountId>, id: u32) -> Contract {
+        for account in accounts {
+            ctx.predecessor_account_id = account;
+            testing_env!(ctx.clone());
+            let res = contract.vote(id, Vote::Approve);
+            assert!(res.is_ok());
+        }
+        contract
+    }
+
     #[test]
     fn test_basic_flow() {
         let (mut ctx, mut contract, id) = setup_ctr();
@@ -444,18 +454,7 @@ mod unit_tests {
         assert!(prop.is_some());
         assert_eq!(prop.unwrap().proposal.status, ProposalStatus::InProgress);
 
-        ctx.predecessor_account_id = acc(1);
-        testing_env!(ctx.clone());
-        let mut res = contract.vote(id, Vote::Approve);
-        assert!(res.is_ok());
-        ctx.predecessor_account_id = acc(2);
-        testing_env!(ctx.clone());
-        res = contract.vote(id, Vote::Approve);
-        assert!(res.is_ok());
-        ctx.predecessor_account_id = acc(3);
-        testing_env!(ctx.clone());
-        res = contract.vote(id, Vote::Approve);
-        assert!(res.is_ok());
+        contract = vote(ctx.clone(), contract, [acc(1), acc(2), acc(3)].to_vec(), id);
 
         prop = contract.get_proposal(id);
         assert!(prop.is_some());
@@ -499,6 +498,30 @@ mod unit_tests {
 
     #[test]
     fn test_proposal_execution_text() {
+        let (mut ctx, mut contract, id) = setup_ctr();
+        contract = vote(ctx.clone(), contract, [acc(1), acc(2), acc(3)].to_vec(), id);
+
+        let mut prop = contract.get_proposal(id);
+        assert!(prop.is_some());
+        assert_eq!(prop.unwrap().proposal.status, ProposalStatus::Approved);
+
+        match contract.execute(id) {
+            Err(ExecError::ExecTime) => (),
+            Ok(_) => panic!("expected ExecTime, got: OK"),
+            _ => panic!("expected OK or error"),
+        }
+
+        ctx.block_timestamp = (contract.start_time + contract.cooldown + contract.voting_duration + 1) * MSECOND;
+        testing_env!(ctx);
+
+        match contract.execute(id) {
+            Ok(_) => (),
+            Err(x) => panic!("expected OK, got: {:?}", x),
+        }
+
+        prop = contract.get_proposal(id);
+        assert!(prop.is_some());
+        assert_eq!(prop.unwrap().proposal.status, ProposalStatus::Executed);
     }
 
     #[test]
@@ -519,5 +542,42 @@ mod unit_tests {
         match contract.vote(id, Vote::Approve) {
             x => panic!("{:?}", x),
         }
+    }
+
+    #[test]
+    fn test_veto_hook() {
+        let (mut ctx, mut contract, id) = setup_ctr();
+
+        ctx.predecessor_account_id = acc(2);
+        testing_env!(ctx.clone());
+
+        match contract.veto_hook(id) {
+            Err(HookError::NotAuthorized) => (),
+            x => panic!("expected NotAuthorized, got: {:?}", x),
+        }
+
+        ctx.predecessor_account_id = coa();
+        testing_env!(ctx.clone());
+
+        match contract.veto_hook(id) {
+            Ok(_) => (),
+            x => panic!("expected Ok, got: {:?}", x),
+        }
+        let expected = r#"EVENT_JSON:{"standard":"ndc-congress","version":"1.0.0","event":"veto","data":{"prop_id":1}}"#;
+        assert_eq!(vec![expected], get_logs());
+
+        assert!(contract.proposals.get(&id).is_none())
+    }
+
+    #[test]
+    fn test_dissolve_hook() {
+    }
+
+    #[test]
+    fn test_dismiss_hook() {
+    }
+
+    #[test]
+    fn test_on_execute() {
     }
 }
