@@ -61,3 +61,18 @@ impl FunctionError for CreatePropError {
         }
     }
 }
+
+#[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq, Debug))]
+pub enum HookError {
+    NotAuthorized,
+    NoMember,
+}
+
+impl FunctionError for HookError {
+    fn panic(&self) -> ! {
+        match self {
+            HookError::NotAuthorized => panic_str("not authorized"),
+            HookError::NoMember => panic_str("member not found"),
+        }
+    }
+}

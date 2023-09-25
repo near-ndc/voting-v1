@@ -257,9 +257,10 @@ impl Contract {
     /// Veto proposal hook
     /// Removes proposal
     /// * `id`: proposal id
-    pub fn veto_hook(&mut self, id: u32) {
+    #[handle_result]
+    pub fn veto_hook(&mut self, id: u32) -> Result<(), HookError> {
         self.assert_active();
-        self.assert_hook_perm(&env::predecessor_account_id(), &HookPerm::Veto);
+        self.assert_hook_perm(&env::predecessor_account_id(), &HookPerm::Veto)?;
         let proposal = self.assert_proposal(id);
         // TODO: check cooldown. Cooldown finishes at
         // min(proposal.start+self.voting_duration, time when proposal passed) + self.cooldown
@@ -273,24 +274,30 @@ impl Contract {
             }
         }
         emit_veto(id);
+        Ok(())
     }
 
     /// Dissolve and finalize the DAO. Will send the excess account funds back to the community
     /// fund. If the term is over can be called by anyone.
-    pub fn dissolve_hook(&mut self) {
+    #[handle_result]
+    pub fn dissolve_hook(&mut self) -> Result<(), HookError> {
         // only check permission if the DAO term is not over.
         if env::block_timestamp_ms() <= self.end_time {
-            self.assert_hook_perm(&env::predecessor_account_id(), &HookPerm::Dissolve);
+            self.assert_hook_perm(&env::predecessor_account_id(), &HookPerm::Dissolve)?;
         }
         self.dissolve_and_cleanup();
+        Ok(())
     }
 
-    pub fn dismiss_hook(&mut self, member: AccountId) {
+    #[handle_result]
+    pub fn dismiss_hook(&mut self, member: AccountId) -> Result<(), HookError> {
         self.assert_active();
-        self.assert_hook_perm(&env::predecessor_account_id(), &HookPerm::Dismiss);
+        self.assert_hook_perm(&env::predecessor_account_id(), &HookPerm::Dismiss)?;
         let (mut members, perms) = self.members.get().unwrap();
         let idx = members.binary_search(&member);
-        require!(idx.is_ok(), "not found");
+        if idx.is_err() {
+            return Err(HookError::NoMember);
+        }
         members[idx.unwrap()] = members.pop().unwrap();
 
         emit_dismiss(&member);
@@ -300,19 +307,20 @@ impl Contract {
         }
 
         self.members.set(&(members, perms));
+        Ok(())
     }
 
     /*****************
      * INTERNAL
      ****************/
 
-    fn assert_hook_perm(&self, user: &AccountId, perm: &HookPerm) {
+    fn assert_hook_perm(&self, user: &AccountId, perm: &HookPerm) -> Result<(), HookError> {
         let auth_hook = self.hook_auth.get().unwrap();
         let perms = auth_hook.get(user);
-        require!(
-            perms.is_some() && perms.unwrap().contains(perm),
-            "not authorized"
-        );
+        if perms.is_none() || !perms.unwrap().contains(perm) {
+            return Err(HookError::NotAuthorized);
+        }
+        Ok(())
     }
 
     fn assert_proposal(&self, id: u32) -> Proposal {
