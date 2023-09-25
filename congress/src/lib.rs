@@ -498,6 +498,26 @@ mod unit_tests {
     }
 
     #[test]
-    fn test_proposal_execution() {
+    fn test_proposal_execution_text() {
+    }
+
+    #[test]
+    fn test_proposal_execution_funding_req() {
+    }
+
+    #[test]
+    fn test_proposal_execution_rec_funding_req() {
+    }
+
+    #[test]
+    #[should_panic(expected = "dao term is over, call dissolve_hook!")]
+    fn test_dao_dissolve_time() {
+        let (mut ctx, mut contract, id) = setup_ctr();
+        ctx.block_timestamp = (contract.end_time + 1) * MSECOND;
+        testing_env!(ctx);
+
+        match contract.vote(id, Vote::Approve) {
+            x => panic!("{:?}", x),
+        }
     }
 }
