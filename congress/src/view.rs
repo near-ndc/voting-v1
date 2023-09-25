@@ -27,10 +27,6 @@ pub struct MembersOutput {
 
 #[near_bindgen]
 impl Contract {
-    pub(crate) fn _proposal(&self, prop_id: u32) -> Proposal {
-        self.proposals.get(&prop_id).expect("proposal not found")
-    }
-
     /**********
      * QUERIES
      **********/
