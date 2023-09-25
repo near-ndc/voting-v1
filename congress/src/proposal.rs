@@ -151,8 +151,8 @@ pub enum PropPerm {
 }
 
 /// Permissions for calling hooks
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq)]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Clone, Debug))]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq, Clone)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
 #[serde(crate = "near_sdk::serde")]
 pub enum HookPerm {
     Veto,

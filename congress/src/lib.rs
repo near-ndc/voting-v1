@@ -352,7 +352,7 @@ impl Contract {
         }
         // TODO: make correct calculation.
         // Need to check if recurrent budget can start immeidately or from the next month.
-        (now - self.end_time) / 30 / 24 / 3600 / 1000
+        (self.end_time - now) / 30 / 24 / 3600 / 1000
     }
 
     #[private]
