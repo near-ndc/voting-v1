@@ -312,6 +312,7 @@ impl Contract {
     fn dissolve_and_cleanup(&mut self) {
         self.dissolved = true;
         emit_dissolve();
+        // we leave 10B extra storage
         let required_deposit = (env::storage_usage() + 10) as u128 * env::storage_byte_cost();
         let diff = env::account_balance() - required_deposit;
         if diff > 0 {
