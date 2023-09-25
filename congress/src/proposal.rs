@@ -107,6 +107,7 @@ impl PropKind {
 
 #[derive(BorshSerialize, BorshDeserialize, Serialize)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Clone, Debug))]
+#[cfg_attr(test, derive(PartialEq))]
 #[serde(crate = "near_sdk::serde")]
 pub enum ProposalStatus {
     InProgress,

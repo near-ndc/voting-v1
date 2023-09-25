@@ -20,7 +20,7 @@ pub fn finalize_storage_check(
             required_deposit
         ));
     }
-    let diff = required_deposit - storage_deposit;
+    let diff = storage_deposit - required_deposit;
     if diff > 0 {
         Promise::new(user).transfer(diff);
     }

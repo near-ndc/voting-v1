@@ -330,7 +330,7 @@ impl Contract {
     fn assert_active(&self) {
         near_sdk::require!(!self.dissolved, "dao is dissolved");
         near_sdk::require!(
-            !self.end_time <= env::block_timestamp_ms(),
+            self.end_time > env::block_timestamp_ms(),
             "dao term is over, call dissolve_hook!"
         );
     }
@@ -379,10 +379,10 @@ impl Contract {
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod unit_tests {
     use near_sdk::{
-        test_utils::{self, VMContextBuilder},
-        testing_env, Gas, VMContext,
+        test_utils::{VMContextBuilder},
+        testing_env, VMContext,
     };
-    use serde_json::Value;
+    use near_units::parse_near;
 
     use crate::*;
 
@@ -390,7 +390,7 @@ mod unit_tests {
     const MSECOND: u64 = 1_000_000;
     const START: u64 = 10;
     // 5 Min in milliseconds
-    const FIVE_MIN: u64 = 60 * 60 * 5 * 1000;
+    const FIVE_MIN: u64 = 60 * 5 * 1000;
 
     fn acc(idx: u8) -> AccountId {
         AccountId::new_unchecked(format!("user-{}.near", idx))
@@ -409,8 +409,8 @@ mod unit_tests {
     }
 
     fn setup_ctr() -> (VMContext, Contract, u32) {
-        let mut context = VMContextBuilder::new();
-        let start_time = env::block_timestamp_ms();
+        let mut context = VMContextBuilder::new().build();
+        let start_time = FIVE_MIN;
         let end_time = start_time + FIVE_MIN;
         let mut hash_map = HashMap::new();
         hash_map.insert(coa(), vec![HookPerm::Veto]);
@@ -428,15 +428,22 @@ mod unit_tests {
             U128(10000),
             U128(100000)
         );
-        testing_env!(context.predecessor_account_id(acc(1)).build());
+        context.block_timestamp = start_time * MSECOND;
+        context.predecessor_account_id = acc(1);
+        context.attached_deposit = parse_near!("1 N");
+        testing_env!(context.clone());
 
         let id = contract.create_proposal(PropKind::Text, "Proposal unit test 1".to_string()).unwrap();
-        (context.build(), contract, id)
+        (context, contract, id)
     }
 
     #[test]
     fn test_basics() {
         let (ctx, contract, id) = setup_ctr();
+        let prop = contract.get_proposal(id);
+        assert!(prop.is_some());
+        assert_eq!(prop.unwrap().proposal.status, ProposalStatus::InProgress);
+
         
     }
 }
