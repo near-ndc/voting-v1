@@ -72,7 +72,9 @@ impl Contract {
         budget_cap: U128,
         big_budget_balance: U128,
     ) -> Self {
-        require!(members.len() < 100);
+        // we can support up to 255 with the limitation of the proposal type, but setting 100
+        // here because this is more than enough for what we need to test for Congress.
+        require!(members.len() <= 100, "max amount of members is 100");
         let threshold = (members.len() / 2) as u8 + 1;
         members.sort();
         Self {
@@ -160,7 +162,8 @@ impl Contract {
         self.prop_counter
     }
 
-    // TODO: add immediate execution
+    // TODO: add immediate execution. Note cana be automatically executed only when
+    // contract.cooldown == 0
     #[handle_result]
     pub fn vote(&mut self, id: u32, vote: Vote) -> Result<(), VoteError> {
         self.assert_active();
@@ -172,7 +175,7 @@ impl Contract {
         if !matches!(prop.status, ProposalStatus::InProgress) {
             return Err(VoteError::NotInProgress);
         }
-        if prop.submission_time + self.voting_duration >= env::block_timestamp_ms() {
+        if env::block_timestamp_ms() < prop.submission_time + self.voting_duration {
             return Err(VoteError::NotActive);
         }
         prop.add_vote(user, vote, self.threshold)?;
@@ -181,20 +184,23 @@ impl Contract {
         Ok(())
     }
 
-    pub fn execute(&mut self, id: u32) -> PromiseOrValue<()> {
+    /// Allows anyone to execute proposal.
+    /// If `contract.cooldown` is set, then a proposal can be only executed after the cooldown:
+    /// (submission_time + voting_duration + cooldown).
+    #[handle_result]
+    pub fn execute(&mut self, id: u32) -> Result<PromiseOrValue<()>, ExecError> {
         self.assert_active();
         let mut prop = self.assert_proposal(id);
-        require!(matches!(
+        if !matches!(
             prop.status,
             // if the previous proposal execution failed, we should be able to re-execute it
             ProposalStatus::Approved | ProposalStatus::Failed
-        ));
+        ) {
+            return Err(ExecError::NotApproved);
+        }
         let now = env::block_timestamp_ms();
-        if self.cooldown > 0 {
-            require!(
-                prop.submission_time + self.voting_duration + self.cooldown > now,
-                "can be executed only after cooldown"
-            );
+        if self.cooldown > 0 && now <= prop.submission_time + self.voting_duration + self.cooldown {
+            return Err(ExecError::ExecTime);
         }
 
         prop.status = ProposalStatus::Executed;
@@ -224,7 +230,9 @@ impl Contract {
         };
         if budget != 0 {
             self.budget_spent += budget;
-            require!(self.budget_spent <= self.budget_cap, "budget cap overflow")
+            if self.budget_spent > self.budget_cap {
+                return Err(ExecError::BudgetOverflow);
+            }
         }
         self.proposals.insert(&id, &prop);
 
@@ -238,7 +246,7 @@ impl Contract {
                 .into(),
             _ => result,
         };
-        result
+        Ok(result)
     }
 
     /// Veto proposal hook

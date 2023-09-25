@@ -20,7 +20,9 @@ pub struct Proposal {
     pub kind: PropKind,
     /// Current status of the proposal.
     pub status: ProposalStatus,
+    /// Sum of approval votes. Note: contract assumes that max amount of members is 255
     pub approve: u8,
+    /// Sum of rejection votes. Note: contract assumes that max amount of members is 255
     pub reject: u8,
     /// Map of who voted and how.
     pub votes: HashMap<AccountId, Vote>,
