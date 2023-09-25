@@ -260,7 +260,7 @@ impl Contract {
     /// Dissolve and finalize the DAO. Will send the excess account funds back to the community
     /// fund. If the term is over can be called by anyone.
     pub fn dissolve_hook(&mut self) {
-        // only check permition if the DAO term is not over.
+        // only check permission if the DAO term is not over.
         if env::block_timestamp_ms() <= self.end_time {
             self.assert_hook_perm(&env::predecessor_account_id(), &HookPerm::Dissolve);
         }
