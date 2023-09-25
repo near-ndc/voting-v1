@@ -4,7 +4,6 @@ use common::finalize_storage_check;
 use events::*;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap};
-use near_sdk::env::panic_str;
 use near_sdk::json_types::U128;
 use near_sdk::{
     env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseOrValue,
@@ -109,33 +108,37 @@ impl Contract {
     /// possible votes (2*self.threshold - 1).
     /// NOTE: storage is paid from the account state
     #[payable]
-    pub fn create_proposal(&mut self, kind: PropKind, description: String) -> u32 {
+    #[handle_result]
+    pub fn create_proposal(
+        &mut self,
+        kind: PropKind,
+        description: String,
+    ) -> Result<u32, CreatePropError> {
         self.assert_active();
         let storage_start = env::storage_usage();
         let user = env::predecessor_account_id();
         let (members, perms) = self.members.get().unwrap();
-        require!(members.binary_search(&user).is_ok(), "not a member");
-        require!(
-            perms.contains(&kind.required_perm()),
-            "proposal kind not allowed"
-        );
+        if members.binary_search(&user).is_err() {
+            return Err(CreatePropError::NotAuthorized);
+        }
+        if !perms.contains(&kind.required_perm()) {
+            return Err(CreatePropError::KindNotAllowed);
+        }
 
         let now = env::block_timestamp_ms();
+        let mut new_budget = 0;
         match kind {
             PropKind::FundingRequest(b) => {
-                require!(
-                    self.budget_spent + b < self.budget_cap,
-                    "budget cap overflow"
-                )
+                new_budget = self.budget_spent + b;
             }
             PropKind::RecurrentFundingRequest(b) => {
-                require!(
-                    self.budget_spent + b * (self.remaining_months(now) as u128) < self.budget_cap,
-                    "budget cap overflow"
-                )
+                new_budget = self.budget_spent + b * (self.remaining_months(now) as u128);
             }
             _ => (),
         };
+        if new_budget > self.budget_cap {
+            return Err(CreatePropError::BudgetOverflow);
+        }
 
         self.prop_counter += 1;
         emit_prop_created(self.prop_counter, &kind);
@@ -156,10 +159,10 @@ impl Contract {
         // max amount of votes is threshold + threshold-1.
         let extra_storage = VOTE_STORAGE * (2 * self.threshold - 1) as u64;
         if let Err(reason) = finalize_storage_check(storage_start, extra_storage, user) {
-            panic_str(&reason);
+            return Err(CreatePropError::Storage(reason));
         }
 
-        self.prop_counter
+        Ok(self.prop_counter)
     }
 
     // TODO: add immediate execution. Note cana be automatically executed only when
@@ -169,7 +172,9 @@ impl Contract {
         self.assert_active();
         let user = env::predecessor_account_id();
         let (members, _) = self.members.get().unwrap();
-        require!(members.binary_search(&user).is_ok(), "not a member");
+        if members.binary_search(&user).is_err() {
+            return Err(VoteError::NotAuthorized);
+        }
         let mut prop = self.assert_proposal(id);
 
         if !matches!(prop.status, ProposalStatus::InProgress) {

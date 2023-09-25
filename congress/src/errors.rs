@@ -5,6 +5,7 @@ use thiserror::Error;
 
 #[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq, Debug))]
 pub enum VoteError {
+    NotAuthorized,
     DoubleVote,
     NoProp,
     NotInProgress,
@@ -14,6 +15,7 @@ pub enum VoteError {
 impl FunctionError for VoteError {
     fn panic(&self) -> ! {
         match self {
+            VoteError::NotAuthorized => panic_str("not authorized"),
             VoteError::DoubleVote => panic_str("user already voted"),
             VoteError::NoProp => panic_str("proposal not found"),
             VoteError::NotInProgress => panic_str("proposal not in progress"),
@@ -37,6 +39,25 @@ impl FunctionError for ExecError {
                 panic_str("can execute only approved or re-execute failed proposals")
             }
             ExecError::BudgetOverflow => panic_str("budget cap overflow"),
+        }
+    }
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq, Debug))]
+pub enum CreatePropError {
+    BudgetOverflow,
+    NotAuthorized,
+    KindNotAllowed,
+    Storage(String),
+}
+
+impl FunctionError for CreatePropError {
+    fn panic(&self) -> ! {
+        match self {
+            CreatePropError::BudgetOverflow => panic_str("budget cap overflow"),
+            CreatePropError::NotAuthorized => panic_str("not authorized"),
+            CreatePropError::KindNotAllowed => panic_str("proposal kind not allowed"),
+            CreatePropError::Storage(reason) => panic_str(&reason),
         }
     }
 }
