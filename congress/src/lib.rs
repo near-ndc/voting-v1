@@ -677,8 +677,4 @@ mod unit_tests {
 
         assert!(contract.dissolved);
     }
-
-    #[test]
-    fn test_on_execute() {
-    }
 }
