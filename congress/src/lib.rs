@@ -28,6 +28,9 @@ use crate::storage::*;
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
+    /// address of the community fund, where the excess of NEAR will be sent on dissolve and cleanup.
+    pub community_fund: AccountId,
+
     pub dissolved: bool,
     pub prop_counter: u32,
     pub proposals: LookupMap<u32, Proposal>,
@@ -36,13 +39,13 @@ pub struct Contract {
     // We can use single object rather than LookupMap because the maximum amount of members
     // is 17 (for HoM: 15 + 2)
     pub members: LazyOption<(Vec<AccountId>, Vec<PropPerm>)>,
-    // minimum amount of members to approve the proposal
+    /// minimum amount of members to approve the proposal
     pub threshold: u8,
 
     /// Map of accounts authorized to call hooks.
     pub hook_auth: LazyOption<HashMap<AccountId, Vec<HookPerm>>>,
 
-    // all times below are in miliseconds
+    /// all times below are in miliseconds
     pub start_time: u64,
     pub end_time: u64,
     pub cooldown: u64,
@@ -58,6 +61,7 @@ impl Contract {
     #[init]
     /// * hook_auth : map of accounts authorized to call hooks
     pub fn new(
+        community_fund: AccountId,
         start_time: u64,
         end_time: u64,
         cooldown: u64,
@@ -72,6 +76,7 @@ impl Contract {
         let threshold = (members.len() / 2) as u8 + 1;
         members.sort();
         Self {
+            community_fund,
             dissolved: false,
             prop_counter: 0,
             proposals: LookupMap::new(StorageKey::Proposals),
@@ -103,7 +108,7 @@ impl Contract {
     /// NOTE: storage is paid from the account state
     #[payable]
     pub fn create_proposal(&mut self, kind: PropKind, description: String) -> u32 {
-        self.assert_not_dissolved();
+        self.assert_active();
         let storage_start = env::storage_usage();
         let user = env::predecessor_account_id();
         let (members, perms) = self.members.get().unwrap();
@@ -157,7 +162,7 @@ impl Contract {
 
     // TODO: add immediate execution
     pub fn vote(&mut self, id: u32, vote: Vote) {
-        self.assert_not_dissolved();
+        self.assert_active();
         let user = env::predecessor_account_id();
         let (members, _) = self.members.get().unwrap();
         require!(members.binary_search(&user).is_ok(), "not a member");
@@ -173,7 +178,7 @@ impl Contract {
     }
 
     pub fn execute(&mut self, id: u32) -> PromiseOrValue<()> {
-        self.assert_not_dissolved();
+        self.assert_active();
         let mut prop = self.assert_proposal(id);
         require!(matches!(
             prop.status,
@@ -235,7 +240,7 @@ impl Contract {
     /// Removes proposal
     /// * `id`: proposal id
     pub fn veto_hook(&mut self, id: u32) {
-        self.assert_not_dissolved();
+        self.assert_active();
         self.assert_hook_perm(&env::predecessor_account_id(), &HookPerm::Veto);
         let proposal = self.assert_proposal(id);
         // TODO: check cooldown. Cooldown finishes at
@@ -252,14 +257,18 @@ impl Contract {
         emit_veto(id);
     }
 
+    /// Dissolve and finalize the DAO. Will send the excess account funds back to the community
+    /// fund. If the term is over can be called by anyone.
     pub fn dissolve_hook(&mut self) {
-        self.assert_hook_perm(&env::predecessor_account_id(), &HookPerm::Dissolve);
-        self.dissolved = true;
-        emit_dissolve();
+        // only check permission if the DAO term is not over.
+        if env::block_timestamp_ms() <= self.end_time {
+            self.assert_hook_perm(&env::predecessor_account_id(), &HookPerm::Dissolve);
+        }
+        self.dissolve_and_cleanup();
     }
 
     pub fn dismiss_hook(&mut self, member: AccountId) {
-        self.assert_not_dissolved();
+        self.assert_active();
         self.assert_hook_perm(&env::predecessor_account_id(), &HookPerm::Dismiss);
         let (mut members, perms) = self.members.get().unwrap();
         let idx = members.binary_search(&member);
@@ -269,8 +278,7 @@ impl Contract {
         emit_dismiss(&member);
         // If DAO doesn't have required threshold, then we dissolve.
         if members.len() < self.threshold as usize {
-            self.dissolved = true;
-            emit_dissolve();
+            self.dissolve_and_cleanup();
         }
 
         self.members.set(&(members, perms));
@@ -293,8 +301,23 @@ impl Contract {
         self.proposals.get(&id).expect("proposal does not exist")
     }
 
-    fn assert_not_dissolved(&self) {
+    fn assert_active(&self) {
         require!(!self.dissolved, "dao is dissolved");
+        require!(
+            !self.end_time <= env::block_timestamp_ms(),
+            "dao term is over, call dissolve_hook!"
+        );
+    }
+
+    fn dissolve_and_cleanup(&mut self) {
+        self.dissolved = true;
+        emit_dissolve();
+        // we leave 10B extra storage
+        let required_deposit = (env::storage_usage() + 10) as u128 * env::storage_byte_cost();
+        let diff = env::account_balance() - required_deposit;
+        if diff > 0 {
+            Promise::new(self.community_fund.clone()).transfer(diff);
+        }
     }
 
     fn remaining_months(&self, now: u64) -> u64 {

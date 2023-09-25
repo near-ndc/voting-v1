@@ -3,7 +3,7 @@ mod events;
 pub use events::*;
 use near_sdk::{env, AccountId, Promise};
 
-/// checks if there was enough storage depoist provided, and returns the excess of the deposit
+/// checks if there was enough storage deposit provided, and returns the excess of the deposit
 /// back to the user.
 /// * `storage_extra`: extra storage which should be credited for future operations.
 pub fn finalize_storage_check(
