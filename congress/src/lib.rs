@@ -165,7 +165,7 @@ impl Contract {
         Ok(self.prop_counter)
     }
 
-    // TODO: add immediate execution. Note cana be automatically executed only when
+    // TODO: add immediate execution. Note can be automatically executed only when
     // contract.cooldown == 0
     #[handle_result]
     pub fn vote(&mut self, id: u32, vote: Vote) -> Result<(), VoteError> {
