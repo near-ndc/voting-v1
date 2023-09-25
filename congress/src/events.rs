@@ -28,6 +28,13 @@ pub(crate) fn emit_vote(prop_id: u32) {
     });
 }
 
+pub(crate) fn emit_executed(prop_id: u32) {
+    emit_event(EventPayload {
+        event: "execute",
+        data: json!({ "prop_id": prop_id }),
+    });
+}
+
 pub(crate) fn emit_veto(prop_id: u32) {
     emit_event(EventPayload {
         event: "veto",

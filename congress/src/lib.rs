@@ -344,6 +344,7 @@ impl Contract {
                 self.budget_spent -= budget.0;
                 prop.status = ProposalStatus::Failed;
                 self.proposals.insert(&prop_id, &prop);
+                emit_executed(prop_id);
             }
         };
     }
