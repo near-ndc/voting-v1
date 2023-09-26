@@ -500,7 +500,7 @@ mod unit_tests {
         match contract.execute(id) {
             Err(ExecError::NotApproved) => (),
             Ok(_) => panic!("expected NotApproved, got: OK"),
-            _ => panic!("expected OK or error"),
+            Err(err) => panic!("expected NotApproved got: {}", err),
         }
         contract = vote(ctx.clone(), contract, [acc(1), acc(2), acc(3)].to_vec(), id);
 
@@ -594,8 +594,6 @@ mod unit_tests {
     fn test_veto_hook() {
         let (mut ctx, mut contract, id) = setup_ctr();
 
-        ctx.predecessor_account_id = acc(2);
-        testing_env!(ctx.clone());
 
         match contract.veto_hook(id) {
             Err(HookError::NotAuthorized) => (),
@@ -619,9 +617,6 @@ mod unit_tests {
     #[should_panic(expected = "dao is dissolved")]
     fn test_dissolve_hook() {
         let (mut ctx, mut contract, _) = setup_ctr();
-
-        ctx.predecessor_account_id = acc(2);
-        testing_env!(ctx.clone());
 
         match contract.dissolve_hook() {
             Err(HookError::NotAuthorized) => (),
@@ -649,9 +644,6 @@ mod unit_tests {
     #[test]
     fn test_dismiss_hook() {
         let (mut ctx, mut contract, _) = setup_ctr();
-
-        ctx.predecessor_account_id = acc(2);
-        testing_env!(ctx.clone());
 
         match contract.dismiss_hook(acc(2)) {
             Err(HookError::NotAuthorized) => (),
