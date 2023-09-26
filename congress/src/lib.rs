@@ -1,3 +1,4 @@
+use std::cmp::min;
 use std::collections::HashMap;
 
 use common::finalize_storage_check;
@@ -153,6 +154,7 @@ impl Contract {
                 reject: 0,
                 votes: HashMap::new(),
                 submission_time: now,
+                proposal_pass_time: None,
             },
         );
 
@@ -165,8 +167,6 @@ impl Contract {
         Ok(self.prop_counter)
     }
 
-    // TODO: add immediate execution. Note can be automatically executed only when
-    // contract.cooldown == 0
     #[handle_result]
     pub fn vote(&mut self, id: u32, vote: Vote) -> Result<(), VoteError> {
         self.assert_active();
@@ -184,6 +184,15 @@ impl Contract {
             return Err(VoteError::NotActive);
         }
         prop.add_vote(user, vote, self.threshold)?;
+
+        if prop.status == ProposalStatus::Approved && self.cooldown == 0 {
+            let res = self.execute(id);
+            // skip execution if error
+            if res.is_ok() {
+                prop.status = ProposalStatus::Executed;
+            }   
+        }
+
         self.proposals.insert(&id, &prop);
         emit_vote(id);
         Ok(())
@@ -262,11 +271,16 @@ impl Contract {
         self.assert_active();
         self.assert_hook_perm(&env::predecessor_account_id(), &HookPerm::Veto)?;
         let proposal = self.assert_proposal(id);
-        // TODO: check cooldown. Cooldown finishes at
-        // min(proposal.start+self.voting_duration, time when proposal passed) + self.cooldown
 
         match proposal.status {
             ProposalStatus::InProgress | ProposalStatus::Failed => {
+                self.proposals.remove(&id);
+            }
+            ProposalStatus::Approved => {
+                let cooldown = min(proposal.submission_time + self.voting_duration, proposal.proposal_pass_time.unwrap()) + self.cooldown; 
+                if cooldown < env::block_timestamp_ms() {
+                    panic!("Proposal finalized");
+                }
                 self.proposals.remove(&id);
             }
             _ => {
@@ -351,7 +365,7 @@ impl Contract {
             return 0;
         }
         // TODO: make correct calculation.
-        // Need to check if recurrent budget can start immeidately or from the next month.
+        // Need to check if recurrent budget can start immediately or from the next month.
         (self.end_time - now) / 30 / 24 / 3600 / 1000
     }
 
