@@ -567,7 +567,7 @@ mod unit_tests {
         contract.end_time = contract.start_time + FIVE_MIN*12*24*61;
 
         ctx.block_timestamp = (contract.start_time + contract.cooldown + contract.voting_duration + 1) * MSECOND;
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
 
         assert_eq!(contract.budget_spent, 0);
 
