@@ -563,8 +563,11 @@ mod unit_tests {
         let id = contract.create_proposal(PropKind::RecurrentFundingRequest(10u128), "Rec Funding req".to_owned()).unwrap();
         contract = vote(ctx.clone(), contract, [acc(1), acc(2), acc(3)].to_vec(), id);
 
+        // update to more than two months
+        contract.end_time = contract.start_time + FIVE_MIN*12*24*61;
+
         ctx.block_timestamp = (contract.start_time + contract.cooldown + contract.voting_duration + 1) * MSECOND;
-        testing_env!(ctx);
+        testing_env!(ctx.clone());
 
         assert_eq!(contract.budget_spent, 0);
 
@@ -573,8 +576,8 @@ mod unit_tests {
             Err(x) => panic!("expected OK, got: {:?}", x),
         }
 
-        // TODO: check remaining_months
-        assert_eq!(contract.budget_spent, 0);
+        // budget spent * remaining months
+        assert_eq!(contract.budget_spent, 20);
     }
 
     #[test]
@@ -669,6 +672,7 @@ mod unit_tests {
 
         assert_eq!(contract.member_permissions(acc(2)), vec![]);
 
+        assert!(!contract.dissolved);
         // Remove more members to check dissolve
         match contract.dismiss_hook(acc(1)) {
             Ok(_) => (),
