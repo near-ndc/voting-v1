@@ -205,7 +205,7 @@ impl Contract {
         }
         let now = env::block_timestamp_ms();
         if self.cooldown > 0 && now <= prop.submission_time + self.voting_duration + self.cooldown {
-            return Err(ExecError::NotInExecutionTime);
+            return Err(ExecError::ExecTime);
         }
 
         prop.status = ProposalStatus::Executed;
@@ -382,7 +382,6 @@ mod unit_tests {
         test_utils::{VMContextBuilder, get_logs},
         testing_env, VMContext,
     };
-    use near_units::parse_near;
 
     use crate::*;
 
@@ -408,7 +407,7 @@ mod unit_tests {
         AccountId::new_unchecked("coa.near".to_string())
     }
 
-    fn setup_ctr() -> (VMContext, Contract, u32) {
+    fn setup_ctr(attach_deposit: u128) -> (VMContext, Contract, u32) {
         let mut context = VMContextBuilder::new().build();
         let start_time = FIVE_MIN;
         let end_time = start_time + 3*FIVE_MIN;
@@ -430,7 +429,7 @@ mod unit_tests {
         );
         context.block_timestamp = start_time * MSECOND;
         context.predecessor_account_id = acc(1);
-        context.attached_deposit = parse_near!("1 N");
+        context.attached_deposit = attach_deposit * MILI_NEAR;
         testing_env!(context.clone());
 
         let id = contract.create_proposal(PropKind::Text, "Proposal unit test 1".to_string()).unwrap();
@@ -448,8 +447,8 @@ mod unit_tests {
     }
 
     #[test]
-    fn test_basic_flow() {
-        let (mut ctx, mut contract, id) = setup_ctr();
+    fn basic_flow() {
+        let (mut ctx, mut contract, id) = setup_ctr(100);
         let mut prop = contract.get_proposal(id);
         assert!(prop.is_some());
         assert_eq!(prop.unwrap().proposal.status, ProposalStatus::InProgress);
@@ -461,16 +460,14 @@ mod unit_tests {
         assert_eq!(prop.unwrap().proposal.status, ProposalStatus::Approved);
 
         ctx.predecessor_account_id = acc(4);
-        testing_env!(ctx);
+        testing_env!(ctx.clone());
         match contract.vote(id, Vote::Approve) {
             Err(VoteError::NotInProgress) => (),
             x => panic!("expected NotInProgress, got: {:?}", x),
         }
-    }
+        //let (mut ctx, mut contract, id) = setup_ctr(100);
+        let id = contract.create_proposal(PropKind::Text, "proposal".to_owned()).unwrap();
 
-    #[test]
-    fn test_vote_errors() {
-        let (mut ctx, mut contract, id) = setup_ctr();
         let res = contract.vote(id, Vote::Approve);
         assert!(res.is_ok());
 
@@ -495,8 +492,8 @@ mod unit_tests {
     }
 
     #[test]
-    fn test_proposal_execution_text() {
-        let (mut ctx, mut contract, id) = setup_ctr();
+    fn proposal_execution_text() {
+        let (mut ctx, mut contract, id) = setup_ctr(100);
         match contract.execute(id) {
             Err(ExecError::NotApproved) => (),
             Ok(_) => panic!("expected NotApproved, got: OK"),
@@ -508,9 +505,9 @@ mod unit_tests {
         assert_eq!(prop.proposal.status, ProposalStatus::Approved);
 
         match contract.execute(id) {
-            Err(ExecError::NotInExecutionTime) => (),
-            Ok(_) => panic!("expected NotInExecutionTime, got: OK"),
-            Err(err) => panic!("expected NotInExecutionTime got: {:?}", err),
+            Err(ExecError::ExecTime) => (),
+            Ok(_) => panic!("expected ExecTime, got: OK"),
+            Err(err) => panic!("expected ExecTime got: {:?}", err),
         }
 
         ctx.block_timestamp = (contract.start_time + contract.cooldown + contract.voting_duration + 1) * MSECOND;
@@ -526,8 +523,8 @@ mod unit_tests {
     }
 
     #[test]
-    fn test_proposal_execution_funding_req() {
-        let (mut ctx, mut contract,_) = setup_ctr();
+    fn proposal_execution_funding_req() {
+        let (mut ctx, mut contract,_) = setup_ctr(100);
 
         let id = contract.create_proposal(PropKind::FundingRequest(1000u128), "Funding req".to_owned()).unwrap();
         contract = vote(ctx.clone(), contract, [acc(1), acc(2), acc(3)].to_vec(), id);
@@ -551,8 +548,8 @@ mod unit_tests {
     }
 
     #[test]
-    fn test_proposal_execution_rec_funding_req() {
-        let (mut ctx, mut contract,_) = setup_ctr();
+    fn proposal_execution_rec_funding_req() {
+        let (mut ctx, mut contract,_) = setup_ctr(100);
 
         let id = contract.create_proposal(PropKind::RecurrentFundingRequest(10u128), "Rec Funding req".to_owned()).unwrap();
         contract = vote(ctx.clone(), contract, [acc(1), acc(2), acc(3)].to_vec(), id);
@@ -577,8 +574,8 @@ mod unit_tests {
 
     #[test]
     #[should_panic(expected = "dao term is over, call dissolve_hook!")]
-    fn test_dao_dissolve_time() {
-        let (mut ctx, mut contract, id) = setup_ctr();
+    fn dao_dissolve_time() {
+        let (mut ctx, mut contract, id) = setup_ctr(100);
         ctx.block_timestamp = (contract.end_time + 1) * MSECOND;
         testing_env!(ctx);
 
@@ -586,8 +583,8 @@ mod unit_tests {
     }
 
     #[test]
-    fn test_veto_hook() {
-        let (mut ctx, mut contract, id) = setup_ctr();
+    fn veto_hook() {
+        let (mut ctx, mut contract, id) = setup_ctr(100);
         match contract.veto_hook(id) {
             Err(HookError::NotAuthorized) => (),
             x => panic!("expected NotAuthorized, got: {:?}", x),
@@ -608,8 +605,8 @@ mod unit_tests {
 
     #[test]
     #[should_panic(expected = "dao is dissolved")]
-    fn test_dissolve_hook() {
-        let (mut ctx, mut contract, _) = setup_ctr();
+    fn dissolve_hook() {
+        let (mut ctx, mut contract, _) = setup_ctr(100);
 
         match contract.dissolve_hook() {
             Err(HookError::NotAuthorized) => (),
@@ -632,8 +629,8 @@ mod unit_tests {
     }
 
     #[test]
-    fn test_dismiss_hook() {
-        let (mut ctx, mut contract, _) = setup_ctr();
+    fn dismiss_hook() {
+        let (mut ctx, mut contract, _) = setup_ctr(100);
 
         match contract.dismiss_hook(acc(2)) {
             Err(HookError::NotAuthorized) => (),

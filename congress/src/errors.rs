@@ -24,7 +24,7 @@ impl FunctionError for VoteError {
 
 #[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq, Debug))]
 pub enum ExecError {
-    NotInExecutionTime,
+    ExecTime,
     NotApproved,
     BudgetOverflow,
 }
@@ -32,7 +32,7 @@ pub enum ExecError {
 impl FunctionError for ExecError {
     fn panic(&self) -> ! {
         match self {
-            ExecError::NotInExecutionTime => panic_str("can only be executed after cooldown"),
+            ExecError::ExecTime => panic_str("can only be executed after cooldown"),
             ExecError::NotApproved => {
                 panic_str("can execute only approved or re-execute failed proposals")
             }
