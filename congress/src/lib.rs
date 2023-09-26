@@ -500,7 +500,7 @@ mod unit_tests {
         match contract.execute(id) {
             Err(ExecError::NotApproved) => (),
             Ok(_) => panic!("expected NotApproved, got: OK"),
-            Err(err) => panic!("expected NotApproved got: {}", err),
+            Err(err) => panic!("expected NotApproved got: {:?}", err),
         }
         contract = vote(ctx.clone(), contract, [acc(1), acc(2), acc(3)].to_vec(), id);
 
@@ -511,7 +511,7 @@ mod unit_tests {
         match contract.execute(id) {
             Err(ExecError::ExecTime) => (),
             Ok(_) => panic!("expected ExecTime, got: OK"),
-            _ => panic!("expected OK or error"),
+            Err(err) => panic!("expected NotApproved got: {:?}", err),
         }
 
         ctx.block_timestamp = (contract.start_time + contract.cooldown + contract.voting_duration + 1) * MSECOND;
@@ -567,6 +567,7 @@ mod unit_tests {
         ctx.block_timestamp = (contract.start_time + contract.cooldown + contract.voting_duration + 1) * MSECOND;
         testing_env!(ctx);
 
+        // proposal isn't executed so budget spent is 0
         assert_eq!(contract.budget_spent, 0);
 
         match contract.execute(id) {
@@ -585,9 +586,7 @@ mod unit_tests {
         ctx.block_timestamp = (contract.end_time + 1) * MSECOND;
         testing_env!(ctx);
 
-        match contract.vote(id, Vote::Approve) {
-            x => panic!("{:?}", x),
-        }
+        contract.vote(id, Vote::Approve).unwrap();
     }
 
     #[test]
@@ -635,10 +634,7 @@ mod unit_tests {
 
         assert!(contract.dissolved);
 
-        let res = contract.create_proposal(PropKind::FundingRequest(10000u128), "Funding req".to_owned());
-        match res {
-            x => panic!("{:?}", x),
-        }
+        contract.create_proposal(PropKind::FundingRequest(10000u128), "Funding req".to_owned()).unwrap();
     }
 
     #[test]
