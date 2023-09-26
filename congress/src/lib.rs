@@ -330,7 +330,7 @@ impl Contract {
     fn assert_active(&self) {
         near_sdk::require!(!self.dissolved, "dao is dissolved");
         near_sdk::require!(
-            self.end_time > env::block_timestamp_ms(),
+            env::block_timestamp_ms() < self.end_time,
             "dao term is over, call dissolve_hook!"
         );
     }
@@ -471,8 +471,6 @@ mod unit_tests {
     #[test]
     fn test_vote_errors() {
         let (mut ctx, mut contract, id) = setup_ctr();
-        ctx.predecessor_account_id = acc(1);
-        testing_env!(ctx.clone());
         let res = contract.vote(id, Vote::Approve);
         assert!(res.is_ok());
 
