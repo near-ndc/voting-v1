@@ -9,7 +9,6 @@ use crate::VoteError;
 
 /// Proposal that are sent to this DAO.
 #[derive(BorshSerialize, BorshDeserialize, Serialize)]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Clone, Debug))]
 #[serde(crate = "near_sdk::serde")]
 pub struct Proposal {
     /// Original proposer.
@@ -61,7 +60,6 @@ impl Proposal {
 
 /// Kinds of proposals, doing different action.
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Clone, Debug))]
 #[serde(crate = "near_sdk::serde")]
 pub enum PropKind {
     /// Calls `receiver_id` with list of method names in a single promise.
@@ -106,8 +104,7 @@ impl PropKind {
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Serialize)]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Clone, Debug))]
-#[cfg_attr(test, derive(PartialEq))]
+#[cfg_attr(test, derive(PartialEq, Debug))]
 #[serde(crate = "near_sdk::serde")]
 pub enum ProposalStatus {
     InProgress,
@@ -131,7 +128,6 @@ pub enum Vote {
 
 /// Function call arguments.
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Clone, Debug))]
 #[serde(crate = "near_sdk::serde")]
 pub struct ActionCall {
     pub method_name: String,
@@ -142,7 +138,7 @@ pub struct ActionCall {
 
 /// Permissions for creating proposals. See PropposalKind for more information.
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq)]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Clone, Debug))]
+#[cfg_attr(test, derive(Debug))]
 #[serde(crate = "near_sdk::serde")]
 pub enum PropPerm {
     FunctionCall,
