@@ -205,7 +205,7 @@ impl Contract {
         }
         let now = env::block_timestamp_ms();
         if self.cooldown > 0 && now <= prop.submission_time + self.voting_duration + self.cooldown {
-            return Err(ExecError::ExecTime);
+            return Err(ExecError::NotInExecutionTime);
         }
 
         prop.status = ProposalStatus::Executed;
@@ -509,8 +509,8 @@ mod unit_tests {
         assert_eq!(prop.unwrap().proposal.status, ProposalStatus::Approved);
 
         match contract.execute(id) {
-            Err(ExecError::ExecTime) => (),
-            Ok(_) => panic!("expected ExecTime, got: OK"),
+            Err(ExecError::NotInExecutionTime) => (),
+            Ok(_) => panic!("expected NotInExecutionTime, got: OK"),
             Err(err) => panic!("expected NotApproved got: {:?}", err),
         }
 
