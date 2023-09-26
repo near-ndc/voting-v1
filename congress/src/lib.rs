@@ -330,7 +330,7 @@ impl Contract {
     fn assert_active(&self) {
         near_sdk::require!(!self.dissolved, "dao is dissolved");
         near_sdk::require!(
-            env::block_timestamp_ms() < self.end_time,
+            env::block_timestamp_ms() <= self.end_time,
             "dao term is over, call dissolve_hook!"
         );
     }
@@ -504,14 +504,13 @@ mod unit_tests {
         }
         contract = vote(ctx.clone(), contract, [acc(1), acc(2), acc(3)].to_vec(), id);
 
-        let mut prop = contract.get_proposal(id);
-        assert!(prop.is_some());
-        assert_eq!(prop.unwrap().proposal.status, ProposalStatus::Approved);
+        let mut prop = contract.get_proposal(id).unwrap();
+        assert_eq!(prop.proposal.status, ProposalStatus::Approved);
 
         match contract.execute(id) {
             Err(ExecError::NotInExecutionTime) => (),
             Ok(_) => panic!("expected NotInExecutionTime, got: OK"),
-            Err(err) => panic!("expected NotApproved got: {:?}", err),
+            Err(err) => panic!("expected NotInExecutionTime got: {:?}", err),
         }
 
         ctx.block_timestamp = (contract.start_time + contract.cooldown + contract.voting_duration + 1) * MSECOND;
@@ -522,9 +521,8 @@ mod unit_tests {
             Err(x) => panic!("expected OK, got: {:?}", x),
         }
 
-        prop = contract.get_proposal(id);
-        assert!(prop.is_some());
-        assert_eq!(prop.unwrap().proposal.status, ProposalStatus::Executed);
+        prop = contract.get_proposal(id).unwrap();
+        assert_eq!(prop.proposal.status, ProposalStatus::Executed);
     }
 
     #[test]
@@ -538,12 +536,10 @@ mod unit_tests {
         testing_env!(ctx);
 
         assert_eq!(contract.budget_spent, 0);
-
         match contract.execute(id) {
             Ok(_) => (),
             Err(x) => panic!("expected OK, got: {:?}", x),
         }
-
         assert_eq!(contract.budget_spent, 1000);
 
         let res = contract.create_proposal(PropKind::FundingRequest(10000u128), "Funding req".to_owned());
@@ -592,8 +588,6 @@ mod unit_tests {
     #[test]
     fn test_veto_hook() {
         let (mut ctx, mut contract, id) = setup_ctr();
-
-
         match contract.veto_hook(id) {
             Err(HookError::NotAuthorized) => (),
             x => panic!("expected NotAuthorized, got: {:?}", x),

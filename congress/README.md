@@ -12,10 +12,10 @@
   - `near view $CTR get_proposals '{"id": 1}'`
 
 - `is_dissolve`: Check if contract is dissolved
-  - `near view $CTR is_dissolve '{}'`
+  - `near view $CTR is_dissolved ''`
 
 - `get_members`: Query all members with permissions
-  - `near view $CTR get_members '{}'`
+  - `near view $CTR get_members ''`
 
 - `member_permissions`: Returns permissions for a specific member
   - `near view $CTR member_permissions '{"member": "user.testnet"}'`
