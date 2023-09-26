@@ -16,7 +16,7 @@ fn emit_event<T: Serialize>(event: EventPayload<T>) {
 
 pub(crate) fn emit_prop_created(prop_id: u32, kind: &PropKind) {
     emit_event(EventPayload {
-        event: "new-poposal",
+        event: "new-proposal",
         data: json!({ "prop_id": prop_id, "kind": kind.to_name() }),
     });
 }
