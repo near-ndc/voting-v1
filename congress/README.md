@@ -22,17 +22,3 @@
 
 - `hook_permissions`: Returns permissions for a specific member
   - `near view $CTR hook_permissions '{"user": "user.testnet"}'`
-
-# Execution
-
- // initialize
-- `near call congress-test.testnet new '{"community_fund": "ayt.testnet", "start_time": 1695726777895, "end_time": 1698318813000, "cooldown": 3600000, "voting_duration": 14400000, "members": ["ay.testnet", "megha19.testnet", "rubycoptest.testnet"], "member_perms": ["FunctionCall", "Text", "FundingRequest", "RecurrentFundingRequest"], "hook_auth": {"vbody.testnet": ["Dismiss", "Dissolve"], "coa3.testnet": ["Veto"]}, "budget_cap": "1000000000000000000000000000000", "big_budget_balance": "100000000000000000000000000000"}' --accountId congress-test.testnet`
-
-// create_proposal
-- 
-
-// vote on proposal
-- 
-
-// execute proposal
-- 
