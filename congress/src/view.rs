@@ -54,7 +54,10 @@ impl Contract {
     /// Returns all members with permissions
     pub fn get_members(&self) -> MembersOutput {
         let (members, permissions) = self.members.get().unwrap();
-        MembersOutput { members, permissions }
+        MembersOutput {
+            members,
+            permissions,
+        }
     }
 
     /// Returns permissions of a given member.

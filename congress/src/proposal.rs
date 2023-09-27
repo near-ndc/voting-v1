@@ -1,7 +1,7 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::json_types::{Base64VecU8, U128, U64};
 use near_sdk::serde::{Deserialize, Serialize};
-use near_sdk::{AccountId, Balance, env};
+use near_sdk::{env, AccountId, Balance};
 
 use std::collections::HashMap;
 
@@ -27,7 +27,7 @@ pub struct Proposal {
     pub votes: HashMap<AccountId, Vote>,
     /// Submission time (for voting period).
     pub submission_time: u64,
-    /// Unix time in miliseconds when the proposal reached approval threshold. `None` if it is not approved. 
+    /// Unix time in miliseconds when the proposal reached approval threshold. `None` if it is not approved.
     pub approved_at: Option<u64>,
 }
 

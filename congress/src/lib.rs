@@ -277,7 +277,10 @@ impl Contract {
                 proposal.status = ProposalStatus::Vetoed;
             }
             ProposalStatus::Approved | ProposalStatus::Failed => {
-                let cooldown = min(proposal.submission_time + self.voting_duration, proposal.approved_at.unwrap()) + self.cooldown; 
+                let cooldown = min(
+                    proposal.submission_time + self.voting_duration,
+                    proposal.approved_at.unwrap(),
+                ) + self.cooldown;
                 if cooldown < env::block_timestamp_ms() {
                     return Err(HookError::CooldownOver);
                 }
@@ -394,7 +397,7 @@ impl Contract {
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod unit_tests {
     use near_sdk::{
-        test_utils::{VMContextBuilder, get_logs},
+        test_utils::{get_logs, VMContextBuilder},
         testing_env, VMContext,
     };
 
@@ -440,21 +443,32 @@ mod unit_tests {
             COOLDOWN_DURATION,
             VOTING_DURATION,
             vec![acc(1), acc(2), acc(3), acc(4)],
-            vec![PropPerm::Text, PropPerm::RecurrentFundingRequest, PropPerm::FundingRequest],
+            vec![
+                PropPerm::Text,
+                PropPerm::RecurrentFundingRequest,
+                PropPerm::FundingRequest,
+            ],
             hash_map,
             U128(10000),
-            U128(100000)
+            U128(100000),
         );
         context.block_timestamp = start_time * MSECOND;
         context.predecessor_account_id = acc(1);
         context.attached_deposit = attach_deposit * MILI_NEAR;
         testing_env!(context.clone());
 
-        let id = contract.create_proposal(PropKind::Text, "Proposal unit test 1".to_string()).unwrap();
+        let id = contract
+            .create_proposal(PropKind::Text, "Proposal unit test 1".to_string())
+            .unwrap();
         (context, contract, id)
     }
 
-    fn vote(mut ctx: VMContext, mut contract: Contract, accounts: Vec<AccountId>, id: u32) -> Contract {
+    fn vote(
+        mut ctx: VMContext,
+        mut contract: Contract,
+        accounts: Vec<AccountId>,
+        id: u32,
+    ) -> Contract {
         for account in accounts {
             ctx.predecessor_account_id = account;
             testing_env!(ctx.clone());
@@ -484,7 +498,9 @@ mod unit_tests {
             x => panic!("expected NotInProgress, got: {:?}", x),
         }
         //let (mut ctx, mut contract, id) = setup_ctr(100);
-        let id = contract.create_proposal(PropKind::Text, "proposal".to_owned()).unwrap();
+        let id = contract
+            .create_proposal(PropKind::Text, "proposal".to_owned())
+            .unwrap();
 
         let res = contract.vote(id, Vote::Approve);
         assert!(res.is_ok());
@@ -512,7 +528,9 @@ mod unit_tests {
         testing_env!(ctx.clone());
         // set cooldown=0 and test for immediate execution
         contract.cooldown = 0;
-        let id = contract.create_proposal(PropKind::Text, "Proposal unit test 2".to_string()).unwrap();
+        let id = contract
+            .create_proposal(PropKind::Text, "Proposal unit test 2".to_string())
+            .unwrap();
         contract = vote(ctx, contract, [acc(1), acc(2), acc(3)].to_vec(), id);
         let prop = contract.get_proposal(id).unwrap();
         assert_eq!(prop.proposal.status, ProposalStatus::Executed);
@@ -537,7 +555,8 @@ mod unit_tests {
             Err(err) => panic!("expected ExecTime got: {:?}", err),
         }
 
-        ctx.block_timestamp = (contract.start_time + contract.cooldown + contract.voting_duration + 1) * MSECOND;
+        ctx.block_timestamp =
+            (contract.start_time + contract.cooldown + contract.voting_duration + 1) * MSECOND;
         testing_env!(ctx);
 
         match contract.execute(id) {
@@ -551,12 +570,15 @@ mod unit_tests {
 
     #[test]
     fn proposal_execution_funding_req() {
-        let (mut ctx, mut contract,_) = setup_ctr(100);
+        let (mut ctx, mut contract, _) = setup_ctr(100);
 
-        let id = contract.create_proposal(PropKind::FundingRequest(1000u128), "Funding req".to_owned()).unwrap();
+        let id = contract
+            .create_proposal(PropKind::FundingRequest(1000u128), "Funding req".to_owned())
+            .unwrap();
         contract = vote(ctx.clone(), contract, [acc(1), acc(2), acc(3)].to_vec(), id);
 
-        ctx.block_timestamp = (contract.start_time + contract.cooldown + contract.voting_duration + 1) * MSECOND;
+        ctx.block_timestamp =
+            (contract.start_time + contract.cooldown + contract.voting_duration + 1) * MSECOND;
         testing_env!(ctx);
 
         assert_eq!(contract.budget_spent, 0);
@@ -566,7 +588,10 @@ mod unit_tests {
         }
         assert_eq!(contract.budget_spent, 1000);
 
-        let res = contract.create_proposal(PropKind::FundingRequest(10000u128), "Funding req".to_owned());
+        let res = contract.create_proposal(
+            PropKind::FundingRequest(10000u128),
+            "Funding req".to_owned(),
+        );
         match res {
             Err(CreatePropError::BudgetOverflow) => (),
             Ok(_) => panic!("expected BudgetOverflow, got: OK"),
@@ -576,15 +601,21 @@ mod unit_tests {
 
     #[test]
     fn proposal_execution_rec_funding_req() {
-        let (mut ctx, mut contract,_) = setup_ctr(100);
+        let (mut ctx, mut contract, _) = setup_ctr(100);
 
-        let id = contract.create_proposal(PropKind::RecurrentFundingRequest(10u128), "Rec Funding req".to_owned()).unwrap();
+        let id = contract
+            .create_proposal(
+                PropKind::RecurrentFundingRequest(10u128),
+                "Rec Funding req".to_owned(),
+            )
+            .unwrap();
         contract = vote(ctx.clone(), contract, [acc(1), acc(2), acc(3)].to_vec(), id);
 
         // update to more than two months
-        contract.end_time = contract.start_time + START*12*24*61;
+        contract.end_time = contract.start_time + START * 12 * 24 * 61;
 
-        ctx.block_timestamp = (contract.start_time + contract.cooldown + contract.voting_duration + 1) * MSECOND;
+        ctx.block_timestamp =
+            (contract.start_time + contract.cooldown + contract.voting_duration + 1) * MSECOND;
         testing_env!(ctx);
 
         // proposal isn't executed so budget spent is 0
@@ -636,17 +667,21 @@ mod unit_tests {
         testing_env!(ctx.clone());
 
         // Veto during cooldown
-        let id = contract.create_proposal(PropKind::Text, "Proposal unit test 2".to_string()).unwrap();
-        
+        let id = contract
+            .create_proposal(PropKind::Text, "Proposal unit test 2".to_string())
+            .unwrap();
+
         // Set timestamp close to voting end duration
-        ctx.block_timestamp = (prop.proposal.submission_time+contract.voting_duration-1) * MSECOND;
+        ctx.block_timestamp =
+            (prop.proposal.submission_time + contract.voting_duration - 1) * MSECOND;
         testing_env!(ctx.clone());
-        
+
         contract = vote(ctx.clone(), contract, [acc(1), acc(2), acc(3)].to_vec(), id);
         prop = contract.get_proposal(id).unwrap();
 
         // Set timestamp to during cooldown, after voting phase
-        ctx.block_timestamp = (prop.proposal.submission_time+contract.voting_duration+1) * MSECOND;
+        ctx.block_timestamp =
+            (prop.proposal.submission_time + contract.voting_duration + 1) * MSECOND;
         ctx.predecessor_account_id = coa();
         testing_env!(ctx.clone());
 
@@ -658,18 +693,22 @@ mod unit_tests {
         ctx.block_timestamp = contract.start_time;
         ctx.predecessor_account_id = acc(1);
         testing_env!(ctx.clone());
-        
-        let id = contract.create_proposal(PropKind::Text, "Proposal unit test 2".to_string()).unwrap();
+
+        let id = contract
+            .create_proposal(PropKind::Text, "Proposal unit test 2".to_string())
+            .unwrap();
         contract = vote(ctx.clone(), contract, [acc(1), acc(2), acc(3)].to_vec(), id);
 
         prop = contract.get_proposal(id).unwrap();
         assert_eq!(prop.proposal.status, ProposalStatus::Approved);
 
         // Set timestamp to after cooldown
-        ctx.block_timestamp = (prop.proposal.submission_time+contract.voting_duration+contract.cooldown+1) * MSECOND;
+        ctx.block_timestamp =
+            (prop.proposal.submission_time + contract.voting_duration + contract.cooldown + 1)
+                * MSECOND;
         ctx.predecessor_account_id = coa();
         testing_env!(ctx);
-    
+
         // Can execute past cooldown but not veto proposal
         match contract.veto_hook(id) {
             Err(HookError::CooldownOver) => (),
@@ -704,7 +743,12 @@ mod unit_tests {
 
         assert!(contract.dissolved);
 
-        contract.create_proposal(PropKind::FundingRequest(10000u128), "Funding req".to_owned()).unwrap();
+        contract
+            .create_proposal(
+                PropKind::FundingRequest(10000u128),
+                "Funding req".to_owned(),
+            )
+            .unwrap();
     }
 
     #[test]
