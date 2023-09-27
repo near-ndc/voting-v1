@@ -11,6 +11,7 @@ use crate::VoteError;
 #[derive(BorshSerialize, BorshDeserialize, Serialize)]
 #[serde(crate = "near_sdk::serde")]
 #[cfg_attr(test, derive(Debug, PartialEq))]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Deserialize))]
 pub struct Proposal {
     /// Original proposer.
     pub proposer: AccountId,
@@ -111,6 +112,7 @@ impl PropKind {
 #[derive(BorshSerialize, BorshDeserialize, Serialize, PartialEq)]
 #[cfg_attr(test, derive(Debug))]
 #[serde(crate = "near_sdk::serde")]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Deserialize))]
 pub enum ProposalStatus {
     InProgress,
     Approved,

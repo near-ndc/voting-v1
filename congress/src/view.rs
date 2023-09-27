@@ -1,17 +1,17 @@
 use std::cmp::min;
 
-use near_sdk::serde::Serialize;
+use near_sdk::serde::{Deserialize, Serialize};
 
 use crate::*;
 
 /// This is format of output via JSON for the proposal.
-#[derive(Serialize, BorshDeserialize)]
+#[derive(Serialize)]
 #[serde(crate = "near_sdk::serde")]
 #[cfg_attr(test, derive(Debug, PartialEq))]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Deserialize))]
 pub struct ProposalOutput {
     /// Id of the proposal.
     pub id: u32,
-    #[serde(flatten)]
     pub proposal: Proposal,
 }
 
