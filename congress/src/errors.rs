@@ -65,6 +65,7 @@ pub enum HookError {
     NotAuthorized,
     NoMember,
     ProposalFinalized,
+    CooldownOver,
 }
 
 impl FunctionError for HookError {
@@ -73,6 +74,7 @@ impl FunctionError for HookError {
             HookError::NotAuthorized => panic_str("not authorized"),
             HookError::NoMember => panic_str("member not found"),
             HookError::ProposalFinalized => panic_str("proposal finalized!"),
+            HookError::CooldownOver => panic_str("cooldown period is over!"),
         }
     }
 }

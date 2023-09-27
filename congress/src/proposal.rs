@@ -117,6 +117,7 @@ pub enum ProposalStatus {
     /// If proposal has failed when executing. Allowed to re-finalize again to either expire or approved.
     Failed,
     // note: In Astra++ we have also: Removed nor Moved
+    Vetoed,
 }
 
 /// Votes recorded in the proposal.

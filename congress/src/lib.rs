@@ -189,7 +189,10 @@ impl Contract {
 
         if prop.status == ProposalStatus::Approved && self.cooldown == 0 {
             // We ignore a failure of self.execute here to assure that the vote is counted.
-            let _ = self.execute(id);
+            let res = self.execute(id);
+            if res.is_err() {
+                emit_vote_execute(id, res.err().unwrap());
+            }
         }
 
         Ok(())
@@ -267,24 +270,25 @@ impl Contract {
     pub fn veto_hook(&mut self, id: u32) -> Result<(), HookError> {
         self.assert_active();
         self.assert_hook_perm(&env::predecessor_account_id(), &HookPerm::Veto)?;
-        let proposal = self.assert_proposal(id);
+        let mut proposal = self.assert_proposal(id);
 
         match proposal.status {
-            ProposalStatus::InProgress | ProposalStatus::Failed => {
-                self.proposals.remove(&id);
+            ProposalStatus::InProgress => {
+                proposal.status = ProposalStatus::Vetoed;
             }
-            ProposalStatus::Approved => {
+            ProposalStatus::Approved | ProposalStatus::Failed => {
                 let cooldown = min(proposal.submission_time + self.voting_duration, proposal.approved_at.unwrap()) + self.cooldown; 
                 if cooldown < env::block_timestamp_ms() {
-                    return Err(HookError::ProposalFinalized);
+                    return Err(HookError::CooldownOver);
                 }
-                self.proposals.remove(&id);
+                proposal.status = ProposalStatus::Vetoed;
             }
             _ => {
                 return Err(HookError::ProposalFinalized);
             }
         }
         emit_veto(id);
+        self.proposals.insert(&id, &proposal);
         Ok(())
     }
 
@@ -403,6 +407,7 @@ mod unit_tests {
     const START: u64 = 60 * 5 * 1000;
     const TERM: u64 = 60 * 15 * 1000;
     const VOTING_DURATION: u64 = 60 * 5 * 1000;
+    const COOLDOWN_DURATION: u64 = 60 * 5 * 1000;
 
     fn acc(idx: u8) -> AccountId {
         AccountId::new_unchecked(format!("user-{}.near", idx))
@@ -432,8 +437,8 @@ mod unit_tests {
             community_fund(),
             start_time,
             end_time,
-            DURATION,
-            DURATION,
+            COOLDOWN_DURATION,
+            VOTING_DURATION,
             vec![acc(1), acc(2), acc(3), acc(4)],
             vec![PropPerm::Text, PropPerm::RecurrentFundingRequest, PropPerm::FundingRequest],
             hash_map,
