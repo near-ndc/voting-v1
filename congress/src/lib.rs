@@ -188,8 +188,7 @@ impl Contract {
         emit_vote(id);
 
         if prop.status == ProposalStatus::Approved && self.cooldown == 0 {
-            // If execute passes state changes are handled by execute function
-            // If it fails, we don't throw error in vote step but vote should pass.
+            // We ignore a failure of self.execute here to assure that the vote is counted.
             let _ = self.execute(id);
         }
 
@@ -402,10 +401,8 @@ mod unit_tests {
 
     // In milliseconds
     const START: u64 = 60 * 5 * 1000;
-
     const TERM: u64 = 60 * 15 * 1000;
-
-    const DURATION: u64 = 60 * 5 * 1000;
+    const VOTING_DURATION: u64 = 60 * 5 * 1000;
 
     fn acc(idx: u8) -> AccountId {
         AccountId::new_unchecked(format!("user-{}.near", idx))
