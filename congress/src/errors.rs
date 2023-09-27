@@ -1,5 +1,6 @@
 use near_sdk::env::panic_str;
 use near_sdk::FunctionError;
+use near_sdk::serde::Serialize;
 
 #[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq, Debug))]
 pub enum VoteError {
@@ -22,6 +23,8 @@ impl FunctionError for VoteError {
     }
 }
 
+#[derive(Serialize)]
+#[serde(crate = "near_sdk::serde")]
 #[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq, Debug))]
 pub enum ExecError {
     ExecTime,

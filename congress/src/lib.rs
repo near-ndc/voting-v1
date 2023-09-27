@@ -629,7 +629,8 @@ mod unit_tests {
         let expected = r#"EVENT_JSON:{"standard":"ndc-congress","version":"1.0.0","event":"veto","data":{"prop_id":1}}"#;
         assert_eq!(vec![expected], get_logs());
 
-        assert!(contract.proposals.get(&id).is_none());
+        prop = contract.get_proposal(id).unwrap();
+        assert_eq!(prop.proposal.status, ProposalStatus::Vetoed);
 
         ctx.predecessor_account_id = acc(1);
         testing_env!(ctx.clone());
@@ -671,8 +672,8 @@ mod unit_tests {
     
         // Can execute past cooldown but not veto proposal
         match contract.veto_hook(id) {
-            Err(HookError::ProposalFinalized) => (),
-            x => panic!("expected ProposalFinalized, got: {:?}", x),
+            Err(HookError::CooldownOver) => (),
+            x => panic!("expected CooldownOver, got: {:?}", x),
         }
 
         match contract.execute(id) {
