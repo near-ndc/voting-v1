@@ -189,8 +189,7 @@ impl Contract {
 
         if prop.status == ProposalStatus::Approved && self.cooldown == 0 {
             // We ignore a failure of self.execute here to assure that the vote is counted.
-            let res = self.execute(id);
-            if res.is_err() {
+            if self.execute(id).is_err() {
                 emit_vote_execute(id, res.err().unwrap());
             }
         }
