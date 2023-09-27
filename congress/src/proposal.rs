@@ -27,8 +27,8 @@ pub struct Proposal {
     pub votes: HashMap<AccountId, Vote>,
     /// Submission time (for voting period).
     pub submission_time: u64,
-    /// proposal pass time
-    pub proposal_pass_time: Option<u64>,
+    /// Unix time in miliseconds when the proposal reached approval threshold. `None` if it is not approved. 
+    pub approved_at: Option<u64>,
 }
 
 impl Proposal {

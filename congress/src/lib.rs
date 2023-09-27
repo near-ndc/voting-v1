@@ -633,7 +633,7 @@ mod unit_tests {
         let prop = contract.get_proposal(id).unwrap();
         assert_eq!(prop.proposal.status, ProposalStatus::Approved);
 
-        // Move cooldown
+        // Move after cooldown
         ctx.block_timestamp = (prop.proposal.submission_time+contract.voting_duration+contract.cooldown+1) * MSECOND;
         ctx.predecessor_account_id = coa();
         testing_env!(ctx);
