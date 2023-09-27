@@ -46,7 +46,7 @@ impl Proposal {
                 self.approve += 1;
                 if self.approve >= threshold {
                     self.status = ProposalStatus::Approved;
-                    self.proposal_pass_time = Some(env::block_timestamp_ms());
+                    self.approved_at = Some(env::block_timestamp_ms());
                 }
             }
             Vote::Reject => {

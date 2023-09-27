@@ -47,7 +47,7 @@ impl Contract {
             .map(|proposal| ProposalOutput { id, proposal })
     }
 
-    pub fn is_dissolve(&self) -> bool {
+    pub fn is_dissolved(&self) -> bool {
         self.dissolved
     }
 
