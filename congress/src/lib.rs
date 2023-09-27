@@ -507,7 +507,7 @@ mod unit_tests {
         // set cooldown=0 and test for immediate execution
         contract.cooldown = 0;
         let id = contract.create_proposal(PropKind::Text, "Proposal unit test 2".to_string()).unwrap();
-        contract = vote(ctx.clone(), contract, [acc(1), acc(2), acc(3)].to_vec(), id);
+        contract = vote(ctx, contract, [acc(1), acc(2), acc(3)].to_vec(), id);
         let prop = contract.get_proposal(id).unwrap();
         assert_eq!(prop.proposal.status, ProposalStatus::Executed);
     }
@@ -636,7 +636,7 @@ mod unit_tests {
         // Move cooldown
         ctx.block_timestamp = (prop.proposal.submission_time+contract.voting_duration+contract.cooldown+1) * MSECOND;
         ctx.predecessor_account_id = coa();
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
     
         // Can execute past cooldown but not veto proposal
         match contract.veto_hook(id) {
