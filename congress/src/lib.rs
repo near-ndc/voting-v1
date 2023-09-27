@@ -258,7 +258,10 @@ impl Contract {
                         .on_execute(id, budget.into()),
                 )
                 .into(),
-            _ => result,
+            _ => {
+                emit_executed(id);
+                result
+            }
         };
         Ok(result)
     }
@@ -432,6 +435,7 @@ mod unit_tests {
         let mut context = VMContextBuilder::new().build();
         let start_time = START;
         let end_time = START + TERM;
+
         let mut hash_map = HashMap::new();
         hash_map.insert(coa(), vec![HookPerm::Veto]);
         hash_map.insert(voting_body(), vec![HookPerm::Dismiss, HookPerm::Dissolve]);
@@ -613,7 +617,6 @@ mod unit_tests {
 
         // update to more than two months
         contract.end_time = contract.start_time + START * 12 * 24 * 61;
-
         ctx.block_timestamp =
             (contract.start_time + contract.cooldown + contract.voting_duration + 1) * MSECOND;
         testing_env!(ctx);
