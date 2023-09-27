@@ -249,7 +249,10 @@ impl Contract {
                         .on_execute(id, budget.into()),
                 )
                 .into(),
-            _ => result,
+            _ => {
+                emit_executed(id);
+                result
+            }
         };
         Ok(result)
     }
@@ -379,7 +382,7 @@ impl Contract {
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod unit_tests {
     use near_sdk::{
-        test_utils::{VMContextBuilder, get_logs},
+        test_utils::{get_logs, VMContextBuilder},
         testing_env, VMContext,
     };
 
@@ -410,7 +413,7 @@ mod unit_tests {
     fn setup_ctr(attach_deposit: u128) -> (VMContext, Contract, u32) {
         let mut context = VMContextBuilder::new().build();
         let start_time = FIVE_MIN;
-        let end_time = start_time + 3*FIVE_MIN;
+        let end_time = start_time + 3 * FIVE_MIN;
         let mut hash_map = HashMap::new();
         hash_map.insert(coa(), vec![HookPerm::Veto]);
         hash_map.insert(voting_body(), vec![HookPerm::Dismiss, HookPerm::Dissolve]);
@@ -422,21 +425,32 @@ mod unit_tests {
             FIVE_MIN,
             FIVE_MIN,
             vec![acc(1), acc(2), acc(3), acc(4)],
-            vec![PropPerm::Text, PropPerm::RecurrentFundingRequest, PropPerm::FundingRequest],
+            vec![
+                PropPerm::Text,
+                PropPerm::RecurrentFundingRequest,
+                PropPerm::FundingRequest,
+            ],
             hash_map,
             U128(10000),
-            U128(100000)
+            U128(100000),
         );
         context.block_timestamp = start_time * MSECOND;
         context.predecessor_account_id = acc(1);
         context.attached_deposit = attach_deposit * MILI_NEAR;
         testing_env!(context.clone());
 
-        let id = contract.create_proposal(PropKind::Text, "Proposal unit test 1".to_string()).unwrap();
+        let id = contract
+            .create_proposal(PropKind::Text, "Proposal unit test 1".to_string())
+            .unwrap();
         (context, contract, id)
     }
 
-    fn vote(mut ctx: VMContext, mut contract: Contract, accounts: Vec<AccountId>, id: u32) -> Contract {
+    fn vote(
+        mut ctx: VMContext,
+        mut contract: Contract,
+        accounts: Vec<AccountId>,
+        id: u32,
+    ) -> Contract {
         for account in accounts {
             ctx.predecessor_account_id = account;
             testing_env!(ctx.clone());
@@ -466,7 +480,9 @@ mod unit_tests {
             x => panic!("expected NotInProgress, got: {:?}", x),
         }
         //let (mut ctx, mut contract, id) = setup_ctr(100);
-        let id = contract.create_proposal(PropKind::Text, "proposal".to_owned()).unwrap();
+        let id = contract
+            .create_proposal(PropKind::Text, "proposal".to_owned())
+            .unwrap();
 
         let res = contract.vote(id, Vote::Approve);
         assert!(res.is_ok());
@@ -510,7 +526,8 @@ mod unit_tests {
             Err(err) => panic!("expected ExecTime got: {:?}", err),
         }
 
-        ctx.block_timestamp = (contract.start_time + contract.cooldown + contract.voting_duration + 1) * MSECOND;
+        ctx.block_timestamp =
+            (contract.start_time + contract.cooldown + contract.voting_duration + 1) * MSECOND;
         testing_env!(ctx);
 
         match contract.execute(id) {
@@ -524,12 +541,15 @@ mod unit_tests {
 
     #[test]
     fn proposal_execution_funding_req() {
-        let (mut ctx, mut contract,_) = setup_ctr(100);
+        let (mut ctx, mut contract, _) = setup_ctr(100);
 
-        let id = contract.create_proposal(PropKind::FundingRequest(1000u128), "Funding req".to_owned()).unwrap();
+        let id = contract
+            .create_proposal(PropKind::FundingRequest(1000u128), "Funding req".to_owned())
+            .unwrap();
         contract = vote(ctx.clone(), contract, [acc(1), acc(2), acc(3)].to_vec(), id);
 
-        ctx.block_timestamp = (contract.start_time + contract.cooldown + contract.voting_duration + 1) * MSECOND;
+        ctx.block_timestamp =
+            (contract.start_time + contract.cooldown + contract.voting_duration + 1) * MSECOND;
         testing_env!(ctx);
 
         assert_eq!(contract.budget_spent, 0);
@@ -539,7 +559,10 @@ mod unit_tests {
         }
         assert_eq!(contract.budget_spent, 1000);
 
-        let res = contract.create_proposal(PropKind::FundingRequest(10000u128), "Funding req".to_owned());
+        let res = contract.create_proposal(
+            PropKind::FundingRequest(10000u128),
+            "Funding req".to_owned(),
+        );
         match res {
             Err(CreatePropError::BudgetOverflow) => (),
             Ok(_) => panic!("expected BudgetOverflow, got: OK"),
@@ -549,15 +572,21 @@ mod unit_tests {
 
     #[test]
     fn proposal_execution_rec_funding_req() {
-        let (mut ctx, mut contract,_) = setup_ctr(100);
+        let (mut ctx, mut contract, _) = setup_ctr(100);
 
-        let id = contract.create_proposal(PropKind::RecurrentFundingRequest(10u128), "Rec Funding req".to_owned()).unwrap();
+        let id = contract
+            .create_proposal(
+                PropKind::RecurrentFundingRequest(10u128),
+                "Rec Funding req".to_owned(),
+            )
+            .unwrap();
         contract = vote(ctx.clone(), contract, [acc(1), acc(2), acc(3)].to_vec(), id);
 
         // update to more than two months
-        contract.end_time = contract.start_time + FIVE_MIN*12*24*61;
+        contract.end_time = contract.start_time + FIVE_MIN * 12 * 24 * 61;
 
-        ctx.block_timestamp = (contract.start_time + contract.cooldown + contract.voting_duration + 1) * MSECOND;
+        ctx.block_timestamp =
+            (contract.start_time + contract.cooldown + contract.voting_duration + 1) * MSECOND;
         testing_env!(ctx);
 
         // proposal isn't executed so budget spent is 0
@@ -625,7 +654,12 @@ mod unit_tests {
 
         assert!(contract.dissolved);
 
-        contract.create_proposal(PropKind::FundingRequest(10000u128), "Funding req".to_owned()).unwrap();
+        contract
+            .create_proposal(
+                PropKind::FundingRequest(10000u128),
+                "Funding req".to_owned(),
+            )
+            .unwrap();
     }
 
     #[test]
