@@ -1,3 +1,4 @@
+use std::cmp::min;
 use std::collections::HashMap;
 
 use common::finalize_storage_check;
@@ -153,6 +154,7 @@ impl Contract {
                 reject: 0,
                 votes: HashMap::new(),
                 submission_time: now,
+                approved_at: None,
             },
         );
 
@@ -165,8 +167,6 @@ impl Contract {
         Ok(self.prop_counter)
     }
 
-    // TODO: add immediate execution. Note can be automatically executed only when
-    // contract.cooldown == 0
     #[handle_result]
     pub fn vote(&mut self, id: u32, vote: Vote) -> Result<(), VoteError> {
         self.assert_active();
@@ -186,6 +186,15 @@ impl Contract {
         prop.add_vote(user, vote, self.threshold)?;
         self.proposals.insert(&id, &prop);
         emit_vote(id);
+
+        if prop.status == ProposalStatus::Approved && self.cooldown == 0 {
+            // We ignore a failure of self.execute here to assure that the vote is counted.
+            let res = self.execute(id);
+            if res.is_err() {
+                emit_vote_execute(id, res.err().unwrap());
+            }
+        }
+
         Ok(())
     }
 
@@ -264,19 +273,28 @@ impl Contract {
     pub fn veto_hook(&mut self, id: u32) -> Result<(), HookError> {
         self.assert_active();
         self.assert_hook_perm(&env::predecessor_account_id(), &HookPerm::Veto)?;
-        let proposal = self.assert_proposal(id);
-        // TODO: check cooldown. Cooldown finishes at
-        // min(proposal.start+self.voting_duration, time when proposal passed) + self.cooldown
+        let mut proposal = self.assert_proposal(id);
 
         match proposal.status {
-            ProposalStatus::InProgress | ProposalStatus::Failed => {
-                self.proposals.remove(&id);
+            ProposalStatus::InProgress => {
+                proposal.status = ProposalStatus::Vetoed;
+            }
+            ProposalStatus::Approved => {
+                let cooldown = min(
+                    proposal.submission_time + self.voting_duration,
+                    proposal.approved_at.unwrap(),
+                ) + self.cooldown;
+                if cooldown < env::block_timestamp_ms() {
+                    return Err(HookError::CooldownOver);
+                }
+                proposal.status = ProposalStatus::Vetoed;
             }
             _ => {
-                panic!("Proposal finalized");
+                return Err(HookError::ProposalFinalized);
             }
         }
         emit_veto(id);
+        self.proposals.insert(&id, &proposal);
         Ok(())
     }
 
@@ -354,7 +372,7 @@ impl Contract {
             return 0;
         }
         // TODO: make correct calculation.
-        // Need to check if recurrent budget can start immeidately or from the next month.
+        // Need to check if recurrent budget can start immediately or from the next month.
         (self.end_time - now) / 30 / 24 / 3600 / 1000
     }
 
@@ -391,8 +409,11 @@ mod unit_tests {
     /// 1ms in nano seconds
     const MSECOND: u64 = 1_000_000;
 
-    // 5 Min in milliseconds
-    const FIVE_MIN: u64 = 60 * 5 * 1000;
+    // In milliseconds
+    const START: u64 = 60 * 5 * 1000;
+    const TERM: u64 = 60 * 15 * 1000;
+    const VOTING_DURATION: u64 = 60 * 5 * 1000;
+    const COOLDOWN_DURATION: u64 = 60 * 5 * 1000;
 
     fn acc(idx: u8) -> AccountId {
         AccountId::new_unchecked(format!("user-{}.near", idx))
@@ -412,8 +433,9 @@ mod unit_tests {
 
     fn setup_ctr(attach_deposit: u128) -> (VMContext, Contract, u32) {
         let mut context = VMContextBuilder::new().build();
-        let start_time = FIVE_MIN;
-        let end_time = start_time + 3 * FIVE_MIN;
+        let start_time = START;
+        let end_time = START + TERM;
+
         let mut hash_map = HashMap::new();
         hash_map.insert(coa(), vec![HookPerm::Veto]);
         hash_map.insert(voting_body(), vec![HookPerm::Dismiss, HookPerm::Dissolve]);
@@ -422,8 +444,8 @@ mod unit_tests {
             community_fund(),
             start_time,
             end_time,
-            FIVE_MIN,
-            FIVE_MIN,
+            COOLDOWN_DURATION,
+            VOTING_DURATION,
             vec![acc(1), acc(2), acc(3), acc(4)],
             vec![
                 PropPerm::Text,
@@ -500,11 +522,22 @@ mod unit_tests {
         }
 
         ctx.predecessor_account_id = acc(5);
-        testing_env!(ctx);
+        testing_env!(ctx.clone());
         match contract.vote(id, Vote::Approve) {
             Err(VoteError::NotAuthorized) => (),
             x => panic!("expected NotAuthorized, got: {:?}", x),
         }
+
+        ctx.predecessor_account_id = acc(2);
+        testing_env!(ctx.clone());
+        // set cooldown=0 and test for immediate execution
+        contract.cooldown = 0;
+        let id = contract
+            .create_proposal(PropKind::Text, "Proposal unit test 2".to_string())
+            .unwrap();
+        contract = vote(ctx, contract, [acc(1), acc(2), acc(3)].to_vec(), id);
+        let prop = contract.get_proposal(id).unwrap();
+        assert_eq!(prop.proposal.status, ProposalStatus::Executed);
     }
 
     #[test]
@@ -583,8 +616,7 @@ mod unit_tests {
         contract = vote(ctx.clone(), contract, [acc(1), acc(2), acc(3)].to_vec(), id);
 
         // update to more than two months
-        contract.end_time = contract.start_time + FIVE_MIN * 12 * 24 * 61;
-
+        contract.end_time = contract.start_time + START * 12 * 24 * 61;
         ctx.block_timestamp =
             (contract.start_time + contract.cooldown + contract.voting_duration + 1) * MSECOND;
         testing_env!(ctx);
@@ -614,14 +646,16 @@ mod unit_tests {
     #[test]
     fn veto_hook() {
         let (mut ctx, mut contract, id) = setup_ctr(100);
+        contract.get_proposal(id).unwrap();
         match contract.veto_hook(id) {
             Err(HookError::NotAuthorized) => (),
             x => panic!("expected NotAuthorized, got: {:?}", x),
         }
 
         ctx.predecessor_account_id = coa();
-        testing_env!(ctx);
+        testing_env!(ctx.clone());
 
+        // Veto during voting phase(before cooldown)
         match contract.veto_hook(id) {
             Ok(_) => (),
             x => panic!("expected Ok, got: {:?}", x),
@@ -629,7 +663,65 @@ mod unit_tests {
         let expected = r#"EVENT_JSON:{"standard":"ndc-congress","version":"1.0.0","event":"veto","data":{"prop_id":1}}"#;
         assert_eq!(vec![expected], get_logs());
 
-        assert!(contract.proposals.get(&id).is_none())
+        let mut prop = contract.get_proposal(id).unwrap();
+        assert_eq!(prop.proposal.status, ProposalStatus::Vetoed);
+
+        ctx.predecessor_account_id = acc(1);
+        testing_env!(ctx.clone());
+
+        // Veto during cooldown
+        let id = contract
+            .create_proposal(PropKind::Text, "Proposal unit test 2".to_string())
+            .unwrap();
+
+        // Set timestamp close to voting end duration
+        ctx.block_timestamp =
+            (prop.proposal.submission_time + contract.voting_duration - 1) * MSECOND;
+        testing_env!(ctx.clone());
+
+        contract = vote(ctx.clone(), contract, [acc(1), acc(2), acc(3)].to_vec(), id);
+        prop = contract.get_proposal(id).unwrap();
+
+        // Set timestamp to during cooldown, after voting phase
+        ctx.block_timestamp =
+            (prop.proposal.submission_time + contract.voting_duration + 1) * MSECOND;
+        ctx.predecessor_account_id = coa();
+        testing_env!(ctx.clone());
+
+        match contract.veto_hook(id) {
+            Ok(_) => (),
+            x => panic!("expected Ok, got: {:?}", x),
+        }
+
+        ctx.block_timestamp = contract.start_time;
+        ctx.predecessor_account_id = acc(1);
+        testing_env!(ctx.clone());
+
+        let id = contract
+            .create_proposal(PropKind::Text, "Proposal unit test 2".to_string())
+            .unwrap();
+        contract = vote(ctx.clone(), contract, [acc(1), acc(2), acc(3)].to_vec(), id);
+
+        prop = contract.get_proposal(id).unwrap();
+        assert_eq!(prop.proposal.status, ProposalStatus::Approved);
+
+        // Set timestamp to after cooldown
+        ctx.block_timestamp =
+            (prop.proposal.submission_time + contract.voting_duration + contract.cooldown + 1)
+                * MSECOND;
+        ctx.predecessor_account_id = coa();
+        testing_env!(ctx);
+
+        // Can execute past cooldown but not veto proposal
+        match contract.veto_hook(id) {
+            Err(HookError::CooldownOver) => (),
+            x => panic!("expected CooldownOver, got: {:?}", x),
+        }
+
+        match contract.execute(id) {
+            Ok(_) => (),
+            Err(x) => panic!("expected OK, got: {:?}", x),
+        }
     }
 
     #[test]

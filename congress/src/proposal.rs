@@ -1,7 +1,7 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::json_types::{Base64VecU8, U128, U64};
 use near_sdk::serde::{Deserialize, Serialize};
-use near_sdk::{AccountId, Balance};
+use near_sdk::{env, AccountId, Balance};
 
 use std::collections::HashMap;
 
@@ -27,6 +27,8 @@ pub struct Proposal {
     pub votes: HashMap<AccountId, Vote>,
     /// Submission time (for voting period).
     pub submission_time: u64,
+    /// Unix time in miliseconds when the proposal reached approval threshold. `None` if it is not approved.
+    pub approved_at: Option<u64>,
 }
 
 impl Proposal {
@@ -44,6 +46,7 @@ impl Proposal {
                 self.approve += 1;
                 if self.approve >= threshold {
                     self.status = ProposalStatus::Approved;
+                    self.approved_at = Some(env::block_timestamp_ms());
                 }
             }
             Vote::Reject => {
@@ -103,8 +106,8 @@ impl PropKind {
     }
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize)]
-#[cfg_attr(test, derive(PartialEq, Debug))]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, PartialEq)]
+#[cfg_attr(test, derive(Debug))]
 #[serde(crate = "near_sdk::serde")]
 pub enum ProposalStatus {
     InProgress,
@@ -114,6 +117,7 @@ pub enum ProposalStatus {
     /// If proposal has failed when executing. Allowed to re-finalize again to either expire or approved.
     Failed,
     // note: In Astra++ we have also: Removed nor Moved
+    Vetoed,
 }
 
 /// Votes recorded in the proposal.

@@ -1,13 +1,13 @@
 use integrations::setup_registry;
 use near_units::parse_near;
 use serde_json::json;
-use workspaces::{Account, Contract, DevNetwork, Worker, AccountId};
+use workspaces::{Account, AccountId, Contract, DevNetwork, Worker};
 
 /// 1ms in nano seconds
 //extern crate elections;
 use elections::{
-    proposal::{ProposalType},
-    ProposalView, TokenMetadata, ACCEPT_POLICY_COST, BOND_AMOUNT, MILI_NEAR, MINT_COST, OwnedToken
+    proposal::ProposalType, OwnedToken, ProposalView, TokenMetadata, ACCEPT_POLICY_COST,
+    BOND_AMOUNT, MILI_NEAR, MINT_COST,
 };
 
 /// 1ms in seconds
@@ -24,9 +24,7 @@ pub struct InitStruct {
     pub proposal_id: u32,
 }
 
-async fn init(
-    worker: &Worker<impl DevNetwork>,
-) -> anyhow::Result<InitStruct> {
+async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<InitStruct> {
     // deploy contracts
     let ndc_elections_contract = worker.dev_deploy(include_bytes!("../../res/elections.wasm"));
     let ndc_elections_contract = ndc_elections_contract.await?;
@@ -168,7 +166,8 @@ async fn vote_by_human() -> anyhow::Result<()> {
     // fast forward to the voting period
     worker.fast_forward(10).await?;
 
-    let res = setup.alice
+    let res = setup
+        .alice
         .call(setup.ndc_elections_contract.id(), "vote")
         .args_json(json!({"prop_id": setup.proposal_id, "vote": [setup.john.id()],}))
         .max_gas()
@@ -213,7 +212,8 @@ async fn vote_expired_iah_token() -> anyhow::Result<()> {
     // fast forward to the voting period
     worker.fast_forward(70).await?;
 
-    let res = setup.john
+    let res = setup
+        .john
         .call(setup.ndc_elections_contract.id(), "vote")
         .args_json(json!({"prop_id": setup.proposal_id, "vote": [setup.alice.id()],}))
         .max_gas()
@@ -260,8 +260,12 @@ async fn vote_without_deposit_bond() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
     let setup = init(&worker).await?;
 
-    let res = setup.bob
-        .call(setup.ndc_elections_contract.id(), "accept_fair_voting_policy")
+    let res = setup
+        .bob
+        .call(
+            setup.ndc_elections_contract.id(),
+            "accept_fair_voting_policy",
+        )
         .args_json(json!({
             "policy": policy1(),
         }))
@@ -275,7 +279,8 @@ async fn vote_without_deposit_bond() -> anyhow::Result<()> {
     // fast forward to the voting period
     worker.fast_forward(10).await?;
 
-    let res = setup.bob
+    let res = setup
+        .bob
         .call(setup.ndc_elections_contract.id(), "vote")
         .args_json(json!({"prop_id": setup.proposal_id, "vote": [setup.john.id()],}))
         .max_gas()
@@ -296,7 +301,8 @@ async fn unbond_amount_before_election_end() -> anyhow::Result<()> {
     // fast forward to the voting period
     worker.fast_forward(12).await?;
 
-    let res = setup.alice
+    let res = setup
+        .alice
         .call(setup.ndc_elections_contract.id(), "vote")
         .args_json(json!({"prop_id": setup.proposal_id, "vote": [setup.john.id()],}))
         .max_gas()
@@ -330,7 +336,8 @@ async fn unbond_amount() -> anyhow::Result<()> {
     // fast forward to the voting period
     worker.fast_forward(12).await?;
 
-    let res = setup.alice
+    let res = setup
+        .alice
         .call(setup.ndc_elections_contract.id(), "vote")
         .args_json(json!({"prop_id": setup.proposal_id, "vote": [setup.john.id()],}))
         .max_gas()
@@ -360,7 +367,12 @@ async fn unbond_amount() -> anyhow::Result<()> {
     assert_received_tokens(balance_after.balance, balance_before.balance);
 
     // verify voter has i_voted sbt
-    let sbt = verify_i_voted_sbt_tokens_by_owner(setup.registry_contract.id(), setup.ndc_elections_contract.id(), setup.alice).await?;
+    let sbt = verify_i_voted_sbt_tokens_by_owner(
+        setup.registry_contract.id(),
+        setup.ndc_elections_contract.id(),
+        setup.alice,
+    )
+    .await?;
     assert!(sbt);
 
     Ok(())
@@ -373,25 +385,27 @@ async fn sbt_mint_no_vote() -> anyhow::Result<()> {
 
     let block = worker.view_block().await?;
     let now = block.timestamp() / MSECOND; // timestamp in seconds
-    // create second proposal
-    let prop2 = setup.admin
-    .call(setup.ndc_elections_contract.id(), "create_proposal")
-    .args_json(json!({
-        "typ": ProposalType::CouncilOfAdvisors, "start": now + 20 * 1000,
-        "end": now + 25 * 1000, "cooldown": 1, "ref_link": "test.io", "quorum": 10,
-        "credits": 5, "seats": 1, "candidates": [setup.john.id(), setup.alice.id()],
-        "min_candidate_support": 2,
-    }))
-    .max_gas()
-    .transact()
-    .await?;
+                                           // create second proposal
+    let prop2 = setup
+        .admin
+        .call(setup.ndc_elections_contract.id(), "create_proposal")
+        .args_json(json!({
+            "typ": ProposalType::CouncilOfAdvisors, "start": now + 20 * 1000,
+            "end": now + 25 * 1000, "cooldown": 1, "ref_link": "test.io", "quorum": 10,
+            "credits": 5, "seats": 1, "candidates": [setup.john.id(), setup.alice.id()],
+            "min_candidate_support": 2,
+        }))
+        .max_gas()
+        .transact()
+        .await?;
     assert!(prop2.is_success(), "{:?}", prop2);
 
     // fast forward to the voting period
     worker.fast_forward(12).await?;
 
     // Vote only on one proposal
-    let res = setup.alice
+    let res = setup
+        .alice
         .call(setup.ndc_elections_contract.id(), "vote")
         .args_json(json!({"prop_id": setup.proposal_id, "vote": [setup.john.id()],}))
         .max_gas()
@@ -421,7 +435,12 @@ async fn sbt_mint_no_vote() -> anyhow::Result<()> {
     */
     assert_received_tokens(balance_after.balance, balance_before.balance);
 
-    let sbt = verify_i_voted_sbt_tokens_by_owner(setup.registry_contract.id(), setup.ndc_elections_contract.id(), setup.alice).await?;
+    let sbt = verify_i_voted_sbt_tokens_by_owner(
+        setup.registry_contract.id(),
+        setup.ndc_elections_contract.id(),
+        setup.alice,
+    )
+    .await?;
     assert!(!sbt);
 
     Ok(())
@@ -435,7 +454,8 @@ async fn state_change() -> anyhow::Result<()> {
     // fast forward to the voting period
     worker.fast_forward(10).await?;
 
-    let proposal = setup.alice
+    let proposal = setup
+        .alice
         .call(setup.ndc_elections_contract.id(), "proposal")
         .args_json(json!({ "prop_id": setup.proposal_id }))
         .view()
@@ -443,7 +463,8 @@ async fn state_change() -> anyhow::Result<()> {
         .json::<ProposalView>()?;
     assert_eq!(proposal.voters_num, 0);
 
-    let res = setup.alice
+    let res = setup
+        .alice
         .call(setup.ndc_elections_contract.id(), "vote")
         .args_json(json!({"prop_id": setup.proposal_id, "vote": [setup.john.id()],}))
         .max_gas()
@@ -451,7 +472,8 @@ async fn state_change() -> anyhow::Result<()> {
         .await?;
     assert!(res.is_success(), "{:?}", res);
 
-    let proposal = setup.alice
+    let proposal = setup
+        .alice
         .call(setup.ndc_elections_contract.id(), "proposal")
         .args_json(json!({ "prop_id": setup.proposal_id }))
         .view()
@@ -473,7 +495,8 @@ async fn revoke_vote() -> anyhow::Result<()> {
     worker.fast_forward(10).await?;
 
     // alice votes
-    let res = setup.alice
+    let res = setup
+        .alice
         .call(setup.ndc_elections_contract.id(), "vote")
         .args_json(json!({"prop_id": setup.proposal_id, "vote": [setup.john.id()],}))
         .max_gas()
@@ -482,7 +505,8 @@ async fn revoke_vote() -> anyhow::Result<()> {
     assert!(res.is_success(), "{:?}", res.receipt_failures());
 
     // try to revoke the vote (alice is not blacklisted)
-    let res = setup.john
+    let res = setup
+        .john
         .call(setup.ndc_elections_contract.id(), "revoke_vote")
         .args_json(json!({"prop_id": setup.proposal_id, "user": setup.alice.id()}))
         .max_gas()
@@ -491,7 +515,8 @@ async fn revoke_vote() -> anyhow::Result<()> {
     assert!(res.is_failure(), "{:?}", res.receipt_outcomes());
 
     // flag alice as blacklisted
-    let res = setup.auth_flagger
+    let res = setup
+        .auth_flagger
         .call(setup.registry_contract.id(), "admin_flag_accounts")
         .args_json(json!({"flag": "Blacklisted", "accounts": [setup.alice.id()], "memo": "test"}))
         .max_gas()
@@ -500,7 +525,8 @@ async fn revoke_vote() -> anyhow::Result<()> {
     assert!(res.is_success(), "{:?}", res.receipt_failures());
 
     // try to revoke the vote again (alice is now blacklisted)
-    let res = setup.john
+    let res = setup
+        .john
         .call(setup.ndc_elections_contract.id(), "revoke_vote")
         .args_json(json!({"prop_id": setup.proposal_id, "user": setup.alice.id()}))
         .max_gas()

@@ -47,14 +47,17 @@ impl Contract {
             .map(|proposal| ProposalOutput { id, proposal })
     }
 
-    pub fn is_dissolve(&self) -> bool {
+    pub fn is_dissolved(&self) -> bool {
         self.dissolved
     }
 
     /// Returns all members with permissions
     pub fn get_members(&self) -> MembersOutput {
         let (members, permissions) = self.members.get().unwrap();
-        MembersOutput { members, permissions }
+        MembersOutput {
+            members,
+            permissions,
+        }
     }
 
     /// Returns permissions of a given member.

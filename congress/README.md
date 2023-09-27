@@ -11,7 +11,7 @@
 - `get_proposal`: Query a specific proposal
   - `near view $CTR get_proposals '{"id": 1}'`
 
-- `is_dissolve`: Check if contract is dissolved
+- `is_dissolved`: Check if contract is dissolved
   - `near view $CTR is_dissolved ''`
 
 - `get_members`: Query all members with permissions
