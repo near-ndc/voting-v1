@@ -14,6 +14,10 @@ impl Contract {
      * QUERIES
      **********/
 
+    pub fn finish_time(&self) -> u64 {
+        self.finish_time
+    }
+
     pub fn proposals(&self) -> Vec<ProposalView> {
         let mut proposals = Vec::with_capacity(self.prop_counter as usize);
         for i in 1..=self.prop_counter {

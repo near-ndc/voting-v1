@@ -325,6 +325,17 @@ impl Contract {
             )
     }
 
+    /// Allows admin to overwrite the existing finish time by extending the cooldown.
+    /// Must be a Unix Time in miliseconds.
+    pub fn admin_set_finish_time(&mut self, finish_time: u64) {
+        self.assert_admin();
+        require!(
+            self.finish_time < finish_time,
+            "new finish time must be after the existing one"
+        );
+        self.finish_time = finish_time;
+    }
+
     /*****************
      * PRIVATE
      ****************/
