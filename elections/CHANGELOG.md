@@ -20,6 +20,13 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ## Unreleased
 
+### Features
+
+New methods:
+
+- `admin_set_finish_time(time)`: allows the contract authority to overwrite the existing finish time (extending the cooldown).
+- `finish_time()`: query the finish time (time when the cooldown is over and unbonding is possible).
+
 ## v1.0.0 (2023-09-06)
 
 ### Features
