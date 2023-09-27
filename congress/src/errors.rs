@@ -64,6 +64,7 @@ impl FunctionError for CreatePropError {
 pub enum HookError {
     NotAuthorized,
     NoMember,
+    ProposalFinalized,
 }
 
 impl FunctionError for HookError {
@@ -71,6 +72,7 @@ impl FunctionError for HookError {
         match self {
             HookError::NotAuthorized => panic_str("not authorized"),
             HookError::NoMember => panic_str("member not found"),
+            HookError::ProposalFinalized => panic_str("proposal finalized!"),
         }
     }
 }

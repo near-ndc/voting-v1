@@ -184,17 +184,15 @@ impl Contract {
             return Err(VoteError::NotActive);
         }
         prop.add_vote(user, vote, self.threshold)?;
-
-        if prop.status == ProposalStatus::Approved && self.cooldown == 0 {
-            let res = self.execute(id);
-            // skip execution if error
-            if res.is_ok() {
-                prop.status = ProposalStatus::Executed;
-            }   
-        }
-
         self.proposals.insert(&id, &prop);
         emit_vote(id);
+
+        if prop.status == ProposalStatus::Approved && self.cooldown == 0 {
+            // If execute passes state changes are handled by execute function
+            // If it fails, we don't throw error in vote step but vote should pass.
+            let _ = self.execute(id);
+        }
+
         Ok(())
     }
 
@@ -279,12 +277,12 @@ impl Contract {
             ProposalStatus::Approved => {
                 let cooldown = min(proposal.submission_time + self.voting_duration, proposal.proposal_pass_time.unwrap()) + self.cooldown; 
                 if cooldown < env::block_timestamp_ms() {
-                    panic!("Proposal finalized");
+                    return Err(HookError::ProposalFinalized);
                 }
                 self.proposals.remove(&id);
             }
             _ => {
-                panic!("Proposal finalized");
+                return Err(HookError::ProposalFinalized);
             }
         }
         emit_veto(id);
@@ -498,11 +496,20 @@ mod unit_tests {
         }
 
         ctx.predecessor_account_id = acc(5);
-        testing_env!(ctx);
+        testing_env!(ctx.clone());
         match contract.vote(id, Vote::Approve) {
             Err(VoteError::NotAuthorized) => (),
             x => panic!("expected NotAuthorized, got: {:?}", x),
         }
+
+        ctx.predecessor_account_id = acc(2);
+        testing_env!(ctx.clone());
+        // set cooldown=0 and test for immediate execution
+        contract.cooldown = 0;
+        let id = contract.create_proposal(PropKind::Text, "Proposal unit test 2".to_string()).unwrap();
+        contract = vote(ctx.clone(), contract, [acc(1), acc(2), acc(3)].to_vec(), id);
+        let prop = contract.get_proposal(id).unwrap();
+        assert_eq!(prop.proposal.status, ProposalStatus::Executed);
     }
 
     #[test]
@@ -605,7 +612,7 @@ mod unit_tests {
         }
 
         ctx.predecessor_account_id = coa();
-        testing_env!(ctx);
+        testing_env!(ctx.clone());
 
         match contract.veto_hook(id) {
             Ok(_) => (),
@@ -614,7 +621,33 @@ mod unit_tests {
         let expected = r#"EVENT_JSON:{"standard":"ndc-congress","version":"1.0.0","event":"veto","data":{"prop_id":1}}"#;
         assert_eq!(vec![expected], get_logs());
 
-        assert!(contract.proposals.get(&id).is_none())
+        assert!(contract.proposals.get(&id).is_none());
+
+        ctx.predecessor_account_id = acc(1);
+        ctx.block_timestamp = ( contract.start_time + FIVE_MIN / 2) * MSECOND;
+        testing_env!(ctx.clone());
+        
+        let id = contract.create_proposal(PropKind::Text, "Proposal unit test 2".to_string()).unwrap();
+        contract = vote(ctx.clone(), contract, [acc(1), acc(2), acc(3)].to_vec(), id);
+
+        let prop = contract.get_proposal(id).unwrap();
+        assert_eq!(prop.proposal.status, ProposalStatus::Approved);
+
+        // Move cooldown
+        ctx.block_timestamp = (prop.proposal.submission_time+contract.voting_duration+contract.cooldown+1) * MSECOND;
+        ctx.predecessor_account_id = coa();
+        testing_env!(ctx.clone());
+    
+        // Can execute past cooldown but not veto proposal
+        match contract.veto_hook(id) {
+            Err(HookError::ProposalFinalized) => (),
+            x => panic!("expected ProposalFinalized, got: {:?}", x),
+        }
+
+        match contract.execute(id) {
+            Ok(_) => (),
+            Err(x) => panic!("expected OK, got: {:?}", x),
+        }
     }
 
     #[test]
