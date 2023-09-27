@@ -5,8 +5,9 @@ use near_sdk::serde::Serialize;
 use crate::*;
 
 /// This is format of output via JSON for the proposal.
-#[derive(Serialize)]
+#[derive(Serialize, BorshDeserialize)]
 #[serde(crate = "near_sdk::serde")]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct ProposalOutput {
     /// Id of the proposal.
     pub id: u32,
@@ -31,7 +32,7 @@ impl Contract {
     /// Returns all proposals
     /// Get proposals in paginated view.
     pub fn get_proposals(&self, from_index: u32, limit: u32) -> Vec<ProposalOutput> {
-        (from_index..min(self.prop_counter, from_index + limit))
+        (from_index..(min(self.prop_counter, from_index + limit)+1))
             .filter_map(|id| {
                 self.proposals
                     .get(&id)

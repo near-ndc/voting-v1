@@ -10,6 +10,7 @@ use crate::VoteError;
 /// Proposal that are sent to this DAO.
 #[derive(BorshSerialize, BorshDeserialize, Serialize)]
 #[serde(crate = "near_sdk::serde")]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct Proposal {
     /// Original proposer.
     pub proposer: AccountId,
@@ -64,6 +65,7 @@ impl Proposal {
 /// Kinds of proposals, doing different action.
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub enum PropKind {
     /// Calls `receiver_id` with list of method names in a single promise.
     /// Allows this contract to execute any arbitrary set of actions in other contracts.
@@ -133,6 +135,7 @@ pub enum Vote {
 /// Function call arguments.
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct ActionCall {
     pub method_name: String,
     pub args: Base64VecU8,

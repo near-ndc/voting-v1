@@ -489,6 +489,10 @@ mod unit_tests {
         assert!(prop.is_some());
         assert_eq!(prop.unwrap().proposal.status, ProposalStatus::InProgress);
 
+        // check `get_proposals` query
+        let res = contract.get_proposals(0, 10);
+        assert_eq!(res, vec![contract.get_proposal(id).unwrap()]);
+
         contract = vote(ctx.clone(), contract, [acc(1), acc(2), acc(3)].to_vec(), id);
 
         prop = contract.get_proposal(id);
