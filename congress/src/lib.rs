@@ -189,7 +189,8 @@ impl Contract {
 
         if prop.status == ProposalStatus::Approved && self.cooldown == 0 {
             // We ignore a failure of self.execute here to assure that the vote is counted.
-            if self.execute(id).is_err() {
+            let res = self.execute(id);
+            if res.is_err() {
                 emit_vote_execute(id, res.err().unwrap());
             }
         }
@@ -278,7 +279,7 @@ impl Contract {
             ProposalStatus::InProgress => {
                 proposal.status = ProposalStatus::Vetoed;
             }
-            ProposalStatus::Approved | ProposalStatus::Failed => {
+            ProposalStatus::Approved => {
                 let cooldown = min(
                     proposal.submission_time + self.voting_duration,
                     proposal.approved_at.unwrap(),
@@ -645,7 +646,7 @@ mod unit_tests {
     #[test]
     fn veto_hook() {
         let (mut ctx, mut contract, id) = setup_ctr(100);
-        let mut prop = contract.get_proposal(id).unwrap();
+        contract.get_proposal(id).unwrap();
         match contract.veto_hook(id) {
             Err(HookError::NotAuthorized) => (),
             x => panic!("expected NotAuthorized, got: {:?}", x),
@@ -662,7 +663,7 @@ mod unit_tests {
         let expected = r#"EVENT_JSON:{"standard":"ndc-congress","version":"1.0.0","event":"veto","data":{"prop_id":1}}"#;
         assert_eq!(vec![expected], get_logs());
 
-        prop = contract.get_proposal(id).unwrap();
+        let mut prop = contract.get_proposal(id).unwrap();
         assert_eq!(prop.proposal.status, ProposalStatus::Vetoed);
 
         ctx.predecessor_account_id = acc(1);
