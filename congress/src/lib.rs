@@ -339,9 +339,10 @@ impl Contract {
         members.remove(idx.unwrap());
 
         if let Some(mut dismissed) = self.dismissed_members.get() {
-            dismissed.push(member.clone());
-            // Takes n * log(n), maximum amount of members is 17.
-            dismissed.sort();
+            match dismissed.binary_search(&member) {
+                Ok(_) => {} // element already in vector 
+                Err(pos) => dismissed.insert(pos, member.clone()),
+            }
             self.dismissed_members.set(&dismissed);
         } else {
             self.dismissed_members.set(&vec![member.clone()]);
@@ -368,8 +369,10 @@ impl Contract {
             }
             dismissed.remove(idx.unwrap());
             let (mut members, perms) = self.members.get().unwrap();
-            members.push(member.clone());
-            members.sort();
+            match members.binary_search(&member) {
+                Ok(_) => {} // element already in vector 
+                Err(pos) => members.insert(pos, member.clone()),
+            }
 
             emit_reinstate_member(&member);
             
