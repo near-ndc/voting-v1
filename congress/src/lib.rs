@@ -557,10 +557,7 @@ mod unit_tests {
         ctx.block_timestamp = (ctr.start_time + ctr.cooldown + ctr.voting_duration + 1) * MSECOND;
         testing_env!(ctx);
 
-        match ctr.execute(id) {
-            Ok(_) => (),
-            Err(x) => panic!("expected OK, got: {:?}", x),
-        }
+        ctr.execute(id).unwrap();
 
         prop = ctr.get_proposal(id).unwrap();
         assert_eq!(prop.proposal.status, ProposalStatus::Executed);
@@ -579,10 +576,7 @@ mod unit_tests {
         testing_env!(ctx);
 
         assert_eq!(ctr.budget_spent, 0);
-        match ctr.execute(id) {
-            Ok(_) => (),
-            Err(x) => panic!("expected OK, got: {:?}", x),
-        }
+        ctr.execute(id).unwrap();
         assert_eq!(ctr.budget_spent, 1000);
 
         let res = ctr.create_proposal(
@@ -591,8 +585,7 @@ mod unit_tests {
         );
         match res {
             Err(CreatePropError::BudgetOverflow) => (),
-            Ok(_) => panic!("expected BudgetOverflow, got: OK"),
-            Err(x) => panic!("expected BudgetOverflow, got: {:?}", x),
+            x => panic!("expected BudgetOverflow, got: {:?}", x),
         }
     }
 
@@ -616,10 +609,7 @@ mod unit_tests {
         // proposal isn't executed so budget spent is 0
         assert_eq!(ctr.budget_spent, 0);
 
-        match ctr.execute(id) {
-            Ok(_) => (),
-            Err(x) => panic!("expected OK, got: {:?}", x),
-        }
+        ctr.execute(id).unwrap();
 
         // budget spent * remaining months
         assert_eq!(ctr.budget_spent, 20);
@@ -648,10 +638,7 @@ mod unit_tests {
         testing_env!(ctx.clone());
 
         // Veto during voting phase(before cooldown)
-        match ctr.veto_hook(id) {
-            Ok(_) => (),
-            x => panic!("expected Ok, got: {:?}", x),
-        }
+        ctr.veto_hook(id).unwrap();
         let expected = r#"EVENT_JSON:{"standard":"ndc-congress","version":"1.0.0","event":"veto","data":{"prop_id":1}}"#;
         assert_eq!(vec![expected], get_logs());
 
@@ -678,10 +665,7 @@ mod unit_tests {
         ctx.predecessor_account_id = coa();
         testing_env!(ctx.clone());
 
-        match ctr.veto_hook(id) {
-            Ok(_) => (),
-            x => panic!("expected Ok, got: {:?}", x),
-        }
+        ctr.veto_hook(id).unwrap();
 
         ctx.block_timestamp = ctr.start_time;
         ctx.predecessor_account_id = acc(1);
@@ -707,10 +691,7 @@ mod unit_tests {
             x => panic!("expected CooldownOver, got: {:?}", x),
         }
 
-        match ctr.execute(id) {
-            Ok(_) => (),
-            Err(x) => panic!("expected OK, got: {:?}", x),
-        }
+        ctr.execute(id).unwrap();
     }
 
     #[test]
@@ -726,10 +707,7 @@ mod unit_tests {
         ctx.predecessor_account_id = voting_body();
         testing_env!(ctx);
 
-        match ctr.dissolve_hook() {
-            Ok(_) => (),
-            x => panic!("expected Ok, got: {:?}", x),
-        }
+        ctr.dissolve_hook().unwrap();
         let expected = r#"EVENT_JSON:{"standard":"ndc-congress","version":"1.0.0","event":"dissolve","data":""}"#;
         assert_eq!(vec![expected], get_logs());
 
@@ -754,10 +732,7 @@ mod unit_tests {
         ctx.predecessor_account_id = voting_body();
         testing_env!(ctx);
 
-        match ctr.dismiss_hook(acc(2)) {
-            Ok(_) => (),
-            x => panic!("expected Ok, got: {:?}", x),
-        }
+        ctr.dismiss_hook(acc(2)).unwrap();
         let expected = r#"EVENT_JSON:{"standard":"ndc-congress","version":"1.0.0","event":"dismiss","data":{"member":"user-2.near"}}"#;
         assert_eq!(vec![expected], get_logs());
 
@@ -765,11 +740,7 @@ mod unit_tests {
 
         assert!(!ctr.dissolved);
         // Remove more members to check dissolve
-        match ctr.dismiss_hook(acc(1)) {
-            Ok(_) => (),
-            x => panic!("expected Ok, got: {:?}", x),
-        }
-
+        ctr.dismiss_hook(acc(1)).unwrap();
         assert!(ctr.dissolved);
     }
 }
