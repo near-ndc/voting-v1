@@ -74,7 +74,7 @@ pub enum PropKind {
     },
     /// a default, text based proposal.
     /// Note: NewBudget, UpdateBudge are modelled using Text.
-    // NOTE: Sputnik calls this kind `Vote`
+    // NOTE: In Sputnik, this variant kind is called `Vote`
     Text,
     /// Single funding request.
     FundingRequest(Balance),
@@ -159,7 +159,7 @@ pub enum PropPerm {
 pub enum HookPerm {
     /// Allows to veto any proposal kind
     VetoAll,
-    /// Allows to vet only big funding requests or recurrent funding requests
+    /// Allows to veto only big funding requests or recurrent funding requests
     VetoBigOrReccurentFundingReq,
     Dismiss,
     Dissolve,
