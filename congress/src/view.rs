@@ -1,11 +1,11 @@
 use std::cmp::min;
 
-use near_sdk::serde::{Deserialize, Serialize};
+use near_sdk::serde::{Serialize};
 
 use crate::*;
 
 /// This is format of output via JSON for the proposal.
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize)]
 #[cfg_attr(test, derive(Debug, PartialEq))]
 #[serde(crate = "near_sdk::serde")]
 pub struct ProposalOutput {
