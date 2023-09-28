@@ -1,16 +1,17 @@
 use std::cmp::min;
 
-use near_sdk::serde::Serialize;
+use near_sdk::serde::{Deserialize, Serialize};
 
 use crate::*;
 
 /// This is format of output via JSON for the proposal.
 #[derive(Serialize)]
 #[serde(crate = "near_sdk::serde")]
+#[cfg_attr(test, derive(Debug, PartialEq))]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Deserialize))]
 pub struct ProposalOutput {
     /// Id of the proposal.
     pub id: u32,
-    #[serde(flatten)]
     pub proposal: Proposal,
 }
 
@@ -31,7 +32,7 @@ impl Contract {
     /// Returns all proposals
     /// Get proposals in paginated view.
     pub fn get_proposals(&self, from_index: u32, limit: u32) -> Vec<ProposalOutput> {
-        (from_index..min(self.prop_counter, from_index + limit))
+        (from_index..=min(self.prop_counter, from_index + limit))
             .filter_map(|id| {
                 self.proposals
                     .get(&id)
