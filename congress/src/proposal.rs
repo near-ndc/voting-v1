@@ -73,8 +73,8 @@ pub enum PropKind {
         actions: Vec<ActionCall>,
     },
     /// a default, text based proposal.
-    /// Note: SetupBudget is modeled using Text.
-    // NOTE: in Sputnik this is Vote
+    /// Note: NewBudget, UpdateBudge are modelled using Text.
+    // NOTE: In Sputnik, this variant kind is called `Vote`
     Text,
     /// Single funding request.
     FundingRequest(Balance),
@@ -157,7 +157,10 @@ pub enum PropPerm {
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
 #[serde(crate = "near_sdk::serde")]
 pub enum HookPerm {
-    Veto,
+    /// Allows to veto any proposal kind
+    VetoAll,
+    /// Allows to veto only big funding requests or recurrent funding requests
+    VetoBigOrReccurentFundingReq,
     Dismiss,
     Dissolve,
 }
