@@ -63,9 +63,8 @@ impl Proposal {
 }
 
 /// Kinds of proposals, doing different action.
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug, PartialEq)]
 #[serde(crate = "near_sdk::serde")]
-#[cfg_attr(test, derive(Debug, PartialEq))]
 pub enum PropKind {
     /// Calls `receiver_id` with list of method names in a single promise.
     /// Allows this contract to execute any arbitrary set of actions in other contracts.
@@ -109,9 +108,8 @@ impl PropKind {
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Serialize, PartialEq)]
-#[cfg_attr(test, derive(Debug))]
 #[serde(crate = "near_sdk::serde")]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Deserialize))]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Deserialize, Debug))]
 pub enum ProposalStatus {
     InProgress,
     Approved,
@@ -134,9 +132,8 @@ pub enum Vote {
 }
 
 /// Function call arguments.
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug, PartialEq)]
 #[serde(crate = "near_sdk::serde")]
-#[cfg_attr(test, derive(Debug, PartialEq))]
 pub struct ActionCall {
     pub method_name: String,
     pub args: Base64VecU8,
