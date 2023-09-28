@@ -62,3 +62,10 @@ pub(crate) fn emit_dismiss(member: &AccountId) {
         data: json!({ "member": member }),
     });
 }
+
+pub(crate) fn emit_reinstate_member(member: &AccountId) {
+    emit_event(EventPayload {
+        event: "reinstate-member",
+        data: json!({ "member": member }),
+    });
+}

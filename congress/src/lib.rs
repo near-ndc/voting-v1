@@ -39,6 +39,7 @@ pub struct Contract {
     // We can use single object rather than LookupMap because the maximum amount of members
     // is 17 (for HoM: 15 + 2)
     pub members: LazyOption<(Vec<AccountId>, Vec<PropPerm>)>,
+    pub dismissed_members: LazyOption<Vec<AccountId>>,
     /// minimum amount of members to approve the proposal
     pub threshold: u8,
 
@@ -84,6 +85,7 @@ impl Contract {
             prop_counter: 0,
             proposals: LookupMap::new(StorageKey::Proposals),
             members: LazyOption::new(StorageKey::Members, Some(&(members, member_perms))),
+            dismissed_members: LazyOption::new(StorageKey::DismissedMembers, None),
             threshold,
             hook_auth: LazyOption::new(StorageKey::HookAuth, Some(&hook_auth)),
             start_time,
@@ -332,7 +334,18 @@ impl Contract {
         if idx.is_err() {
             return Err(HookError::NoMember);
         }
+
         members[idx.unwrap()] = members.pop().unwrap();
+        // Takes n * log(n), maximum amount of members is 17.
+        members.sort();
+
+        if let Some(mut dismissed) = self.dismissed_members.get() {
+            dismissed.push(member.clone());
+            dismissed.sort();
+            self.dismissed_members.set(&dismissed);
+        } else {
+            self.dismissed_members.set(&vec![member.clone()]);
+        }
 
         emit_dismiss(&member);
         // If DAO doesn't have required threshold, then we dissolve.
@@ -342,6 +355,34 @@ impl Contract {
 
         self.members.set(&(members, perms));
         Ok(())
+    }
+
+    #[handle_result]
+    pub fn reinstate_member_hook(&mut self, member: AccountId) -> Result<(), HookError> {
+        self.assert_active();
+        self.assert_hook_perm(&env::predecessor_account_id(), &[HookPerm::ReinstateMember])?;
+        if let Some(mut dismissed) = self.dismissed_members.get() {
+            let idx = dismissed.binary_search(&member);
+            if idx.is_err() {
+                return Err(HookError::NoMember);
+            }
+            dismissed[idx.unwrap()] = dismissed.pop().unwrap();
+            dismissed.sort();
+            let (mut members, perms) = self.members.get().unwrap();
+            members.push(member.clone());
+            members.sort();
+
+            emit_reinstate_member(&member);
+            
+            self.dismissed_members.set(&dismissed);
+            self.members.set(&(members, perms));
+
+            return Ok(());
+        } else {
+            // TODO: throw error
+            return Ok(());
+        }
+        //let mut dismissed = self.dismissed_members.get().unwrap();
     }
 
     /*****************
@@ -429,7 +470,7 @@ mod unit_tests {
         testing_env, VMContext,
     };
 
-    use crate::*;
+    use crate::{*, view::MembersOutput};
 
     /// 1ms in nano seconds
     const MSECOND: u64 = 1_000_000;
@@ -466,6 +507,7 @@ mod unit_tests {
             vec![
                 HookPerm::Dismiss,
                 HookPerm::Dissolve,
+                HookPerm::ReinstateMember,
                 HookPerm::VetoBigOrReccurentFundingReq,
             ],
         );
@@ -878,5 +920,32 @@ mod unit_tests {
         // Remove more members to check dissolve
         ctr.dismiss_hook(acc(1)).unwrap();
         assert!(ctr.dissolved);
+    }
+
+    #[test]
+    fn dismiss_reinstate_member_order() {
+        let (mut ctx, mut ctr, _) = setup_ctr(100);
+        ctx.predecessor_account_id = voting_body();
+        testing_env!(ctx);
+
+        let (mut members, permissions) = ctr.members.get().unwrap();
+        members.push(acc(5));
+        members.push(acc(6));
+        ctr.members.set(&(members, permissions.clone()));
+
+        // remove from middle
+        ctr.dismiss_hook(acc(2)).unwrap();
+        let expected = r#"EVENT_JSON:{"standard":"ndc-congress","version":"1.0.0","event":"dismiss","data":{"member":"user-2.near"}}"#;
+        assert_eq!(vec![expected], get_logs());
+
+        // should be sorted list
+        assert_eq!(ctr.get_members(), MembersOutput{members: vec![acc(1), acc(3), acc(4), acc(5), acc(6)], permissions: permissions.clone() });
+
+        // Remove more members to check dissolve
+        ctr.dismiss_hook(acc(3)).unwrap();
+        assert_eq!(ctr.get_members(), MembersOutput{members: vec![acc(1), acc(4), acc(5), acc(6)], permissions: permissions.clone() });
+
+        ctr.reinstate_member_hook(acc(2)).unwrap();
+        assert_eq!(ctr.get_members(), MembersOutput{members: vec![acc(1), acc(2), acc(4), acc(5), acc(6)], permissions });
     }
 }

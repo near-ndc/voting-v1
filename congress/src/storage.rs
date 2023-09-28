@@ -6,5 +6,6 @@ use near_sdk::BorshStorageKey;
 pub enum StorageKey {
     Proposals,
     Members,
+    DismissedMembers,
     HookAuth,
 }
