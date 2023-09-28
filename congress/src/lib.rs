@@ -508,6 +508,22 @@ mod unit_tests {
         ctr
     }
 
+    fn assert_hook_not_auth(res: Result<(), HookError>) {
+        assert!(
+            matches!(res, Err(HookError::NotAuthorized)),
+            "got: {:?}",
+            res
+        );
+    }
+
+    fn assert_create_prop_not_allowed(res: Result<u32, CreatePropError>) {
+        assert!(
+            matches!(res, Err(CreatePropError::KindNotAllowed)),
+            "got: {:?}",
+            res
+        );
+    }
+
     #[test]
     fn basic_flow() {
         let (mut ctx, mut ctr, id) = setup_ctr(100);
@@ -579,18 +595,17 @@ mod unit_tests {
             .unwrap();
 
         // creating other proposal kinds should fail
-        ctr.create_proposal(PropKind::RecurrentFundingRequest(10), "".to_string())
-            .unwrap_err();
-        ctr.create_proposal(PropKind::Text, "".to_string())
-            .unwrap_err();
-        ctr.create_proposal(
+        assert_create_prop_not_allowed(
+            ctr.create_proposal(PropKind::RecurrentFundingRequest(10), "".to_string()),
+        );
+        assert_create_prop_not_allowed(ctr.create_proposal(PropKind::Text, "".to_string()));
+        assert_create_prop_not_allowed(ctr.create_proposal(
             PropKind::FunctionCall {
                 receiver_id: acc(10),
                 actions: vec![],
             },
             "".to_string(),
-        )
-        .unwrap_err();
+        ));
     }
 
     #[test]
@@ -810,9 +825,9 @@ mod unit_tests {
         testing_env!(ctx.clone());
         ctr.veto_hook(p_big).unwrap();
         ctr.veto_hook(p_rec).unwrap();
-        ctr.veto_hook(p_text).unwrap_err();
-        ctr.veto_hook(p_fc).unwrap_err();
-        ctr.veto_hook(p_small).unwrap_err();
+        assert_hook_not_auth(ctr.veto_hook(p_text));
+        assert_hook_not_auth(ctr.veto_hook(p_fc));
+        assert_hook_not_auth(ctr.veto_hook(p_small));
     }
 
     #[test]
