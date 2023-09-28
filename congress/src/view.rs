@@ -32,7 +32,7 @@ impl Contract {
     /// Returns all proposals
     /// Get proposals in paginated view.
     pub fn get_proposals(&self, from_index: u32, limit: u32) -> Vec<ProposalOutput> {
-        (from_index..(min(self.prop_counter, from_index + limit)+1))
+        (from_index..=min(self.prop_counter, from_index + limit))
             .filter_map(|id| {
                 self.proposals
                     .get(&id)
