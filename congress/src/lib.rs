@@ -376,9 +376,9 @@ impl Contract {
             self.dismissed_members.set(&dismissed);
             self.members.set(&(members, perms));
 
-            return Ok(());
+            Ok(())
         } else {
-            return Err(HookError::NoMember);
+            Err(HookError::NoMember)
         }
     }
 
@@ -404,7 +404,7 @@ impl Contract {
                 return Ok(());
             }
         }
-        return Err(HookError::NotAuthorized);
+        Err(HookError::NotAuthorized)
     }
 
     fn assert_proposal(&self, id: u32) -> Proposal {
@@ -861,7 +861,7 @@ mod unit_tests {
         testing_env!(ctx.clone());
         let (p_text, p_fc, p_big, p_small, p_rec) = create_all_props(&mut ctr);
         ctx.predecessor_account_id = voting_body();
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         ctr.veto_hook(p_big).unwrap();
         ctr.veto_hook(p_rec).unwrap();
         assert_hook_not_auth(ctr.veto_hook(p_text));
