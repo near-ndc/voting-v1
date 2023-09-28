@@ -8,9 +8,9 @@ use std::collections::HashMap;
 use crate::VoteError;
 
 /// Proposal that are sent to this DAO.
-#[derive(BorshSerialize, BorshDeserialize, Serialize)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Deserialize, Debug, PartialEq))]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq))]
 pub struct Proposal {
     /// Original proposer.
     pub proposer: AccountId,
@@ -107,9 +107,9 @@ impl PropKind {
     }
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq)]
 #[serde(crate = "near_sdk::serde")]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Deserialize, Debug))]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
 pub enum ProposalStatus {
     InProgress,
     Approved,
