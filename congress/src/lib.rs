@@ -53,7 +53,8 @@ pub struct Contract {
 
     pub budget_spent: Balance,
     pub budget_cap: Balance,
-    pub big_budget_balance: Balance,
+    /// size (in yocto NEAR) of the big funding request
+    pub big_funding_threshold: Balance,
 }
 
 #[near_bindgen]
@@ -70,7 +71,7 @@ impl Contract {
         member_perms: Vec<PropPerm>,
         hook_auth: HashMap<AccountId, Vec<HookPerm>>,
         budget_cap: U128,
-        big_budget_balance: U128,
+        big_funding_threshold: U128,
     ) -> Self {
         // we can support up to 255 with the limitation of the proposal type, but setting 100
         // here because this is more than enough for what we need to test for Congress.
@@ -91,7 +92,7 @@ impl Contract {
             voting_duration,
             budget_spent: 0,
             budget_cap: budget_cap.0,
-            big_budget_balance: big_budget_balance.0,
+            big_funding_threshold: big_funding_threshold.0,
         }
     }
 
@@ -267,13 +268,25 @@ impl Contract {
     }
 
     /// Veto proposal hook
-    /// Removes proposal
     /// * `id`: proposal id
     #[handle_result]
     pub fn veto_hook(&mut self, id: u32) -> Result<(), HookError> {
         self.assert_active();
-        self.assert_hook_perm(&env::predecessor_account_id(), &HookPerm::Veto)?;
         let mut proposal = self.assert_proposal(id);
+        let is_big_or_recurrent = match proposal.kind {
+            PropKind::FundingRequest(b) => b >= self.big_funding_threshold,
+            PropKind::RecurrentFundingRequest(_) => true,
+            _ => false,
+        };
+        let caller = env::predecessor_account_id();
+        if is_big_or_recurrent {
+            self.assert_hook_perm(
+                &caller,
+                &[HookPerm::VetoBigOrReccurentFundingReq, HookPerm::VetoAll],
+            )?;
+        } else {
+            self.assert_hook_perm(&caller, &[HookPerm::VetoAll])?;
+        }
 
         match proposal.status {
             ProposalStatus::InProgress => {
@@ -304,7 +317,7 @@ impl Contract {
     pub fn dissolve_hook(&mut self) -> Result<(), HookError> {
         // only check permission if the DAO term is not over.
         if env::block_timestamp_ms() <= self.end_time {
-            self.assert_hook_perm(&env::predecessor_account_id(), &HookPerm::Dissolve)?;
+            self.assert_hook_perm(&env::predecessor_account_id(), &[HookPerm::Dissolve])?;
         }
         self.dissolve_and_cleanup();
         Ok(())
@@ -313,7 +326,7 @@ impl Contract {
     #[handle_result]
     pub fn dismiss_hook(&mut self, member: AccountId) -> Result<(), HookError> {
         self.assert_active();
-        self.assert_hook_perm(&env::predecessor_account_id(), &HookPerm::Dismiss)?;
+        self.assert_hook_perm(&env::predecessor_account_id(), &[HookPerm::Dismiss])?;
         let (mut members, perms) = self.members.get().unwrap();
         let idx = members.binary_search(&member);
         if idx.is_err() {
@@ -335,13 +348,25 @@ impl Contract {
      * INTERNAL
      ****************/
 
-    fn assert_hook_perm(&self, user: &AccountId, perm: &HookPerm) -> Result<(), HookError> {
+    /// Returns Ok if the user has at least one of the `require_any` permissions.
+    /// Otherwise returns Err.
+    fn assert_hook_perm(
+        &self,
+        user: &AccountId,
+        require_any: &[HookPerm],
+    ) -> Result<(), HookError> {
         let auth_hook = self.hook_auth.get().unwrap();
         let perms = auth_hook.get(user);
-        if perms.is_none() || !perms.unwrap().contains(perm) {
+        if perms.is_none() {
             return Err(HookError::NotAuthorized);
         }
-        Ok(())
+        let perms = perms.unwrap();
+        for r in require_any {
+            if perms.contains(r) {
+                return Ok(());
+            }
+        }
+        return Err(HookError::NotAuthorized);
     }
 
     fn assert_proposal(&self, id: u32) -> Proposal {
@@ -433,16 +458,21 @@ mod unit_tests {
 
     fn setup_ctr(attach_deposit: u128) -> (VMContext, Contract, u32) {
         let mut context = VMContextBuilder::new().build();
-        let start_time = START;
         let end_time = START + TERM;
-
-        let mut hash_map = HashMap::new();
-        hash_map.insert(coa(), vec![HookPerm::Veto]);
-        hash_map.insert(voting_body(), vec![HookPerm::Dismiss, HookPerm::Dissolve]);
+        let mut hook_perms = HashMap::new();
+        hook_perms.insert(coa(), vec![HookPerm::VetoAll]);
+        hook_perms.insert(
+            voting_body(),
+            vec![
+                HookPerm::Dismiss,
+                HookPerm::Dissolve,
+                HookPerm::VetoBigOrReccurentFundingReq,
+            ],
+        );
 
         let mut contract = Contract::new(
             community_fund(),
-            start_time,
+            START,
             end_time,
             COOLDOWN_DURATION,
             VOTING_DURATION,
@@ -451,12 +481,13 @@ mod unit_tests {
                 PropPerm::Text,
                 PropPerm::RecurrentFundingRequest,
                 PropPerm::FundingRequest,
+                PropPerm::FunctionCall,
             ],
-            hash_map,
+            hook_perms,
             U128(10000),
-            U128(100000),
+            U128(1000),
         );
-        context.block_timestamp = start_time * MSECOND;
+        context.block_timestamp = START * MSECOND;
         context.predecessor_account_id = acc(1);
         context.attached_deposit = attach_deposit * MILI_NEAR;
         testing_env!(context.clone());
@@ -538,6 +569,30 @@ mod unit_tests {
         contract = vote(ctx, contract, [acc(1), acc(2), acc(3)].to_vec(), id);
         let prop = contract.get_proposal(id).unwrap();
         assert_eq!(prop.proposal.status, ProposalStatus::Executed);
+    }
+
+    #[test]
+    fn proposal_create_prop_permissions() {
+        let (_, mut ctr, _) = setup_ctr(100);
+        let (members, _) = ctr.members.get().unwrap();
+        ctr.members.set(&(members, vec![PropPerm::FundingRequest]));
+
+        ctr.create_proposal(PropKind::FundingRequest(10), "".to_string())
+            .unwrap();
+
+        // creating other proposal kinds should fail
+        ctr.create_proposal(PropKind::RecurrentFundingRequest(10), "".to_string())
+            .unwrap_err();
+        ctr.create_proposal(PropKind::Text, "".to_string())
+            .unwrap_err();
+        ctr.create_proposal(
+            PropKind::FunctionCall {
+                receiver_id: acc(10),
+                actions: vec![],
+            },
+            "".to_string(),
+        )
+        .unwrap_err();
     }
 
     #[test]
@@ -722,6 +777,69 @@ mod unit_tests {
             Ok(_) => (),
             Err(x) => panic!("expected OK, got: {:?}", x),
         }
+    }
+
+    fn create_all_props(ctr: &mut Contract) -> (u32, u32, u32, u32, u32) {
+        let prop_text = ctr
+            .create_proposal(PropKind::Text, "text proposal".to_string())
+            .unwrap();
+        let prop_fc = ctr
+            .create_proposal(
+                PropKind::FunctionCall {
+                    receiver_id: acc(10),
+                    actions: vec![],
+                },
+                "function call proposal".to_string(),
+            )
+            .unwrap();
+
+        let prop_big = ctr
+            .create_proposal(
+                PropKind::FundingRequest(1100),
+                "big funding request".to_string(),
+            )
+            .unwrap();
+        let prop_small = ctr
+            .create_proposal(
+                PropKind::FundingRequest(200),
+                "small funding request".to_string(),
+            )
+            .unwrap();
+        let prop_rec = ctr
+            .create_proposal(
+                PropKind::RecurrentFundingRequest(200),
+                "recurrent funding request".to_string(),
+            )
+            .unwrap();
+
+        (prop_text, prop_fc, prop_big, prop_small, prop_rec)
+    }
+
+    #[test]
+    fn veto_hook_big_funding_request() {
+        let (mut ctx, mut ctr, _) = setup_ctr(100);
+
+        // CoA should be able to veto everything
+        let (p_text, p_fc, p_big, p_small, p_rec) = create_all_props(&mut ctr);
+        ctx.predecessor_account_id = coa();
+        testing_env!(ctx.clone());
+        ctr.veto_hook(p_text).unwrap();
+        ctr.veto_hook(p_fc).unwrap();
+        ctr.veto_hook(p_big).unwrap();
+        ctr.veto_hook(p_small).unwrap();
+        ctr.veto_hook(p_rec).unwrap();
+
+        // Voting Body should only be able to veto big funding req. or recurrent one.
+        ctx.predecessor_account_id = acc(1);
+        testing_env!(ctx.clone());
+        let (p_text, p_fc, p_big, p_small, p_rec) = create_all_props(&mut ctr);
+        ctx.predecessor_account_id = voting_body();
+        testing_env!(ctx.clone());
+        ctr.veto_hook(p_big).unwrap();
+        ctr.veto_hook(p_rec).unwrap();
+        ctr.veto_hook(p_text).unwrap_err();
+        ctr.veto_hook(p_fc).unwrap_err();
+        ctr.veto_hook(p_small).unwrap_err();
     }
 
     #[test]
