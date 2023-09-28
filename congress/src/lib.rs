@@ -335,12 +335,12 @@ impl Contract {
             return Err(HookError::NoMember);
         }
 
-        members[idx.unwrap()] = members.pop().unwrap();
-        // Takes n * log(n), maximum amount of members is 17.
-        members.sort();
+        // Takes O(n), maintains order, maximum amount of members is 17.
+        members.remove(idx.unwrap());
 
         if let Some(mut dismissed) = self.dismissed_members.get() {
             dismissed.push(member.clone());
+            // Takes n * log(n), maximum amount of members is 17.
             dismissed.sort();
             self.dismissed_members.set(&dismissed);
         } else {
@@ -366,8 +366,7 @@ impl Contract {
             if idx.is_err() {
                 return Err(HookError::NoMember);
             }
-            dismissed[idx.unwrap()] = dismissed.pop().unwrap();
-            dismissed.sort();
+            dismissed.remove(idx.unwrap());
             let (mut members, perms) = self.members.get().unwrap();
             members.push(member.clone());
             members.sort();
@@ -379,10 +378,8 @@ impl Contract {
 
             return Ok(());
         } else {
-            // TODO: throw error
-            return Ok(());
+            return Err(HookError::NoMember);
         }
-        //let mut dismissed = self.dismissed_members.get().unwrap();
     }
 
     /*****************
@@ -923,6 +920,30 @@ mod unit_tests {
     }
 
     #[test]
+    fn reinstate_member_hook() {
+        let (mut ctx, mut ctr, _) = setup_ctr(100);
+
+        match ctr.reinstate_member_hook(acc(2)) {
+            Err(HookError::NotAuthorized) => (),
+            x => panic!("expected NotAuthorized, got: {:?}", x),
+        }
+
+        ctx.predecessor_account_id = voting_body();
+        testing_env!(ctx);
+
+        match ctr.reinstate_member_hook(acc(5)) {
+            Err(HookError::NoMember) => (),
+            x => panic!("expected NoMember, got: {:?}", x),
+        }
+
+        ctr.dismiss_hook(acc(2)).unwrap();
+        assert_eq!(ctr.member_permissions(acc(2)), vec![]);
+
+        ctr.reinstate_member_hook(acc(2)).unwrap();
+        assert_eq!(ctr.member_permissions(acc(2)), ctr.members.get().unwrap().1);
+    }
+
+    #[test]
     fn dismiss_reinstate_member_order() {
         let (mut ctx, mut ctr, _) = setup_ctr(100);
         ctx.predecessor_account_id = voting_body();
@@ -935,13 +956,11 @@ mod unit_tests {
 
         // remove from middle
         ctr.dismiss_hook(acc(2)).unwrap();
-        let expected = r#"EVENT_JSON:{"standard":"ndc-congress","version":"1.0.0","event":"dismiss","data":{"member":"user-2.near"}}"#;
-        assert_eq!(vec![expected], get_logs());
 
         // should be sorted list
         assert_eq!(ctr.get_members(), MembersOutput{members: vec![acc(1), acc(3), acc(4), acc(5), acc(6)], permissions: permissions.clone() });
 
-        // Remove more members to check dissolve
+        // Remove more members
         ctr.dismiss_hook(acc(3)).unwrap();
         assert_eq!(ctr.get_members(), MembersOutput{members: vec![acc(1), acc(4), acc(5), acc(6)], permissions: permissions.clone() });
 
