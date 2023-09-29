@@ -525,6 +525,7 @@ mod unit_tests {
     }
 
     #[test]
+    #[should_panic(expected = "proposal does not exist")]
     fn basic_flow() {
         let (mut ctx, mut ctr, id) = setup_ctr(100);
         let mut prop = ctr.get_proposal(id);
@@ -583,11 +584,13 @@ mod unit_tests {
         ctr = vote(ctx, ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
         let prop = ctr.get_proposal(id).unwrap();
         assert_eq!(prop.proposal.status, ProposalStatus::Executed);
+
+        ctr.vote(10, Vote::Approve).unwrap();
     }
 
     #[test]
     fn proposal_create_prop_permissions() {
-        let (_, mut ctr, _) = setup_ctr(100);
+        let (mut ctx, mut ctr, _) = setup_ctr(100);
         let (members, _) = ctr.members.get().unwrap();
         ctr.members.set(&(members, vec![PropPerm::FundingRequest]));
 
@@ -606,6 +609,30 @@ mod unit_tests {
             },
             "".to_string(),
         ));
+
+        match ctr.create_proposal(PropKind::FundingRequest(ctr.budget_cap+1), "".to_string()) {
+            Err(CreatePropError::BudgetOverflow) => (),
+            Ok(_) => panic!("expected BudgetOverflow, got: OK"),
+            Err(err) => panic!("expected BudgetOverflow got: {:?}", err),
+        }
+
+        ctx.attached_deposit = 1;
+        testing_env!(ctx.clone());
+
+        match ctr.create_proposal(PropKind::FundingRequest(1), "".to_string()) {
+            Err(CreatePropError::Storage(_)) => (),
+            Ok(_) => panic!("expected Storage, got: OK"),
+            Err(err) => panic!("expected Storage got: {:?}", err),
+        }
+
+        ctx.predecessor_account_id = acc(6);
+        ctx.attached_deposit = 10 * MILI_NEAR;
+        testing_env!(ctx.clone());
+        match ctr.create_proposal(PropKind::Text, "".to_string()) {
+            Err(CreatePropError::NotAuthorized) => (),
+            Ok(_) => panic!("expected NotAuthorized, got: OK"),
+            Err(err) => panic!("expected NotAuthorized got: {:?}", err),
+        }
     }
 
     #[test]
@@ -740,6 +767,12 @@ mod unit_tests {
 
         ctr.veto_hook(id).unwrap();
 
+        // veto vetoed prop
+        match ctr.veto_hook(id) {
+            Err(HookError::ProposalFinalized) => (),
+            x => panic!("expected ProposalFinalized, got: {:?}", x),
+        }
+
         ctx.block_timestamp = ctr.start_time;
         ctx.predecessor_account_id = acc(1);
         testing_env!(ctx.clone());
@@ -765,6 +798,20 @@ mod unit_tests {
         }
 
         ctr.execute(id).unwrap();
+
+        // Cannot veto executed or failed proposal
+        match ctr.veto_hook(id) {
+            Err(HookError::ProposalFinalized) => (),
+            x => panic!("expected ProposalFinalized, got: {:?}", x),
+        }
+
+        let mut prop = ctr.proposals.get(&id).unwrap();
+        prop.status = ProposalStatus::Failed;
+        ctr.proposals.insert(&id, &prop);
+        match ctr.veto_hook(id) {
+            Err(HookError::ProposalFinalized) => (),
+            x => panic!("expected ProposalFinalized, got: {:?}", x),
+        }
     }
 
     fn create_all_props(ctr: &mut Contract) -> (u32, u32, u32, u32, u32) {
@@ -867,6 +914,11 @@ mod unit_tests {
 
         ctx.predecessor_account_id = voting_body();
         testing_env!(ctx);
+
+        match ctr.dismiss_hook(acc(10)) {
+            Err(HookError::NoMember) => (),
+            x => panic!("expected NoMember, got: {:?}", x),
+        }
 
         ctr.dismiss_hook(acc(2)).unwrap();
         let expected = r#"EVENT_JSON:{"standard":"ndc-congress","version":"1.0.0","event":"dismiss","data":{"member":"user-2.near"}}"#;
