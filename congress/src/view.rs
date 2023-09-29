@@ -16,6 +16,7 @@ pub struct ProposalOutput {
 }
 
 #[derive(Serialize)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 #[serde(crate = "near_sdk::serde")]
 pub struct MembersOutput {
     /// Id of the proposal.
