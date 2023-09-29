@@ -610,12 +610,6 @@ mod unit_tests {
             "".to_string(),
         ));
 
-        match ctr.create_proposal(PropKind::FundingRequest(ctr.budget_cap + 1), "".to_string()) {
-            Err(CreatePropError::BudgetOverflow) => (),
-            Ok(_) => panic!("expected BudgetOverflow, got: OK"),
-            Err(err) => panic!("expected BudgetOverflow got: {:?}", err),
-        }
-
         ctx.attached_deposit = 1;
         testing_env!(ctx.clone());
 
@@ -627,11 +621,24 @@ mod unit_tests {
 
         ctx.predecessor_account_id = acc(6);
         ctx.attached_deposit = 10 * MILI_NEAR;
-        testing_env!(ctx);
+        testing_env!(ctx.clone());
         match ctr.create_proposal(PropKind::Text, "".to_string()) {
             Err(CreatePropError::NotAuthorized) => (),
             Ok(_) => panic!("expected NotAuthorized, got: OK"),
             Err(err) => panic!("expected NotAuthorized got: {:?}", err),
+        }
+
+        // set remaining months to 2
+        let (members, _) = ctr.members.get().unwrap();
+        ctr.members.set(&(members, vec![PropPerm::RecurrentFundingRequest]));
+        ctr.end_time = ctr.start_time + START * 12 * 24 * 61;
+        ctx.predecessor_account_id = acc(2);
+        testing_env!(ctx);
+
+        match ctr.create_proposal(PropKind::RecurrentFundingRequest((ctr.budget_cap / 2) + 1), "".to_string()) {
+            Err(CreatePropError::BudgetOverflow) => (),
+            Ok(_) => panic!("expected BudgetOverflow, got: OK"),
+            Err(err) => panic!("expected BudgetOverflow got: {:?}", err),
         }
     }
 
