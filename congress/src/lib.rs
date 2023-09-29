@@ -366,7 +366,7 @@ impl Contract {
                 return Ok(());
             }
         }
-        return Err(HookError::NotAuthorized);
+        Err(HookError::NotAuthorized)
     }
 
     fn assert_proposal(&self, id: u32) -> Proposal {
@@ -824,7 +824,7 @@ mod unit_tests {
         testing_env!(ctx.clone());
         let (p_text, p_fc, p_big, p_small, p_rec) = create_all_props(&mut ctr);
         ctx.predecessor_account_id = voting_body();
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         ctr.veto_hook(p_big).unwrap();
         ctr.veto_hook(p_rec).unwrap();
         assert_hook_not_auth(ctr.veto_hook(p_text));
@@ -901,5 +901,5 @@ mod unit_tests {
 
         // Remove more members
         ctr.dismiss_hook(acc(3)).unwrap();
-        assert_eq!(ctr.get_members(), MembersOutput{members: vec![acc(1), acc(4), acc(5), acc(6)], permissions: permissions.clone() });}
+        assert_eq!(ctr.get_members(), MembersOutput{members: vec![acc(1), acc(4), acc(5), acc(6)], permissions: permissions });}
 }
