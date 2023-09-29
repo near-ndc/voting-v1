@@ -49,7 +49,7 @@ impl Contract {
             .map(|proposal| ProposalOutput { id, proposal })
     }
 
-    pub fn get_total_proposals(&self) -> u32 {
+    pub fn number_of_proposals(&self) -> u32 {
         self.prop_counter
     }
 
