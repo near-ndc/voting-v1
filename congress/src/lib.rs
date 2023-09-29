@@ -525,7 +525,6 @@ mod unit_tests {
     }
 
     #[test]
-    #[should_panic(expected = "proposal does not exist")]
     fn basic_flow() {
         let (mut ctx, mut ctr, id) = setup_ctr(100);
         let mut prop = ctr.get_proposal(id);
@@ -584,7 +583,12 @@ mod unit_tests {
         ctr = vote(ctx, ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
         let prop = ctr.get_proposal(id).unwrap();
         assert_eq!(prop.proposal.status, ProposalStatus::Executed);
+    }
 
+    #[test]
+    #[should_panic(expected = "proposal does not exist")]
+    fn proposal_does_not_exist() {
+        let (_, mut ctr, _) = setup_ctr(100);
         ctr.vote(10, Vote::Approve).unwrap();
     }
 
