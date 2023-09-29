@@ -906,12 +906,12 @@ mod unit_tests {
         );
 
         // Remove more members
-        ctr.dismiss_hook(acc(3)).unwrap();
+        ctr.dismiss_hook(acc(1)).unwrap();
         assert_eq!(
             ctr.get_members(),
             MembersOutput {
                 members: vec![acc(1), acc(4), acc(5), acc(6)],
-                permissions: permissions
+                permissions
             }
         );
     }

@@ -18,7 +18,7 @@
   - `near view $CTR is_dissolved '{}'`
 
 - `get_members`: Query all members with permissions
-  - `near view $CTR get_members '{}'`
+  - `near view $CTR get_members ''`
 
 - `member_permissions`: Returns permissions for a specific member
   - `near view $CTR member_permissions '{"member": "user.testnet"}'`
