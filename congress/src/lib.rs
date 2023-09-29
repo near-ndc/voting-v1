@@ -366,7 +366,7 @@ impl Contract {
                 return Ok(());
             }
         }
-        return Err(HookError::NotAuthorized);
+        Err(HookError::NotAuthorized)
     }
 
     fn assert_proposal(&self, id: u32) -> Proposal {
@@ -627,7 +627,7 @@ mod unit_tests {
 
         ctx.predecessor_account_id = acc(6);
         ctx.attached_deposit = 10 * MILI_NEAR;
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         match ctr.create_proposal(PropKind::Text, "".to_string()) {
             Err(CreatePropError::NotAuthorized) => (),
             Ok(_) => panic!("expected NotAuthorized, got: OK"),
@@ -869,7 +869,7 @@ mod unit_tests {
         testing_env!(ctx.clone());
         let (p_text, p_fc, p_big, p_small, p_rec) = create_all_props(&mut ctr);
         ctx.predecessor_account_id = voting_body();
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         ctr.veto_hook(p_big).unwrap();
         ctr.veto_hook(p_rec).unwrap();
         assert_hook_not_auth(ctr.veto_hook(p_text));
