@@ -1,6 +1,6 @@
 use std::cmp::min;
 
-use near_sdk::serde::{Serialize};
+use near_sdk::serde::Serialize;
 
 use crate::*;
 

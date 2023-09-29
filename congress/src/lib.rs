@@ -429,7 +429,7 @@ mod unit_tests {
         testing_env, VMContext,
     };
 
-    use crate::{*, view::MembersOutput};
+    use crate::{view::MembersOutput, *};
 
     /// 1ms in nano seconds
     const MSECOND: u64 = 1_000_000;
@@ -897,9 +897,22 @@ mod unit_tests {
         ctr.dismiss_hook(acc(2)).unwrap();
 
         // should be sorted list
-        assert_eq!(ctr.get_members(), MembersOutput{members: vec![acc(1), acc(3), acc(4), acc(5), acc(6)], permissions: permissions.clone() });
+        assert_eq!(
+            ctr.get_members(),
+            MembersOutput {
+                members: vec![acc(1), acc(3), acc(4), acc(5), acc(6)],
+                permissions: permissions.clone()
+            }
+        );
 
         // Remove more members
         ctr.dismiss_hook(acc(3)).unwrap();
-        assert_eq!(ctr.get_members(), MembersOutput{members: vec![acc(1), acc(4), acc(5), acc(6)], permissions: permissions });}
+        assert_eq!(
+            ctr.get_members(),
+            MembersOutput {
+                members: vec![acc(1), acc(4), acc(5), acc(6)],
+                permissions: permissions
+            }
+        );
+    }
 }
