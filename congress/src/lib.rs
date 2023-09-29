@@ -610,7 +610,7 @@ mod unit_tests {
             "".to_string(),
         ));
 
-        match ctr.create_proposal(PropKind::FundingRequest(ctr.budget_cap+1), "".to_string()) {
+        match ctr.create_proposal(PropKind::FundingRequest(ctr.budget_cap + 1), "".to_string()) {
             Err(CreatePropError::BudgetOverflow) => (),
             Ok(_) => panic!("expected BudgetOverflow, got: OK"),
             Err(err) => panic!("expected BudgetOverflow got: {:?}", err),
