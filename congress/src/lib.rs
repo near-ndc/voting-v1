@@ -531,6 +531,8 @@ mod unit_tests {
         assert!(prop.is_some());
         assert_eq!(prop.unwrap().proposal.status, ProposalStatus::InProgress);
 
+        assert_eq!(ctr.get_total_proposals(), 1);
+
         // check `get_proposals` query
         let res = ctr.get_proposals(0, 10);
         assert_eq!(res, vec![ctr.get_proposal(id).unwrap()]);
