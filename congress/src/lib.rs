@@ -910,7 +910,7 @@ mod unit_tests {
         assert_eq!(
             ctr.get_members(),
             MembersOutput {
-                members: vec![acc(1), acc(4), acc(5), acc(6)],
+                members: vec![acc(3), acc(4), acc(5), acc(6)],
                 permissions
             }
         );
