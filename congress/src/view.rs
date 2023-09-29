@@ -16,6 +16,7 @@ pub struct ProposalOutput {
 }
 
 #[derive(Serialize)]
+#[cfg_attr(test, derive(Debug, PartialEq))]
 #[serde(crate = "near_sdk::serde")]
 pub struct MembersOutput {
     /// Id of the proposal.
@@ -46,6 +47,10 @@ impl Contract {
         self.proposals
             .get(&id)
             .map(|proposal| ProposalOutput { id, proposal })
+    }
+
+    pub fn number_of_proposals(&self) -> u32 {
+        self.prop_counter
     }
 
     pub fn is_dissolved(&self) -> bool {

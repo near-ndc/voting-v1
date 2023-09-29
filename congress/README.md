@@ -9,7 +9,10 @@
   - `near view $CTR get_proposals '{"from_index": 0, "limit": 10}'`
 
 - `get_proposal`: Query a specific proposal
-  - `near view $CTR get_proposals '{"id": 1}'`
+  - `near view $CTR get_proposal '{"id": 1}'`
+
+- `number_of_proposals`: Query a specific proposal
+  - `near view $CTR number_of_proposals ''`
 
 - `is_dissolved`: Check if contract is dissolved
   - `near view $CTR is_dissolved ''`

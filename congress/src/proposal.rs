@@ -143,7 +143,7 @@ pub struct ActionCall {
 
 /// Permissions for creating proposals. See PropposalKind for more information.
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq)]
-#[cfg_attr(test, derive(Debug))]
+#[cfg_attr(test, derive(Debug, Clone))]
 #[serde(crate = "near_sdk::serde")]
 pub enum PropPerm {
     FunctionCall,

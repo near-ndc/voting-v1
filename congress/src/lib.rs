@@ -332,7 +332,7 @@ impl Contract {
         if idx.is_err() {
             return Err(HookError::NoMember);
         }
-        members[idx.unwrap()] = members.pop().unwrap();
+        members.remove(idx.unwrap());
 
         emit_dismiss(&member);
         // If DAO doesn't have required threshold, then we dissolve.
@@ -429,7 +429,7 @@ mod unit_tests {
         testing_env, VMContext,
     };
 
-    use crate::*;
+    use crate::{view::MembersOutput, *};
 
     /// 1ms in nano seconds
     const MSECOND: u64 = 1_000_000;
@@ -530,6 +530,8 @@ mod unit_tests {
         let mut prop = ctr.get_proposal(id);
         assert!(prop.is_some());
         assert_eq!(prop.unwrap().proposal.status, ProposalStatus::InProgress);
+
+        assert_eq!(ctr.number_of_proposals(), 1);
 
         // check `get_proposals` query
         let res = ctr.get_proposals(0, 10);
@@ -941,5 +943,39 @@ mod unit_tests {
         // Remove more members to check dissolve
         ctr.dismiss_hook(acc(1)).unwrap();
         assert!(ctr.dissolved);
+    }
+
+    #[test]
+    fn dismiss_order() {
+        let (mut ctx, mut ctr, _) = setup_ctr(100);
+        ctx.predecessor_account_id = voting_body();
+        testing_env!(ctx);
+
+        let (mut members, permissions) = ctr.members.get().unwrap();
+        members.push(acc(5));
+        members.push(acc(6));
+        ctr.members.set(&(members, permissions.clone()));
+
+        // remove from middle
+        ctr.dismiss_hook(acc(2)).unwrap();
+
+        // should be sorted list
+        assert_eq!(
+            ctr.get_members(),
+            MembersOutput {
+                members: vec![acc(1), acc(3), acc(4), acc(5), acc(6)],
+                permissions: permissions.clone()
+            }
+        );
+
+        // Remove more members
+        ctr.dismiss_hook(acc(1)).unwrap();
+        assert_eq!(
+            ctr.get_members(),
+            MembersOutput {
+                members: vec![acc(3), acc(4), acc(5), acc(6)],
+                permissions
+            }
+        );
     }
 }
