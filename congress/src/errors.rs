@@ -6,7 +6,6 @@ use near_sdk::FunctionError;
 pub enum VoteError {
     NotAuthorized,
     DoubleVote,
-    NoProp,
     NotInProgress,
     NotActive,
 }
@@ -16,7 +15,6 @@ impl FunctionError for VoteError {
         match self {
             VoteError::NotAuthorized => panic_str("not authorized"),
             VoteError::DoubleVote => panic_str("user already voted"),
-            VoteError::NoProp => panic_str("proposal not found"),
             VoteError::NotInProgress => panic_str("proposal not in progress"),
             VoteError::NotActive => panic_str("voting time is over"),
         }

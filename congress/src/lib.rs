@@ -366,7 +366,7 @@ impl Contract {
                 return Ok(());
             }
         }
-        return Err(HookError::NotAuthorized);
+        Err(HookError::NotAuthorized)
     }
 
     fn assert_proposal(&self, id: u32) -> Proposal {
@@ -586,8 +586,15 @@ mod unit_tests {
     }
 
     #[test]
-    fn proposal_create_prop_permissions() {
+    #[should_panic(expected = "proposal does not exist")]
+    fn proposal_does_not_exist() {
         let (_, mut ctr, _) = setup_ctr(100);
+        ctr.vote(10, Vote::Approve).unwrap();
+    }
+
+    #[test]
+    fn proposal_create_prop_permissions() {
+        let (mut ctx, mut ctr, _) = setup_ctr(100);
         let (members, _) = ctr.members.get().unwrap();
         ctr.members.set(&(members, vec![PropPerm::FundingRequest]));
 
@@ -606,6 +613,37 @@ mod unit_tests {
             },
             "".to_string(),
         ));
+
+        ctx.attached_deposit = 1;
+        testing_env!(ctx.clone());
+
+        match ctr.create_proposal(PropKind::FundingRequest(1), "".to_string()) {
+            Err(CreatePropError::Storage(_)) => (),
+            Ok(_) => panic!("expected Storage, got: OK"),
+            Err(err) => panic!("expected Storage got: {:?}", err),
+        }
+
+        ctx.predecessor_account_id = acc(6);
+        ctx.attached_deposit = 10 * MILI_NEAR;
+        testing_env!(ctx.clone());
+        match ctr.create_proposal(PropKind::Text, "".to_string()) {
+            Err(CreatePropError::NotAuthorized) => (),
+            Ok(_) => panic!("expected NotAuthorized, got: OK"),
+            Err(err) => panic!("expected NotAuthorized got: {:?}", err),
+        }
+
+        // set remaining months to 2
+        let (members, _) = ctr.members.get().unwrap();
+        ctr.members.set(&(members, vec![PropPerm::RecurrentFundingRequest]));
+        ctr.end_time = ctr.start_time + START * 12 * 24 * 61;
+        ctx.predecessor_account_id = acc(2);
+        testing_env!(ctx);
+
+        match ctr.create_proposal(PropKind::RecurrentFundingRequest((ctr.budget_cap / 2) + 1), "".to_string()) {
+            Err(CreatePropError::BudgetOverflow) => (),
+            Ok(_) => panic!("expected BudgetOverflow, got: OK"),
+            Err(err) => panic!("expected BudgetOverflow got: {:?}", err),
+        }
     }
 
     #[test]
@@ -740,6 +778,12 @@ mod unit_tests {
 
         ctr.veto_hook(id).unwrap();
 
+        // veto vetoed prop
+        match ctr.veto_hook(id) {
+            Err(HookError::ProposalFinalized) => (),
+            x => panic!("expected ProposalFinalized, got: {:?}", x),
+        }
+
         ctx.block_timestamp = ctr.start_time;
         ctx.predecessor_account_id = acc(1);
         testing_env!(ctx.clone());
@@ -765,6 +809,20 @@ mod unit_tests {
         }
 
         ctr.execute(id).unwrap();
+
+        // Cannot veto executed or failed proposal
+        match ctr.veto_hook(id) {
+            Err(HookError::ProposalFinalized) => (),
+            x => panic!("expected ProposalFinalized, got: {:?}", x),
+        }
+
+        let mut prop = ctr.proposals.get(&id).unwrap();
+        prop.status = ProposalStatus::Failed;
+        ctr.proposals.insert(&id, &prop);
+        match ctr.veto_hook(id) {
+            Err(HookError::ProposalFinalized) => (),
+            x => panic!("expected ProposalFinalized, got: {:?}", x),
+        }
     }
 
     fn create_all_props(ctr: &mut Contract) -> (u32, u32, u32, u32, u32) {
@@ -822,7 +880,7 @@ mod unit_tests {
         testing_env!(ctx.clone());
         let (p_text, p_fc, p_big, p_small, p_rec) = create_all_props(&mut ctr);
         ctx.predecessor_account_id = voting_body();
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
         ctr.veto_hook(p_big).unwrap();
         ctr.veto_hook(p_rec).unwrap();
         assert_hook_not_auth(ctr.veto_hook(p_text));
@@ -867,6 +925,11 @@ mod unit_tests {
 
         ctx.predecessor_account_id = voting_body();
         testing_env!(ctx);
+
+        match ctr.dismiss_hook(acc(10)) {
+            Err(HookError::NoMember) => (),
+            x => panic!("expected NoMember, got: {:?}", x),
+        }
 
         ctr.dismiss_hook(acc(2)).unwrap();
         let expected = r#"EVENT_JSON:{"standard":"ndc-congress","version":"1.0.0","event":"dismiss","data":{"member":"user-2.near"}}"#;
