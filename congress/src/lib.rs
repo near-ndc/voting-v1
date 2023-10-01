@@ -1125,7 +1125,7 @@ mod unit_tests {
             )
             .unwrap();
 
-        return (motion_rem_ban, motion_retain);
+        (motion_rem_ban, motion_retain)
     }
 
     #[test]
