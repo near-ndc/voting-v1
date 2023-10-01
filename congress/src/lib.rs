@@ -258,13 +258,12 @@ impl Contract {
                 if banned.contains(member) {
                     // skip ban call
                     let mut promise = Promise::new(receiver_id.clone());
-                    promise = promise
-                        .function_call(
-                            "dismiss_hook".to_owned(),
-                            json!({ "member": member }).to_string().as_bytes().to_vec(),
-                            0,
-                            EXECUTE_GAS,
-                        );
+                    promise = promise.function_call(
+                        "dismiss_hook".to_owned(),
+                        json!({ "member": member }).to_string().as_bytes().to_vec(),
+                        0,
+                        EXECUTE_GAS,
+                    );
                     return Ok(PromiseOrValue::Promise(
                         promise.then(
                             ext_self::ext(env::current_account_id())
@@ -274,19 +273,18 @@ impl Contract {
                     ));
                 } else {
                     let mut promise = Promise::new(self.registry.clone());
-                    promise = promise
-                        .function_call(
-                            "admin_flag_accounts".to_owned(),
-                            json!({ "flag": "GovBan".to_owned(),
-                                "accounts": vec![member],
-                                "memo": "".to_owned()
-                            })
-                            .to_string()
-                            .as_bytes()
-                            .to_vec(),
-                            0,
-                            EXECUTE_GAS,
-                        );
+                    promise = promise.function_call(
+                        "admin_flag_accounts".to_owned(),
+                        json!({ "flag": "GovBan".to_owned(),
+                            "accounts": vec![member],
+                            "memo": "".to_owned()
+                        })
+                        .to_string()
+                        .as_bytes()
+                        .to_vec(),
+                        0,
+                        EXECUTE_GAS,
+                    );
                     return Ok(PromiseOrValue::Promise(
                         promise.then(
                             ext_self::ext(env::current_account_id())
@@ -496,13 +494,12 @@ impl Contract {
                 self.banned.set(&banned_list);
                 // call remove
                 let mut promise = Promise::new(receiver_id);
-                promise = promise
-                    .function_call(
-                        "dismiss_hook".to_owned(),
-                        json!({ "member": member }).to_string().as_bytes().to_vec(),
-                        0,
-                        EXECUTE_GAS,
-                    );
+                promise = promise.function_call(
+                    "dismiss_hook".to_owned(),
+                    json!({ "member": member }).to_string().as_bytes().to_vec(),
+                    0,
+                    EXECUTE_GAS,
+                );
 
                 return PromiseOrValue::Promise(
                     promise.then(
@@ -606,6 +603,8 @@ mod unit_tests {
                 PropPerm::RecurrentFundingRequest,
                 PropPerm::FundingRequest,
                 PropPerm::FunctionCall,
+                PropPerm::MotionRemoveAndBan,
+                PropPerm::MotionRetain,
             ],
             hook_perms,
             U128(10000),
@@ -1106,5 +1105,58 @@ mod unit_tests {
                 permissions
             }
         );
+    }
+
+    fn create_motion_props(ctr: &mut Contract) -> (u32, u32) {
+        let motion_rem_ban = ctr
+            .create_proposal(
+                PropKind::MotionRemoveAndBan {
+                    member: acc(1),
+                    receiver_id: coa(),
+                },
+                "Motion to remove member and ban".to_string(),
+            )
+            .unwrap();
+
+        let motion_retain = ctr
+            .create_proposal(
+                PropKind::MotionRetain(acc(1)),
+                "Motion to retain".to_string(),
+            )
+            .unwrap();
+
+        return (motion_rem_ban, motion_retain);
+    }
+
+    #[test]
+    fn tc_motions() {
+        let (mut ctx, mut ctr, _) = setup_ctr(100);
+        let (motion_rem_ban, motion_retain) = create_motion_props(&mut ctr);
+        ctr = vote(
+            ctx.clone(),
+            ctr,
+            [acc(1), acc(2), acc(3)].to_vec(),
+            motion_rem_ban,
+        );
+        let mut prop = ctr.get_proposal(motion_rem_ban).unwrap();
+        assert_eq!(prop.proposal.status, ProposalStatus::Approved);
+
+        ctr = vote(
+            ctx.clone(),
+            ctr,
+            [acc(1), acc(2), acc(3)].to_vec(),
+            motion_retain,
+        );
+
+        // Set timestamp to after cooldown
+        ctx.block_timestamp =
+            (prop.proposal.submission_time + ctr.voting_duration + ctr.cooldown + 1) * MSECOND;
+        testing_env!(ctx);
+
+        ctr.execute(motion_retain).unwrap();
+        ctr.execute(motion_rem_ban).unwrap();
+
+        prop = ctr.get_proposal(motion_retain).unwrap();
+        assert_eq!(prop.proposal.status, ProposalStatus::Executed);
     }
 }
