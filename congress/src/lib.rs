@@ -1,5 +1,5 @@
 use std::cmp::min;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use common::finalize_storage_check;
 use events::*;
@@ -10,6 +10,7 @@ use near_sdk::{
     env, near_bindgen, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseOrValue,
     PromiseResult,
 };
+use serde_json::json;
 
 mod constants;
 mod errors;
@@ -55,6 +56,8 @@ pub struct Contract {
     pub budget_cap: Balance,
     /// size (in yocto NEAR) of the big funding request
     pub big_funding_threshold: Balance,
+
+    pub banned: LazyOption<HashSet<AccountId>>
 }
 
 #[near_bindgen]
@@ -93,6 +96,7 @@ impl Contract {
             budget_spent: 0,
             budget_cap: budget_cap.0,
             big_funding_threshold: big_funding_threshold.0,
+            banned: LazyOption::new(StorageKey::Banned, Some(&HashSet::new())),
         }
     }
 
@@ -205,6 +209,7 @@ impl Contract {
     #[handle_result]
     pub fn execute(&mut self, id: u32) -> Result<PromiseOrValue<()>, ExecError> {
         self.assert_active();
+        let mut ban_call = true;
         let mut prop = self.assert_proposal(id);
         if !matches!(
             prop.status,
@@ -242,6 +247,37 @@ impl Contract {
                 budget = *b * self.remaining_months(now) as u128
             }
             PropKind::Text => (),
+            PropKind::MotionRemoveAndBan(member) => {
+                let banned = self.banned.get().unwrap();
+                self.proposals.insert(&id, &prop);
+                if banned.contains(member) {
+                    // skip ban call
+                    let mut promise = Promise::new(receiver_id.clone());
+                    ban_call = false;
+                    result = promise.function_call("dismiss_hook".to_owned(), json!({ "member": member }).to_string().as_bytes().to_vec(), 0, EXECUTE_GAS).into();
+                    return Ok(
+                        PromiseOrValue::Promise(promise.then(
+                        ext_self::ext(env::current_account_id())
+                        .with_static_gas(EXECUTE_CALLBACK_GAS)
+                        .on_ban(member.clone()),
+                    )));
+                } else {
+                    let mut promise = Promise::new(receiver_id.clone());
+                    result = promise.function_call(
+                        "admin_flag_accounts".to_owned(),
+                        json!({ "flag": "GovBan".to_owned(),
+                        "accounts": vec![member],
+                        "memo": "".to_owned()
+                    }).to_string().as_bytes().to_vec(), 0, EXECUTE_GAS).into();
+                    return Ok(
+                        PromiseOrValue::Promise(promise.then(
+                        ext_self::ext(env::current_account_id())
+                        .with_static_gas(EXECUTE_CALLBACK_GAS)
+                        .on_remove(member.clone()),
+                    )));
+                }
+            },
+            PropKind::MotionRetain(_) => (),
         };
         if budget != 0 {
             self.budget_spent += budget;
@@ -252,8 +288,7 @@ impl Contract {
         self.proposals.insert(&id, &prop);
 
         let result = match result {
-            PromiseOrValue::Promise(promise) => promise
-                .then(
+            PromiseOrValue::Promise(promise) => promise.then(
                     ext_self::ext(env::current_account_id())
                         .with_static_gas(EXECUTE_CALLBACK_GAS)
                         .on_execute(id, budget.into()),
@@ -414,6 +449,49 @@ impl Contract {
             PromiseResult::Failed => {
                 let mut prop = self.assert_proposal(prop_id);
                 self.budget_spent -= budget.0;
+                prop.status = ProposalStatus::Failed;
+                self.proposals.insert(&prop_id, &prop);
+                emit_executed(prop_id);
+            }
+        };
+    }
+
+    #[private]
+    pub fn on_ban(&mut self, prop_id: u32, member: AccountId) {
+        assert_eq!(
+            env::promise_results_count(),
+            1,
+            "ERR_UNEXPECTED_CALLBACK_PROMISES"
+        );
+        match env::promise_result(0) {
+            PromiseResult::NotReady => unreachable!(),
+            PromiseResult::Successful(_) => {
+                let mut banned_list = self.banned.get().unwrap();
+                banned_list.insert(member);
+                self.banned.set(&banned_list);
+                // call remove
+            },
+            PromiseResult::Failed => {
+                let mut prop = self.assert_proposal(prop_id);
+                prop.status = ProposalStatus::Failed;
+                self.proposals.insert(&prop_id, &prop);
+                emit_executed(prop_id);
+            }
+        };
+    }
+
+    #[private]
+    pub fn on_remove(&mut self, prop_id: u32, member: AccountId) {
+        assert_eq!(
+            env::promise_results_count(),
+            1,
+            "ERR_UNEXPECTED_CALLBACK_PROMISES"
+        );
+        match env::promise_result(0) {
+            PromiseResult::NotReady => unreachable!(),
+            PromiseResult::Successful(_) => {},
+            PromiseResult::Failed => {
+                let mut prop = self.assert_proposal(prop_id);
                 prop.status = ProposalStatus::Failed;
                 self.proposals.insert(&prop_id, &prop);
                 emit_executed(prop_id);
