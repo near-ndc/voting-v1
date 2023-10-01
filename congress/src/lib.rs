@@ -264,8 +264,7 @@ impl Contract {
                             json!({ "member": member }).to_string().as_bytes().to_vec(),
                             0,
                             EXECUTE_GAS,
-                        )
-                        .into();
+                        );
                     return Ok(PromiseOrValue::Promise(
                         promise.then(
                             ext_self::ext(env::current_account_id())
@@ -287,8 +286,7 @@ impl Contract {
                             .to_vec(),
                             0,
                             EXECUTE_GAS,
-                        )
-                        .into();
+                        );
                     return Ok(PromiseOrValue::Promise(
                         promise.then(
                             ext_self::ext(env::current_account_id())
@@ -497,15 +495,14 @@ impl Contract {
                 banned_list.insert(member.clone());
                 self.banned.set(&banned_list);
                 // call remove
-                let mut promise = Promise::new(receiver_id.clone());
+                let mut promise = Promise::new(receiver_id);
                 promise = promise
                     .function_call(
                         "dismiss_hook".to_owned(),
                         json!({ "member": member }).to_string().as_bytes().to_vec(),
                         0,
                         EXECUTE_GAS,
-                    )
-                    .into();
+                    );
 
                 return PromiseOrValue::Promise(
                     promise.then(
@@ -522,7 +519,7 @@ impl Contract {
                 emit_executed(prop_id);
             }
         };
-        return PromiseOrValue::Value(false);
+        PromiseOrValue::Value(false)
     }
 
     #[private]
