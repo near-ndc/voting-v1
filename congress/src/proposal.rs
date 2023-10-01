@@ -85,7 +85,10 @@ pub enum PropKind {
     // /// Upgrade this contract with given hash from blob store.
     // UpgradeSelf { hash: Base58CryptoHash },
     // A proposal to remove the member from their role and ban them from future participation.
-    MotionRemoveAndBan(AccountId),
+    MotionRemoveAndBan {
+        member: AccountId,
+        receiver_id: AccountId,
+    },
     MotionRetain(AccountId),
 }
 

@@ -57,7 +57,8 @@ pub struct Contract {
     /// size (in yocto NEAR) of the big funding request
     pub big_funding_threshold: Balance,
 
-    pub banned: LazyOption<HashSet<AccountId>>
+    pub banned: LazyOption<HashSet<AccountId>>,
+    pub registry: AccountId,
 }
 
 #[near_bindgen]
@@ -75,6 +76,7 @@ impl Contract {
         hook_auth: HashMap<AccountId, Vec<HookPerm>>,
         budget_cap: U128,
         big_funding_threshold: U128,
+        registry: AccountId,
     ) -> Self {
         // we can support up to 255 with the limitation of the proposal type, but setting 100
         // here because this is more than enough for what we need to test for Congress.
@@ -97,6 +99,7 @@ impl Contract {
             budget_cap: budget_cap.0,
             big_funding_threshold: big_funding_threshold.0,
             banned: LazyOption::new(StorageKey::Banned, Some(&HashSet::new())),
+            registry
         }
     }
 
@@ -209,7 +212,6 @@ impl Contract {
     #[handle_result]
     pub fn execute(&mut self, id: u32) -> Result<PromiseOrValue<()>, ExecError> {
         self.assert_active();
-        let mut ban_call = true;
         let mut prop = self.assert_proposal(id);
         if !matches!(
             prop.status,
@@ -247,23 +249,22 @@ impl Contract {
                 budget = *b * self.remaining_months(now) as u128
             }
             PropKind::Text => (),
-            PropKind::MotionRemoveAndBan(member) => {
+            PropKind::MotionRemoveAndBan { member, receiver_id } => {
                 let banned = self.banned.get().unwrap();
                 self.proposals.insert(&id, &prop);
                 if banned.contains(member) {
                     // skip ban call
                     let mut promise = Promise::new(receiver_id.clone());
-                    ban_call = false;
-                    result = promise.function_call("dismiss_hook".to_owned(), json!({ "member": member }).to_string().as_bytes().to_vec(), 0, EXECUTE_GAS).into();
+                    promise = promise.function_call("dismiss_hook".to_owned(), json!({ "member": member }).to_string().as_bytes().to_vec(), 0, EXECUTE_GAS).into();
                     return Ok(
                         PromiseOrValue::Promise(promise.then(
                         ext_self::ext(env::current_account_id())
                         .with_static_gas(EXECUTE_CALLBACK_GAS)
-                        .on_ban(member.clone()),
+                        .on_remove(id),
                     )));
                 } else {
-                    let mut promise = Promise::new(receiver_id.clone());
-                    result = promise.function_call(
+                    let mut promise = Promise::new(self.registry.clone());
+                    promise = promise.function_call(
                         "admin_flag_accounts".to_owned(),
                         json!({ "flag": "GovBan".to_owned(),
                         "accounts": vec![member],
@@ -273,7 +274,7 @@ impl Contract {
                         PromiseOrValue::Promise(promise.then(
                         ext_self::ext(env::current_account_id())
                         .with_static_gas(EXECUTE_CALLBACK_GAS)
-                        .on_remove(member.clone()),
+                        .on_ban(id, member.clone(), receiver_id.clone()),
                     )));
                 }
             },
@@ -457,7 +458,7 @@ impl Contract {
     }
 
     #[private]
-    pub fn on_ban(&mut self, prop_id: u32, member: AccountId) {
+    pub fn on_ban(&mut self, prop_id: u32, member: AccountId, receiver_id: AccountId) -> PromiseOrValue<bool> {
         assert_eq!(
             env::promise_results_count(),
             1,
@@ -467,9 +468,21 @@ impl Contract {
             PromiseResult::NotReady => unreachable!(),
             PromiseResult::Successful(_) => {
                 let mut banned_list = self.banned.get().unwrap();
-                banned_list.insert(member);
+                banned_list.insert(member.clone());
                 self.banned.set(&banned_list);
                 // call remove
+                let mut promise = Promise::new(receiver_id.clone());
+                promise = promise.function_call(
+                    "dismiss_hook".to_owned(),
+                    json!({ "member": member }).to_string().as_bytes().to_vec(),
+                    0,
+                    EXECUTE_GAS
+                ).into();
+
+                return PromiseOrValue::Promise(promise.then(
+                    ext_self::ext(env::current_account_id())
+                    .with_static_gas(EXECUTE_CALLBACK_GAS)
+                    .on_remove(prop_id)));
             },
             PromiseResult::Failed => {
                 let mut prop = self.assert_proposal(prop_id);
@@ -478,10 +491,11 @@ impl Contract {
                 emit_executed(prop_id);
             }
         };
+        return PromiseOrValue::Value(false);
     }
 
     #[private]
-    pub fn on_remove(&mut self, prop_id: u32, member: AccountId) {
+    pub fn on_remove(&mut self, prop_id: u32) {
         assert_eq!(
             env::promise_results_count(),
             1,
@@ -534,6 +548,10 @@ mod unit_tests {
         AccountId::new_unchecked("coa.near".to_string())
     }
 
+    fn registry() -> AccountId {
+        AccountId::new_unchecked("registry.near".to_string())
+    }
+
     fn setup_ctr(attach_deposit: u128) -> (VMContext, Contract, u32) {
         let mut context = VMContextBuilder::new().build();
         let end_time = START + TERM;
@@ -564,6 +582,7 @@ mod unit_tests {
             hook_perms,
             U128(10000),
             U128(1000),
+            registry()
         );
         context.block_timestamp = START * MSECOND;
         context.predecessor_account_id = acc(1);
