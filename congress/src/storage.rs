@@ -7,5 +7,5 @@ pub enum StorageKey {
     Proposals,
     Members,
     HookAuth,
-    Banned
+    Banned,
 }

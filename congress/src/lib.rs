@@ -99,7 +99,7 @@ impl Contract {
             budget_cap: budget_cap.0,
             big_funding_threshold: big_funding_threshold.0,
             banned: LazyOption::new(StorageKey::Banned, Some(&HashSet::new())),
-            registry
+            registry,
         }
     }
 
@@ -249,35 +249,55 @@ impl Contract {
                 budget = *b * self.remaining_months(now) as u128
             }
             PropKind::Text => (),
-            PropKind::MotionRemoveAndBan { member, receiver_id } => {
+            PropKind::MotionRemoveAndBan {
+                member,
+                receiver_id,
+            } => {
                 let banned = self.banned.get().unwrap();
                 self.proposals.insert(&id, &prop);
                 if banned.contains(member) {
                     // skip ban call
                     let mut promise = Promise::new(receiver_id.clone());
-                    promise = promise.function_call("dismiss_hook".to_owned(), json!({ "member": member }).to_string().as_bytes().to_vec(), 0, EXECUTE_GAS).into();
-                    return Ok(
-                        PromiseOrValue::Promise(promise.then(
-                        ext_self::ext(env::current_account_id())
-                        .with_static_gas(EXECUTE_CALLBACK_GAS)
-                        .on_remove(id),
-                    )));
+                    promise = promise
+                        .function_call(
+                            "dismiss_hook".to_owned(),
+                            json!({ "member": member }).to_string().as_bytes().to_vec(),
+                            0,
+                            EXECUTE_GAS,
+                        )
+                        .into();
+                    return Ok(PromiseOrValue::Promise(
+                        promise.then(
+                            ext_self::ext(env::current_account_id())
+                                .with_static_gas(EXECUTE_CALLBACK_GAS)
+                                .on_remove(id),
+                        ),
+                    ));
                 } else {
                     let mut promise = Promise::new(self.registry.clone());
-                    promise = promise.function_call(
-                        "admin_flag_accounts".to_owned(),
-                        json!({ "flag": "GovBan".to_owned(),
-                        "accounts": vec![member],
-                        "memo": "".to_owned()
-                    }).to_string().as_bytes().to_vec(), 0, EXECUTE_GAS).into();
-                    return Ok(
-                        PromiseOrValue::Promise(promise.then(
-                        ext_self::ext(env::current_account_id())
-                        .with_static_gas(EXECUTE_CALLBACK_GAS)
-                        .on_ban(id, member.clone(), receiver_id.clone()),
-                    )));
+                    promise = promise
+                        .function_call(
+                            "admin_flag_accounts".to_owned(),
+                            json!({ "flag": "GovBan".to_owned(),
+                                "accounts": vec![member],
+                                "memo": "".to_owned()
+                            })
+                            .to_string()
+                            .as_bytes()
+                            .to_vec(),
+                            0,
+                            EXECUTE_GAS,
+                        )
+                        .into();
+                    return Ok(PromiseOrValue::Promise(
+                        promise.then(
+                            ext_self::ext(env::current_account_id())
+                                .with_static_gas(EXECUTE_CALLBACK_GAS)
+                                .on_ban(id, member.clone(), receiver_id.clone()),
+                        ),
+                    ));
                 }
-            },
+            }
             PropKind::MotionRetain(_) => (),
         };
         if budget != 0 {
@@ -289,7 +309,8 @@ impl Contract {
         self.proposals.insert(&id, &prop);
 
         let result = match result {
-            PromiseOrValue::Promise(promise) => promise.then(
+            PromiseOrValue::Promise(promise) => promise
+                .then(
                     ext_self::ext(env::current_account_id())
                         .with_static_gas(EXECUTE_CALLBACK_GAS)
                         .on_execute(id, budget.into()),
@@ -458,7 +479,12 @@ impl Contract {
     }
 
     #[private]
-    pub fn on_ban(&mut self, prop_id: u32, member: AccountId, receiver_id: AccountId) -> PromiseOrValue<bool> {
+    pub fn on_ban(
+        &mut self,
+        prop_id: u32,
+        member: AccountId,
+        receiver_id: AccountId,
+    ) -> PromiseOrValue<bool> {
         assert_eq!(
             env::promise_results_count(),
             1,
@@ -472,18 +498,23 @@ impl Contract {
                 self.banned.set(&banned_list);
                 // call remove
                 let mut promise = Promise::new(receiver_id.clone());
-                promise = promise.function_call(
-                    "dismiss_hook".to_owned(),
-                    json!({ "member": member }).to_string().as_bytes().to_vec(),
-                    0,
-                    EXECUTE_GAS
-                ).into();
+                promise = promise
+                    .function_call(
+                        "dismiss_hook".to_owned(),
+                        json!({ "member": member }).to_string().as_bytes().to_vec(),
+                        0,
+                        EXECUTE_GAS,
+                    )
+                    .into();
 
-                return PromiseOrValue::Promise(promise.then(
-                    ext_self::ext(env::current_account_id())
-                    .with_static_gas(EXECUTE_CALLBACK_GAS)
-                    .on_remove(prop_id)));
-            },
+                return PromiseOrValue::Promise(
+                    promise.then(
+                        ext_self::ext(env::current_account_id())
+                            .with_static_gas(EXECUTE_CALLBACK_GAS)
+                            .on_remove(prop_id),
+                    ),
+                );
+            }
             PromiseResult::Failed => {
                 let mut prop = self.assert_proposal(prop_id);
                 prop.status = ProposalStatus::Failed;
@@ -503,7 +534,7 @@ impl Contract {
         );
         match env::promise_result(0) {
             PromiseResult::NotReady => unreachable!(),
-            PromiseResult::Successful(_) => {},
+            PromiseResult::Successful(_) => {}
             PromiseResult::Failed => {
                 let mut prop = self.assert_proposal(prop_id);
                 prop.status = ProposalStatus::Failed;
@@ -582,7 +613,7 @@ mod unit_tests {
             hook_perms,
             U128(10000),
             U128(1000),
-            registry()
+            registry(),
         );
         context.block_timestamp = START * MSECOND;
         context.predecessor_account_id = acc(1);
@@ -733,12 +764,16 @@ mod unit_tests {
 
         // set remaining months to 2
         let (members, _) = ctr.members.get().unwrap();
-        ctr.members.set(&(members, vec![PropPerm::RecurrentFundingRequest]));
+        ctr.members
+            .set(&(members, vec![PropPerm::RecurrentFundingRequest]));
         ctr.end_time = ctr.start_time + START * 12 * 24 * 61;
         ctx.predecessor_account_id = acc(2);
         testing_env!(ctx);
 
-        match ctr.create_proposal(PropKind::RecurrentFundingRequest((ctr.budget_cap / 2) + 1), "".to_string()) {
+        match ctr.create_proposal(
+            PropKind::RecurrentFundingRequest((ctr.budget_cap / 2) + 1),
+            "".to_string(),
+        ) {
             Err(CreatePropError::BudgetOverflow) => (),
             Ok(_) => panic!("expected BudgetOverflow, got: OK"),
             Err(err) => panic!("expected BudgetOverflow got: {:?}", err),
