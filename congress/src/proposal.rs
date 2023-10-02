@@ -85,11 +85,11 @@ pub enum PropKind {
     // /// Upgrade this contract with given hash from blob store.
     // UpgradeSelf { hash: Base58CryptoHash },
     // A proposal to remove the member from their role and ban them from future participation.
-    MotionRemoveAndBan {
+    RemoveAndBan {
         member: AccountId,
         receiver_id: AccountId,
     },
-    MotionRetain(AccountId),
+    Retain(AccountId),
 }
 
 impl PropKind {
@@ -111,8 +111,8 @@ impl PropKind {
             PropKind::Text { .. } => "text".to_string(),
             PropKind::FundingRequest { .. } => "funding-request".to_string(),
             PropKind::RecurrentFundingRequest { .. } => "recurrent-funding-request".to_string(),
-            PropKind::MotionRemoveAndBan { .. } => "motion-remove-and-ban".to_string(),
-            PropKind::MotionRetain { .. } => "motion-retain".to_string(),
+            PropKind::RemoveAndBan { .. } => "remove-and-ban".to_string(),
+            PropKind::Retain { .. } => "retain".to_string(),
         }
     }
 }
@@ -160,8 +160,8 @@ pub enum PropPerm {
     Text,
     FundingRequest,
     RecurrentFundingRequest,
-    MotionRemoveAndBan,
-    MotionRetain,
+    RemoveAndBan,
+    Retain,
 }
 
 /// Permissions for calling hooks
