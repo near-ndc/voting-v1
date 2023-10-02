@@ -1186,6 +1186,17 @@ mod unit_tests {
         assert_eq!(res, Some(ProposalStatus::COOLDOWN));
 
         ctx.block_timestamp = (START + 111) * MSECOND;
+        testing_env!(ctx.clone());
+
+        res = ctr.proposal_status(prop_id);
+        assert_eq!(res, Some(ProposalStatus::ENDED));
+
+        // change the finish time
+        ctr.admin_set_finish_time(START + 200);
+        res = ctr.proposal_status(prop_id);
+        assert_eq!(res, Some(ProposalStatus::COOLDOWN));
+
+        ctx.block_timestamp = (START + 201) * MSECOND;
         testing_env!(ctx);
 
         res = ctr.proposal_status(prop_id);

@@ -33,7 +33,9 @@ impl Contract {
     /// Returns the proposal status
     pub fn proposal_status(&self, prop_id: u32) -> Option<ProposalStatus> {
         let now = env::block_timestamp_ms();
-        self.proposals.get(&prop_id).map(|p| p.status(now))
+        self.proposals
+            .get(&prop_id)
+            .map(|p| p.status(now, self.finish_time))
     }
 
     /// Returns the policy if user has accepted it otherwise returns None
