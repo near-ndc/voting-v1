@@ -176,3 +176,10 @@ pub enum HookPerm {
     Dismiss,
     Dissolve,
 }
+
+#[derive(Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct Unban {
+    pub accounts: Vec<AccountId>,
+    pub memo: String,
+}

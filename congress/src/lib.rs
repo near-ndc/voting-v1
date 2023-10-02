@@ -241,7 +241,23 @@ impl Contract {
                         action.deposit.0,
                         Gas(action.gas.0),
                     );
+
+                    // If there is unban call in execution part, remove member from banned list
+                    if action.method_name == "admin_unflag_accounts".to_owned()
+                        && receiver_id == &self.registry
+                    {
+                        let mut banned = self.banned.get().unwrap();
+                        let json_str = serde_json::to_string(&action.args)
+                            .expect("Failed to serialize to JSON");
+                        let ban: Unban =
+                            serde_json::from_str(&json_str).expect("Failed to parse JSON");
+                        for val in ban.accounts {
+                            banned.remove(&val);
+                        }
+                        self.banned.set(&banned);
+                    }
                 }
+
                 result = promise.into();
             }
             PropKind::FundingRequest(b) => budget = *b,
@@ -1119,10 +1135,7 @@ mod unit_tests {
             .unwrap();
 
         let motion_retain = ctr
-            .create_proposal(
-                PropKind::Retain(acc(1)),
-                "Motion to retain".to_string(),
-            )
+            .create_proposal(PropKind::Retain(acc(1)), "Motion to retain".to_string())
             .unwrap();
 
         (motion_rem_ban, motion_retain)
