@@ -249,7 +249,7 @@ impl Contract {
                 budget = *b * self.remaining_months(now) as u128
             }
             PropKind::Text => (),
-            PropKind::MotionRemoveAndBan {
+            PropKind::RemoveAndBan {
                 member,
                 receiver_id,
             } => {
@@ -294,7 +294,7 @@ impl Contract {
                     ));
                 }
             }
-            PropKind::MotionRetain(_) => (),
+            PropKind::Retain(_) => (),
         };
         if budget != 0 {
             self.budget_spent += budget;
@@ -603,8 +603,8 @@ mod unit_tests {
                 PropPerm::RecurrentFundingRequest,
                 PropPerm::FundingRequest,
                 PropPerm::FunctionCall,
-                PropPerm::MotionRemoveAndBan,
-                PropPerm::MotionRetain,
+                PropPerm::RemoveAndBan,
+                PropPerm::Retain,
             ],
             hook_perms,
             U128(10000),
@@ -1110,7 +1110,7 @@ mod unit_tests {
     fn create_motion_props(ctr: &mut Contract) -> (u32, u32) {
         let motion_rem_ban = ctr
             .create_proposal(
-                PropKind::MotionRemoveAndBan {
+                PropKind::RemoveAndBan {
                     member: acc(1),
                     receiver_id: coa(),
                 },
@@ -1120,7 +1120,7 @@ mod unit_tests {
 
         let motion_retain = ctr
             .create_proposal(
-                PropKind::MotionRetain(acc(1)),
+                PropKind::Retain(acc(1)),
                 "Motion to retain".to_string(),
             )
             .unwrap();

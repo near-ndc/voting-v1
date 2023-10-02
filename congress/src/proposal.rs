@@ -99,8 +99,8 @@ impl PropKind {
             PropKind::Text { .. } => PropPerm::Text,
             PropKind::FundingRequest { .. } => PropPerm::FundingRequest,
             PropKind::RecurrentFundingRequest { .. } => PropPerm::RecurrentFundingRequest,
-            PropKind::MotionRemoveAndBan { .. } => PropPerm::MotionRemoveAndBan,
-            PropKind::MotionRetain { .. } => PropPerm::MotionRetain,
+            PropKind::RemoveAndBan { .. } => PropPerm::RemoveAndBan,
+            PropKind::Retain { .. } => PropPerm::Retain,
         }
     }
 
