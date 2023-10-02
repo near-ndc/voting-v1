@@ -636,12 +636,16 @@ mod unit_tests {
 
         // set remaining months to 2
         let (members, _) = ctr.members.get().unwrap();
-        ctr.members.set(&(members, vec![PropPerm::RecurrentFundingRequest]));
+        ctr.members
+            .set(&(members, vec![PropPerm::RecurrentFundingRequest]));
         ctr.end_time = ctr.start_time + START * 12 * 24 * 61;
         ctx.predecessor_account_id = acc(2);
         testing_env!(ctx);
 
-        match ctr.create_proposal(PropKind::RecurrentFundingRequest((ctr.budget_cap / 2) + 1), "".to_string()) {
+        match ctr.create_proposal(
+            PropKind::RecurrentFundingRequest((ctr.budget_cap / 2) + 1),
+            "".to_string(),
+        ) {
             Err(CreatePropError::BudgetOverflow) => (),
             Ok(_) => panic!("expected BudgetOverflow, got: OK"),
             Err(err) => panic!("expected BudgetOverflow got: {:?}", err),

@@ -85,7 +85,10 @@ impl Contract {
     pub fn winners_by_proposal(&self, prop_id: u32) -> Vec<AccountId> {
         let proposal = self._proposal(prop_id);
 
-        if !(proposal.is_past_cooldown() && proposal.voters_num >= proposal.quorum) {
+        if !(proposal.is_past_cooldown()
+            && env::block_timestamp_ms() > self.finish_time
+            && proposal.voters_num >= proposal.quorum)
+        {
             return Vec::new();
         }
 

@@ -1648,9 +1648,15 @@ mod unit_tests {
         testing_env!(ctx.clone());
         assert_eq!(ctr.winners_by_proposal(prop_id), vec![]);
 
+        // cooldown over but not past `finish_time`
+        ctr.admin_set_finish_time(START + 200);
+        ctx.block_timestamp = (START + 150) * MSECOND;
+        testing_env!(ctx.clone());
+        assert_eq!(ctr.winners_by_proposal(prop_id), vec![]);
+
         // the method should return only the candiadtes that reach min_candidate support
         // thats why we have only 4 winners rather than 5
-        ctx.block_timestamp = (START + 111) * MSECOND; // past cooldown
+        ctx.block_timestamp = (START + 201) * MSECOND; // past cooldown
         testing_env!(ctx.clone());
         assert_eq!(
             ctr.winners_by_proposal(prop_id),
