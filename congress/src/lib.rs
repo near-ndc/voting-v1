@@ -243,7 +243,7 @@ impl Contract {
                     );
 
                     // If there is unban call in execution part, remove member from banned list
-                    if action.method_name == "admin_unflag_accounts".to_owned()
+                    if action.method_name == *"admin_unflag_accounts"
                         && receiver_id == &self.registry
                     {
                         let mut banned = self.banned.get().unwrap();
