@@ -1,10 +1,14 @@
 use std::collections::HashMap;
 
-use congress::{PropKind, PropPerm, Vote, HookPerm};
+use congress::view::MembersOutput;
+use congress::{ActionCall, HookPerm, PropKind, PropPerm, Vote};
 use integrations::setup_registry;
-use near_units::parse_near;
+use near_sdk::base64::{decode, encode};
+use near_sdk::json_types::{U128, U64};
+use near_sdk::AccountId as NearAccountId;
+use near_units::{parse_gas, parse_near};
 use serde_json::json;
-use workspaces::{Account, Contract, DevNetwork, Worker, AccountId};
+use workspaces::{Account, AccountId, Contract, DevNetwork, Worker};
 
 /// 1ms in seconds
 const MSECOND: u64 = 1_000_000;
@@ -21,31 +25,34 @@ pub struct InitStruct {
 }
 
 async fn instantiate_congress(
-    congress_contract: Contract, now: u64,
-    members: Vec<&AccountId>, member_perms: Vec<PropPerm>,
-    hook_auth: HashMap<AccountId, Vec<HookPerm>>, community_fund: Account
+    congress_contract: Contract,
+    now: u64,
+    members: Vec<&AccountId>,
+    member_perms: Vec<PropPerm>,
+    hook_auth: HashMap<AccountId, Vec<HookPerm>>,
+    community_fund: Account,
 ) -> anyhow::Result<Contract> {
     let start_time = now + 20 * 1000;
-    let end_time: u64 = now + 1000 * 1_000;
-    let cooldown = now + 20 * 1000;
-    let voting_duration = now + 40 * 1000;
+    let end_time: u64 = now + 100 * 1_000;
+    let cooldown = 10 * 1000;
+    let voting_duration = 20 * 1000;
     // initialize contracts
     let res1 = congress_contract
-    .call("new")
-    .args_json(json!({
-        "community_fund": community_fund.id(),
-        "start_time": start_time,
-        "end_time": end_time,
-        "cooldown": cooldown,
-        "voting_duration": voting_duration,
-        "members": members,
-        "member_perms": member_perms,
-        "hook_auth": hook_auth,
-        "budget_cap": parse_near!("1 N").to_string(),
-        "big_funding_threshold": parse_near!("0.3 N").to_string(),
-    }))
-    .max_gas()
-    .transact();
+        .call("new")
+        .args_json(json!({
+            "community_fund": community_fund.id(),
+            "start_time": start_time,
+            "end_time": end_time,
+            "cooldown": cooldown,
+            "voting_duration": voting_duration,
+            "members": members,
+            "member_perms": member_perms,
+            "hook_auth": hook_auth,
+            "budget_cap": parse_near!("1 N").to_string(),
+            "big_funding_threshold": parse_near!("0.3 N").to_string(),
+        }))
+        .max_gas()
+        .transact();
 
     assert!(res1.await?.is_success());
 
@@ -54,9 +61,15 @@ async fn instantiate_congress(
 
 async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<InitStruct> {
     // deploy contracts
-    let mut hom_contract = worker.dev_deploy(include_bytes!("../../res/congress.wasm")).await?;
-    let mut coa_contract = worker.dev_deploy(include_bytes!("../../res/congress.wasm")).await?;
-    let mut tc_contract = worker.dev_deploy(include_bytes!("../../res/congress.wasm")).await?;
+    let mut hom_contract = worker
+        .dev_deploy(include_bytes!("../../res/congress.wasm"))
+        .await?;
+    let mut coa_contract = worker
+        .dev_deploy(include_bytes!("../../res/congress.wasm"))
+        .await?;
+    let mut tc_contract = worker
+        .dev_deploy(include_bytes!("../../res/congress.wasm"))
+        .await?;
 
     let admin = worker.dev_create_account().await?;
     let community_fund = worker.dev_create_account().await?;
@@ -78,29 +91,54 @@ async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<InitStruct> {
     let block = worker.view_block().await?;
     let now = block.timestamp() / MSECOND; // timestamp in seconds
 
-    // initialize HoM
-    hom_contract = instantiate_congress(
-        hom_contract,
-        now,
-        vec![alice.id(), bob.id(), john.id()],
-        vec![PropPerm::Text, PropPerm::FunctionCall, PropPerm::FundingRequest, PropPerm::RecurrentFundingRequest],
-        HashMap::new(), community_fund.clone()).await?;
-
-    // initialize CoA
-    coa_contract = instantiate_congress(
-        coa_contract,
-        now,
-        vec![alice.id(), bob.id(), john.id()],
-        vec![PropPerm::Text, PropPerm::FunctionCall, PropPerm::FundingRequest, PropPerm::RecurrentFundingRequest],
-        HashMap::new(), community_fund.clone()).await?;
-
     // initialize TC
     tc_contract = instantiate_congress(
         tc_contract,
         now,
         vec![alice.id(), bob.id(), john.id()],
-        vec![PropPerm::Text, PropPerm::FunctionCall, PropPerm::FundingRequest, PropPerm::RecurrentFundingRequest],
-        HashMap::new(), community_fund).await?;
+        vec![PropPerm::Text, PropPerm::FunctionCall],
+        HashMap::new(),
+        community_fund.clone(),
+    )
+    .await?;
+
+    let mut coa_hook = HashMap::new();
+    coa_hook.insert(
+        tc_contract.id().clone(),
+        vec![HookPerm::Dismiss, HookPerm::Dissolve],
+    );
+    // initialize CoA
+    coa_contract = instantiate_congress(
+        coa_contract,
+        now,
+        vec![alice.id(), bob.id(), john.id()],
+        vec![PropPerm::Text, PropPerm::FunctionCall],
+        coa_hook,
+        community_fund.clone(),
+    )
+    .await?;
+
+    let mut hom_hook = HashMap::new();
+    hom_hook.insert(
+        tc_contract.id().clone(),
+        vec![HookPerm::Dismiss, HookPerm::Dissolve],
+    );
+    hom_hook.insert(coa_contract.id().clone(), vec![HookPerm::VetoAll]);
+    // initialize HoM
+    hom_contract = instantiate_congress(
+        hom_contract,
+        now,
+        vec![alice.id(), bob.id(), john.id()],
+        vec![
+            PropPerm::Text,
+            PropPerm::FunctionCall,
+            PropPerm::FundingRequest,
+            PropPerm::RecurrentFundingRequest,
+        ],
+        HashMap::new(),
+        community_fund.clone(),
+    )
+    .await?;
 
     // create a proposal
     let res2 = alice
@@ -126,7 +164,7 @@ async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<InitStruct> {
 }
 
 #[tokio::test]
-async fn vote_by_member() -> anyhow::Result<()> {
+async fn full_prop_flow() -> anyhow::Result<()> {
     let worker = workspaces::sandbox().await?;
     let setup = init(&worker).await?;
 
@@ -141,6 +179,38 @@ async fn vote_by_member() -> anyhow::Result<()> {
         .transact()
         .await?;
     assert!(res.is_success(), "{:?}", res);
+
+    let res = setup
+        .john
+        .call(setup.hom_contract.id(), "vote")
+        .args_json(json!({"id": setup.proposal_id, "vote": Vote::Approve,}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success(), "{:?}", res);
+
+    // fast forward to after cooldown
+    worker.fast_forward(50).await?;
+
+    let res = setup
+        .john
+        .call(setup.hom_contract.id(), "execute")
+        .args_json(json!({"id": setup.proposal_id,}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success(), "{:?}", res);
+
+    worker.fast_forward(100).await?;
+    // fast forward after end time is over
+    let res = setup
+        .john
+        .call(setup.hom_contract.id(), "execute")
+        .args_json(json!({"id": setup.proposal_id,}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_failure(), "{:?}", res);
 
     Ok(())
 }
@@ -165,34 +235,105 @@ async fn vote_by_non_member() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[tokio::test]
-async fn full_prop_flow() -> anyhow::Result<()> {
-
-    Ok(())
-}
-
-#[tokio::test]
-async fn execute_fun_call() -> anyhow::Result<()> {
-
-    Ok(())
-}
-
 // Interhouse
 
 #[tokio::test]
-async fn coa_veto_hom() -> anyhow::Result<()> {
+async fn tc_dismiss_coa() -> anyhow::Result<()> {
+    let worker = workspaces::sandbox().await?;
+    let setup = init(&worker).await?;
+
+    let encoded = encode(json!({"member": setup.alice.id()}).to_string());
+
+    let res2 = setup
+        .alice
+        .call(setup.tc_contract.id(), "create_proposal")
+        .args_json(json!({
+            "kind": PropKind::FunctionCall { receiver_id: to_near_account(setup.coa_contract.id()), actions: [ActionCall {
+                method_name: "dismiss_hook".to_string(),
+                args: decode(encoded).unwrap().into(),
+                deposit: U128(0),
+                gas: U64(10_000_000_000_000),
+            }].to_vec() }, "description": "Veto proposal 1",
+        }))
+        .max_gas()
+        .deposit(parse_near!("0.01 N"))
+        .transact();
+    let proposal_id: u32 = res2.await?.json()?;
+
+    let res = setup
+        .alice
+        .call(setup.tc_contract.id(), "vote")
+        .args_json(json!({"id": proposal_id, "vote": Vote::Approve,}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success(), "{:?}", res);
+
+    let res = setup
+        .john
+        .call(setup.tc_contract.id(), "vote")
+        .args_json(json!({"id": proposal_id, "vote": Vote::Approve,}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success(), "{:?}", res);
+
+    // fast forward to after cooldown
+    worker.fast_forward(50).await?;
+
+    // before execution coa should have all members
+    let members = setup
+        .alice
+        .call(setup.coa_contract.id(), "get_members")
+        .view()
+        .await?
+        .json::<MembersOutput>()?;
+
+    let mut expected = vec![
+        to_near_account(setup.bob.id()),
+        to_near_account(setup.john.id()),
+        to_near_account(setup.alice.id()),
+    ];
+    expected.sort();
+    assert_eq!(members.members, expected);
+
+    let res = setup
+        .john
+        .call(setup.tc_contract.id(), "execute")
+        .args_json(json!({"id": proposal_id,}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success(), "{:?}", res);
+
+    // After removal less members
+    let members = setup
+        .alice
+        .call(setup.coa_contract.id(), "get_members")
+        .view()
+        .await?
+        .json::<MembersOutput>()?;
+
+    expected = vec![
+        to_near_account(setup.bob.id()),
+        to_near_account(setup.john.id()),
+    ];
+    expected.sort();
+    assert_eq!(members.members, expected);
 
     Ok(())
 }
 
 #[tokio::test]
 async fn tc_dismiss_hom() -> anyhow::Result<()> {
-
     Ok(())
 }
 
 #[tokio::test]
 async fn tc_ban_coa_unban() -> anyhow::Result<()> {
-
     Ok(())
+}
+
+fn to_near_account(acc: &AccountId) -> NearAccountId {
+    NearAccountId::new_unchecked(acc.to_string())
 }
