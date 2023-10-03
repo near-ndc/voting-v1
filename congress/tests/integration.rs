@@ -3,10 +3,12 @@ use std::collections::HashMap;
 use congress::view::MembersOutput;
 use congress::{ActionCall, HookPerm, PropKind, PropPerm, Vote};
 
+use integrations::setup_registry;
 use near_sdk::base64::{decode, encode};
 use near_sdk::json_types::{U128, U64};
+use near_sdk::serde::Deserialize;
 use near_sdk::AccountId as NearAccountId;
-use near_units::{parse_near};
+use near_units::parse_near;
 use serde_json::json;
 use workspaces::{Account, AccountId, Contract, DevNetwork, Worker};
 
@@ -17,6 +19,7 @@ pub struct InitStruct {
     pub hom_contract: Contract,
     pub coa_contract: Contract,
     pub tc_contract: Contract,
+    pub registry_contract: Contract,
     pub alice: Account,
     pub bob: Account,
     pub john: Account,
@@ -31,6 +34,7 @@ async fn instantiate_congress(
     member_perms: Vec<PropPerm>,
     hook_auth: HashMap<AccountId, Vec<HookPerm>>,
     community_fund: Account,
+    registry: &AccountId,
 ) -> anyhow::Result<Contract> {
     let start_time = now + 20 * 1000;
     let end_time: u64 = now + 100 * 1_000;
@@ -50,6 +54,7 @@ async fn instantiate_congress(
             "hook_auth": hook_auth,
             "budget_cap": parse_near!("1 N").to_string(),
             "big_funding_threshold": parse_near!("0.3 N").to_string(),
+            "registry": registry
         }))
         .max_gas()
         .transact();
@@ -73,19 +78,19 @@ async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<InitStruct> {
 
     let admin = worker.dev_create_account().await?;
     let community_fund = worker.dev_create_account().await?;
-    let _iah_issuer = worker.dev_create_account().await?;
+    let iah_issuer = worker.dev_create_account().await?;
     let alice = worker.dev_create_account().await?;
     let bob = worker.dev_create_account().await?;
     let john = worker.dev_create_account().await?;
 
-    // let registry_contract = setup_registry(
-    //     worker,
-    //     admin.clone(),
-    //     congress_contract.as_account().clone(),
-    //     iah_issuer.clone(),
-    //     vec![congress_contract.id().clone()],
-    // )
-    // .await?;
+    let registry_contract = setup_registry(
+        worker,
+        admin.clone(),
+        tc_contract.as_account().clone(),
+        iah_issuer.clone(),
+        vec![tc_contract.id().clone()],
+    )
+    .await?;
 
     // get current block time
     let block = worker.view_block().await?;
@@ -96,9 +101,14 @@ async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<InitStruct> {
         tc_contract,
         now,
         vec![alice.id(), bob.id(), john.id()],
-        vec![PropPerm::Text, PropPerm::FunctionCall],
+        vec![
+            PropPerm::Text,
+            PropPerm::FunctionCall,
+            PropPerm::DismissAndBan,
+        ],
         HashMap::new(),
         community_fund.clone(),
+        registry_contract.id(),
     )
     .await?;
 
@@ -115,6 +125,7 @@ async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<InitStruct> {
         vec![PropPerm::Text, PropPerm::FunctionCall],
         coa_hook,
         community_fund.clone(),
+        registry_contract.id(),
     )
     .await?;
 
@@ -137,6 +148,7 @@ async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<InitStruct> {
         ],
         HashMap::new(),
         community_fund.clone(),
+        registry_contract.id(),
     )
     .await?;
 
@@ -160,6 +172,7 @@ async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<InitStruct> {
         john,
         admin,
         proposal_id,
+        registry_contract,
     })
 }
 
@@ -330,10 +343,108 @@ async fn tc_dismiss_hom() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-async fn tc_ban_coa_unban() -> anyhow::Result<()> {
+async fn tc_ban() -> anyhow::Result<()> {
+    let worker = workspaces::sandbox().await?;
+    let setup = init(&worker).await?;
+
+    let res2 = setup
+        .alice
+        .call(setup.tc_contract.id(), "create_proposal")
+        .args_json(json!({
+            "kind": PropKind::DismissAndBan { member: to_near_account(setup.alice.id()), house:  to_near_account(setup.coa_contract.id())}}))
+        .max_gas()
+        .deposit(parse_near!("0.01 N"))
+        .transact();
+    let proposal_id: u32 = res2.await?.json()?;
+
+    let res = setup
+        .alice
+        .call(setup.tc_contract.id(), "vote")
+        .args_json(json!({"id": proposal_id, "vote": Vote::Approve,}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success(), "{:?}", res);
+
+    let res = setup
+        .john
+        .call(setup.tc_contract.id(), "vote")
+        .args_json(json!({"id": proposal_id, "vote": Vote::Approve,}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success(), "{:?}", res);
+
+    // fast forward to after cooldown
+    worker.fast_forward(50).await?;
+
+    // before execution coa should have all members
+    let members = setup
+        .alice
+        .call(setup.coa_contract.id(), "get_members")
+        .view()
+        .await?
+        .json::<MembersOutput>()?;
+
+    let mut expected = vec![
+        to_near_account(setup.bob.id()),
+        to_near_account(setup.john.id()),
+        to_near_account(setup.alice.id()),
+    ];
+    expected.sort();
+    assert_eq!(members.members, expected);
+
+    let res = setup
+        .john
+        .call(setup.tc_contract.id(), "execute")
+        .args_json(json!({"id": proposal_id,}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success(), "{:?}", res);
+
+    // After removal less members
+    let members = setup
+        .alice
+        .call(setup.coa_contract.id(), "get_members")
+        .view()
+        .await?
+        .json::<MembersOutput>()?;
+
+    expected = vec![
+        to_near_account(setup.bob.id()),
+        to_near_account(setup.john.id()),
+    ];
+    expected.sort();
+    assert_eq!(members.members, expected);
+
+    // verify
+    // admin flag
+    let res = setup
+        .alice
+        .call(setup.registry_contract.id(), "account_flagged")
+        .view()
+        .await?
+        .json::<AccountFlag>()?;
+
+    assert_eq!(res, AccountFlag::GovBan);
+
     Ok(())
 }
 
 fn to_near_account(acc: &AccountId) -> NearAccountId {
     NearAccountId::new_unchecked(acc.to_string())
+}
+
+#[derive(Deserialize, PartialEq, Debug)]
+#[serde(crate = "near_sdk::serde")]
+//#[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
+pub enum AccountFlag {
+    /// Account is "blacklisted" when it was marked as a scam or suspectible to be a mnipulated account or not a human.
+    Blacklisted,
+    /// Manually verified account.
+    Verified,
+    /// Account misbehaved and should be refused to have a significant governance role. However
+    /// it will be able to vote as a Voting Body member.
+    GovBan,
 }
