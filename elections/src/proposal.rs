@@ -169,12 +169,12 @@ impl Proposal {
 
     /// returns proposal status
     /// now: time in miliseconds
-    pub fn status(&self, now: u64) -> ProposalStatus {
+    pub fn status(&self, now: u64, finish_time: u64) -> ProposalStatus {
         if now < self.start {
             ProposalStatus::NOT_STARTED
         } else if now <= self.end {
             return ProposalStatus::ONGOING;
-        } else if now <= self.cooldown + self.end {
+        } else if now <= self.cooldown + self.end || now < finish_time {
             return ProposalStatus::COOLDOWN;
         } else {
             return ProposalStatus::ENDED;
