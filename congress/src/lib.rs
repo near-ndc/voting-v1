@@ -368,6 +368,7 @@ impl Contract {
             return Err(HookError::NoMember);
         }
         members.remove(idx.unwrap());
+        self.threshold = (members.len() / 2) as u8 + 1;
 
         emit_dismiss(&member);
         // If DAO doesn't have required threshold, then we dissolve.
@@ -1014,10 +1015,12 @@ mod unit_tests {
         let (mut members, permissions) = ctr.members.get().unwrap();
         members.push(acc(5));
         members.push(acc(6));
+        ctr.threshold = 4;
         ctr.members.set(&(members, permissions.clone()));
 
         // remove from middle
         ctr.dismiss_hook(acc(2)).unwrap();
+        assert_eq!(ctr.threshold, 3);
 
         // should be sorted list
         assert_eq!(
@@ -1030,6 +1033,7 @@ mod unit_tests {
 
         // Remove more members
         ctr.dismiss_hook(acc(1)).unwrap();
+        assert_eq!(ctr.threshold, 3);
         assert_eq!(
             ctr.get_members(),
             MembersOutput {
