@@ -7,9 +7,10 @@ use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap};
 use near_sdk::json_types::U128;
 use near_sdk::{
-    env, near_bindgen, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseOrValue,
-    PromiseResult,
+    env, near_bindgen, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseError,
+    PromiseOrValue, PromiseResult,
 };
+use serde_json::json;
 
 mod constants;
 mod errors;
@@ -55,6 +56,8 @@ pub struct Contract {
     pub budget_cap: Balance,
     /// size (in yocto NEAR) of the big funding request
     pub big_funding_threshold: Balance,
+
+    pub registry: AccountId,
 }
 
 #[near_bindgen]
@@ -72,6 +75,7 @@ impl Contract {
         hook_auth: HashMap<AccountId, Vec<HookPerm>>,
         budget_cap: U128,
         big_funding_threshold: U128,
+        registry: AccountId,
     ) -> Self {
         // we can support up to 255 with the limitation of the proposal type, but setting 100
         // here because this is more than enough for what we need to test for Congress.
@@ -93,6 +97,7 @@ impl Contract {
             budget_spent: 0,
             budget_cap: budget_cap.0,
             big_funding_threshold: big_funding_threshold.0,
+            registry,
         }
     }
 
@@ -242,6 +247,36 @@ impl Contract {
                 budget = *b * self.remaining_months(now) as u128
             }
             PropKind::Text => (),
+            PropKind::DismissAndBan { member, house } => {
+                self.proposals.insert(&id, &prop);
+
+                let ban_promise = Promise::new(self.registry.clone()).function_call(
+                    "admin_flag_accounts".to_owned(),
+                    json!({ "flag": "GovBan".to_owned(),
+                        "accounts": vec![member],
+                        "memo": "".to_owned()
+                    })
+                    .to_string()
+                    .as_bytes()
+                    .to_vec(),
+                    0,
+                    EXECUTE_GAS,
+                );
+
+                let dismiss_promise = Promise::new(house.clone()).function_call(
+                    "dismiss_hook".to_owned(),
+                    json!({ "member": member }).to_string().as_bytes().to_vec(),
+                    0,
+                    EXECUTE_GAS,
+                );
+                return Ok(PromiseOrValue::Promise(
+                    ban_promise.and(dismiss_promise).then(
+                        ext_self::ext(env::current_account_id())
+                            .with_static_gas(EXECUTE_CALLBACK_GAS)
+                            .on_ban_dismiss(id),
+                    ),
+                ));
+            }
         };
         if budget != 0 {
             self.budget_spent += budget;
@@ -420,6 +455,21 @@ impl Contract {
             }
         };
     }
+
+    #[private]
+    pub fn on_ban_dismiss(
+        &mut self,
+        #[callback_result] ban_result: Result<(), PromiseError>,
+        #[callback_result] dismiss_result: Result<(), PromiseError>,
+        prop_id: u32,
+    ) {
+        if ban_result.is_err() || dismiss_result.is_err() {
+            let mut prop = self.assert_proposal(prop_id);
+            prop.status = ProposalStatus::Failed;
+            self.proposals.insert(&prop_id, &prop);
+            emit_executed(prop_id);
+        }
+    }
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -456,6 +506,10 @@ mod unit_tests {
         AccountId::new_unchecked("coa.near".to_string())
     }
 
+    fn registry() -> AccountId {
+        AccountId::new_unchecked("registry.near".to_string())
+    }
+
     fn setup_ctr(attach_deposit: u128) -> (VMContext, Contract, u32) {
         let mut context = VMContextBuilder::new().build();
         let end_time = START + TERM;
@@ -482,10 +536,12 @@ mod unit_tests {
                 PropPerm::RecurrentFundingRequest,
                 PropPerm::FundingRequest,
                 PropPerm::FunctionCall,
+                PropPerm::DismissAndBan,
             ],
             hook_perms,
             U128(10000),
             U128(1000),
+            registry(),
         );
         context.block_timestamp = START * MSECOND;
         context.predecessor_account_id = acc(1);
@@ -981,5 +1037,51 @@ mod unit_tests {
                 permissions
             }
         );
+    }
+
+    #[test]
+    fn tc_dismiss_ban() {
+        let (mut ctx, mut ctr, _) = setup_ctr(100);
+        let motion_rem_ban = ctr
+            .create_proposal(
+                PropKind::DismissAndBan {
+                    member: acc(1),
+                    house: coa(),
+                },
+                "Motion to remove member and ban".to_string(),
+            )
+            .unwrap();
+
+        ctr = vote(
+            ctx.clone(),
+            ctr,
+            [acc(1), acc(2), acc(3)].to_vec(),
+            motion_rem_ban,
+        );
+        let mut prop = ctr.get_proposal(motion_rem_ban).unwrap();
+        assert_eq!(prop.proposal.status, ProposalStatus::Approved);
+
+        // Set timestamp to after cooldown
+        ctx.block_timestamp =
+            (prop.proposal.submission_time + ctr.voting_duration + ctr.cooldown + 1) * MSECOND;
+        testing_env!(ctx);
+
+        ctr.execute(motion_rem_ban).unwrap();
+
+        prop = ctr.get_proposal(motion_rem_ban).unwrap();
+        assert_eq!(prop.proposal.status, ProposalStatus::Executed);
+
+        // callback
+        ctr.on_ban_dismiss(Ok(()), Ok(()), motion_rem_ban);
+        prop = ctr.get_proposal(motion_rem_ban).unwrap();
+        assert_eq!(prop.proposal.status, ProposalStatus::Executed);
+
+        ctr.on_ban_dismiss(Result::Err(PromiseError::Failed), Ok(()), motion_rem_ban);
+        prop = ctr.get_proposal(motion_rem_ban).unwrap();
+        assert_eq!(prop.proposal.status, ProposalStatus::Failed);
+
+        ctr.on_ban_dismiss(Ok(()), Result::Err(PromiseError::Failed), motion_rem_ban);
+        prop = ctr.get_proposal(motion_rem_ban).unwrap();
+        assert_eq!(prop.proposal.status, ProposalStatus::Failed);
     }
 }
