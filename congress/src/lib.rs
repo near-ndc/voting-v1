@@ -474,8 +474,6 @@ impl Contract {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod unit_tests {
-    use std::io::Error;
-
     use near_sdk::{
         test_utils::{get_logs, VMContextBuilder},
         testing_env, VMContext,
