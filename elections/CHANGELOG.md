@@ -20,7 +20,13 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ## Unreleased
 
+## v1.0.2 (2023-10-02)
+
 ## v1.0.1 (2023-09-28)
+
+### Bug Fixes
+
+- `winners_by_proposal(prop_id)` should return empty list if the elections didn't finish.
 
 ### Features
 

@@ -33,7 +33,9 @@ impl Contract {
     /// Returns the proposal status
     pub fn proposal_status(&self, prop_id: u32) -> Option<ProposalStatus> {
         let now = env::block_timestamp_ms();
-        self.proposals.get(&prop_id).map(|p| p.status(now))
+        self.proposals
+            .get(&prop_id)
+            .map(|p| p.status(now, self.finish_time))
     }
 
     /// Returns the policy if user has accepted it otherwise returns None
@@ -85,7 +87,10 @@ impl Contract {
     pub fn winners_by_proposal(&self, prop_id: u32) -> Vec<AccountId> {
         let proposal = self._proposal(prop_id);
 
-        if !(proposal.is_past_cooldown() && proposal.voters_num >= proposal.quorum) {
+        if !(proposal.is_past_cooldown()
+            && env::block_timestamp_ms() > self.finish_time
+            && proposal.voters_num >= proposal.quorum)
+        {
             return Vec::new();
         }
 

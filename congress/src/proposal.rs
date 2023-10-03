@@ -84,6 +84,11 @@ pub enum PropKind {
     // TODO: support self upgrade.
     // /// Upgrade this contract with given hash from blob store.
     // UpgradeSelf { hash: Base58CryptoHash },
+    // A proposal to remove the member from their role and ban them from future participation.
+    DismissAndBan {
+        member: AccountId,
+        house: AccountId,
+    },
 }
 
 impl PropKind {
@@ -93,6 +98,7 @@ impl PropKind {
             PropKind::Text { .. } => PropPerm::Text,
             PropKind::FundingRequest { .. } => PropPerm::FundingRequest,
             PropKind::RecurrentFundingRequest { .. } => PropPerm::RecurrentFundingRequest,
+            PropKind::DismissAndBan { .. } => PropPerm::DismissAndBan,
         }
     }
 
@@ -103,6 +109,7 @@ impl PropKind {
             PropKind::Text { .. } => "text".to_string(),
             PropKind::FundingRequest { .. } => "funding-request".to_string(),
             PropKind::RecurrentFundingRequest { .. } => "recurrent-funding-request".to_string(),
+            PropKind::DismissAndBan { .. } => "remove-and-ban".to_string(),
         }
     }
 }
@@ -150,6 +157,7 @@ pub enum PropPerm {
     Text,
     FundingRequest,
     RecurrentFundingRequest,
+    DismissAndBan,
 }
 
 /// Permissions for calling hooks
