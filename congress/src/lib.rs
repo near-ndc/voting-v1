@@ -189,7 +189,9 @@ impl Contract {
         if env::block_timestamp_ms() > prop.submission_time + self.voting_duration {
             return Err(VoteError::NotActive);
         }
-        prop.add_vote(user, vote, self.threshold)?;
+
+        // Use this threshold to ensure correct approval
+        prop.add_vote(user, vote, (members.len() / 2) as u8 + 1)?;
         self.proposals.insert(&id, &prop);
         emit_vote(id);
 
@@ -368,7 +370,6 @@ impl Contract {
             return Err(HookError::NoMember);
         }
         members.remove(idx.unwrap());
-        self.threshold = (members.len() / 2) as u8 + 1;
 
         emit_dismiss(&member);
         // If DAO doesn't have required threshold, then we dissolve.
