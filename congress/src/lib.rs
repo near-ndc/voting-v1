@@ -980,7 +980,7 @@ mod unit_tests {
 
     #[test]
     fn dismiss_hook() {
-        let (mut ctx, mut ctr, _) = setup_ctr(100);
+        let (mut ctx, mut ctr, id) = setup_ctr(100);
 
         match ctr.dismiss_hook(acc(2)) {
             Err(HookError::NotAuthorized) => (),
@@ -988,7 +988,7 @@ mod unit_tests {
         }
 
         ctx.predecessor_account_id = voting_body();
-        testing_env!(ctx);
+        testing_env!(ctx.clone());
 
         match ctr.dismiss_hook(acc(10)) {
             Err(HookError::NoMember) => (),
@@ -1000,6 +1000,17 @@ mod unit_tests {
         assert_eq!(vec![expected], get_logs());
 
         assert_eq!(ctr.member_permissions(acc(2)), vec![]);
+
+        // Proposal should pass with only 2 votes instead of initial threshold 3
+        let mut prop = ctr.get_proposal(id).unwrap();
+        assert_eq!(prop.proposal.status, ProposalStatus::InProgress);
+        ctr = vote(ctx.clone(), ctr, [acc(1), acc(3)].to_vec(), id);
+
+        prop = ctr.get_proposal(id).unwrap();
+        assert_eq!(prop.proposal.status, ProposalStatus::Approved);
+
+        ctx.predecessor_account_id = voting_body();
+        testing_env!(ctx);
 
         assert!(!ctr.dissolved);
         // Remove more members to check dissolve
@@ -1016,12 +1027,10 @@ mod unit_tests {
         let (mut members, permissions) = ctr.members.get().unwrap();
         members.push(acc(5));
         members.push(acc(6));
-        ctr.threshold = 4;
         ctr.members.set(&(members, permissions.clone()));
 
         // remove from middle
         ctr.dismiss_hook(acc(2)).unwrap();
-        assert_eq!(ctr.threshold, 3);
 
         // should be sorted list
         assert_eq!(
@@ -1034,7 +1043,6 @@ mod unit_tests {
 
         // Remove more members
         ctr.dismiss_hook(acc(1)).unwrap();
-        assert_eq!(ctr.threshold, 3);
         assert_eq!(
             ctr.get_members(),
             MembersOutput {
