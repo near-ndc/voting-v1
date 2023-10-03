@@ -351,7 +351,10 @@ async fn tc_ban() -> anyhow::Result<()> {
         .alice
         .call(setup.tc_contract.id(), "create_proposal")
         .args_json(json!({
-            "kind": PropKind::DismissAndBan { member: to_near_account(setup.alice.id()), house:  to_near_account(setup.coa_contract.id())}}))
+            "kind": PropKind::DismissAndBan { member: to_near_account(setup.alice.id()), house:  to_near_account(setup.coa_contract.id())
+            },
+            "description": "Dismiss and ban alice".to_string()
+        }))
         .max_gas()
         .deposit(parse_near!("0.01 N"))
         .transact();
@@ -423,11 +426,12 @@ async fn tc_ban() -> anyhow::Result<()> {
     let res = setup
         .alice
         .call(setup.registry_contract.id(), "account_flagged")
+        .args_json(json!({"account": to_near_account(setup.alice.id())}))
         .view()
         .await?
-        .json::<AccountFlag>()?;
+        .json::<Option<AccountFlag>>()?;
 
-    assert_eq!(res, AccountFlag::GovBan);
+    assert_eq!(res, Some(AccountFlag::GovBan));
 
     Ok(())
 }
