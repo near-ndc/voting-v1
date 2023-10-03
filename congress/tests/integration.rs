@@ -2,11 +2,11 @@ use std::collections::HashMap;
 
 use congress::view::MembersOutput;
 use congress::{ActionCall, HookPerm, PropKind, PropPerm, Vote};
-use integrations::setup_registry;
+
 use near_sdk::base64::{decode, encode};
 use near_sdk::json_types::{U128, U64};
 use near_sdk::AccountId as NearAccountId;
-use near_units::{parse_gas, parse_near};
+use near_units::{parse_near};
 use serde_json::json;
 use workspaces::{Account, AccountId, Contract, DevNetwork, Worker};
 
@@ -73,7 +73,7 @@ async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<InitStruct> {
 
     let admin = worker.dev_create_account().await?;
     let community_fund = worker.dev_create_account().await?;
-    let iah_issuer = worker.dev_create_account().await?;
+    let _iah_issuer = worker.dev_create_account().await?;
     let alice = worker.dev_create_account().await?;
     let bob = worker.dev_create_account().await?;
     let john = worker.dev_create_account().await?;
