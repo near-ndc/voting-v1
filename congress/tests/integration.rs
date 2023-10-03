@@ -164,3 +164,35 @@ async fn vote_by_non_member() -> anyhow::Result<()> {
 
     Ok(())
 }
+
+#[tokio::test]
+async fn full_prop_flow() -> anyhow::Result<()> {
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn execute_fun_call() -> anyhow::Result<()> {
+
+    Ok(())
+}
+
+// Interhouse
+
+#[tokio::test]
+async fn coa_veto_hom() -> anyhow::Result<()> {
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn tc_dismiss_hom() -> anyhow::Result<()> {
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn tc_ban_coa_unban() -> anyhow::Result<()> {
+
+    Ok(())
+}
