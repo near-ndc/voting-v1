@@ -87,9 +87,8 @@ pub enum PropKind {
     // A proposal to remove the member from their role and ban them from future participation.
     DismissAndBan {
         member: AccountId,
-        receiver_id: AccountId,
+        house: AccountId,
     },
-    Retain(AccountId),
 }
 
 impl PropKind {
@@ -100,7 +99,6 @@ impl PropKind {
             PropKind::FundingRequest { .. } => PropPerm::FundingRequest,
             PropKind::RecurrentFundingRequest { .. } => PropPerm::RecurrentFundingRequest,
             PropKind::DismissAndBan { .. } => PropPerm::DismissAndBan,
-            PropKind::Retain { .. } => PropPerm::Retain,
         }
     }
 
@@ -112,7 +110,6 @@ impl PropKind {
             PropKind::FundingRequest { .. } => "funding-request".to_string(),
             PropKind::RecurrentFundingRequest { .. } => "recurrent-funding-request".to_string(),
             PropKind::DismissAndBan { .. } => "remove-and-ban".to_string(),
-            PropKind::Retain { .. } => "retain".to_string(),
         }
     }
 }
@@ -161,7 +158,6 @@ pub enum PropPerm {
     FundingRequest,
     RecurrentFundingRequest,
     DismissAndBan,
-    Retain,
 }
 
 /// Permissions for calling hooks

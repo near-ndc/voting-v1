@@ -7,8 +7,8 @@ use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap};
 use near_sdk::json_types::U128;
 use near_sdk::{
-    env, near_bindgen, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseOrValue,
-    PromiseResult,
+    env, near_bindgen, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseError,
+    PromiseOrValue, PromiseResult,
 };
 use serde_json::json;
 
@@ -247,14 +247,10 @@ impl Contract {
                 budget = *b * self.remaining_months(now) as u128
             }
             PropKind::Text => (),
-            PropKind::DismissAndBan {
-                member,
-                receiver_id,
-            } => {
+            PropKind::DismissAndBan { member, house } => {
                 self.proposals.insert(&id, &prop);
 
-                let mut promise = Promise::new(self.registry.clone());
-                promise = promise.function_call(
+                let ban_promise = Promise::new(self.registry.clone()).function_call(
                     "admin_flag_accounts".to_owned(),
                     json!({ "flag": "GovBan".to_owned(),
                         "accounts": vec![member],
@@ -266,15 +262,21 @@ impl Contract {
                     0,
                     EXECUTE_GAS,
                 );
+
+                let dismiss_promise = Promise::new(house.clone()).function_call(
+                    "dismiss_hook".to_owned(),
+                    json!({ "member": member }).to_string().as_bytes().to_vec(),
+                    0,
+                    EXECUTE_GAS,
+                );
                 return Ok(PromiseOrValue::Promise(
-                    promise.then(
+                    ban_promise.and(dismiss_promise).then(
                         ext_self::ext(env::current_account_id())
                             .with_static_gas(EXECUTE_CALLBACK_GAS)
-                            .on_ban(id, member.clone(), receiver_id.clone()),
+                            .on_ban_dismiss(id),
                     ),
                 ));
             }
-            PropKind::Retain(_) => (),
         };
         if budget != 0 {
             self.budget_spent += budget;
@@ -455,64 +457,18 @@ impl Contract {
     }
 
     #[private]
-    pub fn on_ban(
+    pub fn on_ban_dismiss(
         &mut self,
+        #[callback_result] ban_result: Result<(), PromiseError>,
+        #[callback_result] dismiss_result: Result<(), PromiseError>,
         prop_id: u32,
-        member: AccountId,
-        receiver_id: AccountId,
-    ) -> PromiseOrValue<bool> {
-        assert_eq!(
-            env::promise_results_count(),
-            1,
-            "ERR_UNEXPECTED_CALLBACK_PROMISES"
-        );
-        match env::promise_result(0) {
-            PromiseResult::NotReady => unreachable!(),
-            PromiseResult::Successful(_) => {
-                // call remove
-                let mut promise = Promise::new(receiver_id);
-                promise = promise.function_call(
-                    "dismiss_hook".to_owned(),
-                    json!({ "member": member }).to_string().as_bytes().to_vec(),
-                    0,
-                    EXECUTE_GAS,
-                );
-
-                return PromiseOrValue::Promise(
-                    promise.then(
-                        ext_self::ext(env::current_account_id())
-                            .with_static_gas(EXECUTE_CALLBACK_GAS)
-                            .on_remove(prop_id),
-                    ),
-                );
-            }
-            PromiseResult::Failed => {
-                let mut prop = self.assert_proposal(prop_id);
-                prop.status = ProposalStatus::Failed;
-                self.proposals.insert(&prop_id, &prop);
-                emit_executed(prop_id);
-            }
-        };
-        PromiseOrValue::Value(false)
-    }
-
-    #[private]
-    pub fn on_remove(&mut self, prop_id: u32) {
-        assert_eq!(
-            env::promise_results_count(),
-            1,
-            "ERR_UNEXPECTED_CALLBACK_PROMISES"
-        );
-        match env::promise_result(0) {
-            PromiseResult::NotReady => unreachable!(),
-            PromiseResult::Successful(_) => {}
-            PromiseResult::Failed => {
-                let mut prop = self.assert_proposal(prop_id);
-                prop.status = ProposalStatus::Failed;
-                self.proposals.insert(&prop_id, &prop);
-                emit_executed(prop_id);
-            }
-        };
+    ) {
+        if ban_result.is_err() || dismiss_result.is_err() {
+            let mut prop = self.assert_proposal(prop_id);
+            prop.status = ProposalStatus::Failed;
+            self.proposals.insert(&prop_id, &prop);
+            emit_executed(prop_id);
+        }
     }
 }
 
@@ -581,7 +537,6 @@ mod unit_tests {
                 PropPerm::FundingRequest,
                 PropPerm::FunctionCall,
                 PropPerm::DismissAndBan,
-                PropPerm::Retain,
             ],
             hook_perms,
             U128(10000),
@@ -1084,28 +1039,19 @@ mod unit_tests {
         );
     }
 
-    fn create_motion_props(ctr: &mut Contract) -> (u32, u32) {
+    #[test]
+    fn tc_dismiss_ban() {
+        let (mut ctx, mut ctr, _) = setup_ctr(100);
         let motion_rem_ban = ctr
             .create_proposal(
                 PropKind::DismissAndBan {
                     member: acc(1),
-                    receiver_id: coa(),
+                    house: coa(),
                 },
                 "Motion to remove member and ban".to_string(),
             )
             .unwrap();
 
-        let motion_retain = ctr
-            .create_proposal(PropKind::Retain(acc(1)), "Motion to retain".to_string())
-            .unwrap();
-
-        (motion_rem_ban, motion_retain)
-    }
-
-    #[test]
-    fn tc_motions() {
-        let (mut ctx, mut ctr, _) = setup_ctr(100);
-        let (motion_rem_ban, motion_retain) = create_motion_props(&mut ctr);
         ctr = vote(
             ctx.clone(),
             ctr,
@@ -1115,22 +1061,14 @@ mod unit_tests {
         let mut prop = ctr.get_proposal(motion_rem_ban).unwrap();
         assert_eq!(prop.proposal.status, ProposalStatus::Approved);
 
-        ctr = vote(
-            ctx.clone(),
-            ctr,
-            [acc(1), acc(2), acc(3)].to_vec(),
-            motion_retain,
-        );
-
         // Set timestamp to after cooldown
         ctx.block_timestamp =
             (prop.proposal.submission_time + ctr.voting_duration + ctr.cooldown + 1) * MSECOND;
         testing_env!(ctx);
 
-        ctr.execute(motion_retain).unwrap();
         ctr.execute(motion_rem_ban).unwrap();
 
-        prop = ctr.get_proposal(motion_retain).unwrap();
+        prop = ctr.get_proposal(motion_rem_ban).unwrap();
         assert_eq!(prop.proposal.status, ProposalStatus::Executed);
     }
 }
