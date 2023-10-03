@@ -474,6 +474,8 @@ impl Contract {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod unit_tests {
+    use std::io::Error;
+
     use near_sdk::{
         test_utils::{get_logs, VMContextBuilder},
         testing_env, VMContext,
@@ -1070,5 +1072,18 @@ mod unit_tests {
 
         prop = ctr.get_proposal(motion_rem_ban).unwrap();
         assert_eq!(prop.proposal.status, ProposalStatus::Executed);
+
+        // callback
+        ctr.on_ban_dismiss(Ok(()), Ok(()), motion_rem_ban);
+        prop = ctr.get_proposal(motion_rem_ban).unwrap();
+        assert_eq!(prop.proposal.status, ProposalStatus::Executed);
+
+        ctr.on_ban_dismiss(Result::Err(PromiseError::Failed), Ok(()), motion_rem_ban);
+        prop = ctr.get_proposal(motion_rem_ban).unwrap();
+        assert_eq!(prop.proposal.status, ProposalStatus::Failed);
+
+        ctr.on_ban_dismiss(Ok(()), Result::Err(PromiseError::Failed), motion_rem_ban);
+        prop = ctr.get_proposal(motion_rem_ban).unwrap();
+        assert_eq!(prop.proposal.status, ProposalStatus::Failed);
     }
 }
