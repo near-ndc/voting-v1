@@ -1,5 +1,5 @@
 use std::cmp::min;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use common::finalize_storage_check;
 use events::*;
@@ -57,7 +57,6 @@ pub struct Contract {
     /// size (in yocto NEAR) of the big funding request
     pub big_funding_threshold: Balance,
 
-    pub banned: LazyOption<HashSet<AccountId>>,
     pub registry: AccountId,
 }
 
@@ -98,7 +97,6 @@ impl Contract {
             budget_spent: 0,
             budget_cap: budget_cap.0,
             big_funding_threshold: big_funding_threshold.0,
-            banned: LazyOption::new(StorageKey::Banned, Some(&HashSet::new())),
             registry,
         }
     }
@@ -241,23 +239,7 @@ impl Contract {
                         action.deposit.0,
                         Gas(action.gas.0),
                     );
-
-                    // If there is unban call in execution part, remove member from banned list
-                    if action.method_name == *"admin_unflag_accounts"
-                        && receiver_id == &self.registry
-                    {
-                        let mut banned = self.banned.get().unwrap();
-                        let json_str = serde_json::to_string(&action.args)
-                            .expect("Failed to serialize to JSON");
-                        let ban: Unban =
-                            serde_json::from_str(&json_str).expect("Failed to parse JSON");
-                        for val in ban.accounts {
-                            banned.remove(&val);
-                        }
-                        self.banned.set(&banned);
-                    }
                 }
-
                 result = promise.into();
             }
             PropKind::FundingRequest(b) => budget = *b,
@@ -265,50 +247,32 @@ impl Contract {
                 budget = *b * self.remaining_months(now) as u128
             }
             PropKind::Text => (),
-            PropKind::RemoveAndBan {
+            PropKind::DismissAndBan {
                 member,
                 receiver_id,
             } => {
-                let banned = self.banned.get().unwrap();
                 self.proposals.insert(&id, &prop);
-                if banned.contains(member) {
-                    // skip ban call
-                    let mut promise = Promise::new(receiver_id.clone());
-                    promise = promise.function_call(
-                        "dismiss_hook".to_owned(),
-                        json!({ "member": member }).to_string().as_bytes().to_vec(),
-                        0,
-                        EXECUTE_GAS,
-                    );
-                    return Ok(PromiseOrValue::Promise(
-                        promise.then(
-                            ext_self::ext(env::current_account_id())
-                                .with_static_gas(EXECUTE_CALLBACK_GAS)
-                                .on_remove(id),
-                        ),
-                    ));
-                } else {
-                    let mut promise = Promise::new(self.registry.clone());
-                    promise = promise.function_call(
-                        "admin_flag_accounts".to_owned(),
-                        json!({ "flag": "GovBan".to_owned(),
-                            "accounts": vec![member],
-                            "memo": "".to_owned()
-                        })
-                        .to_string()
-                        .as_bytes()
-                        .to_vec(),
-                        0,
-                        EXECUTE_GAS,
-                    );
-                    return Ok(PromiseOrValue::Promise(
-                        promise.then(
-                            ext_self::ext(env::current_account_id())
-                                .with_static_gas(EXECUTE_CALLBACK_GAS)
-                                .on_ban(id, member.clone(), receiver_id.clone()),
-                        ),
-                    ));
-                }
+
+                let mut promise = Promise::new(self.registry.clone());
+                promise = promise.function_call(
+                    "admin_flag_accounts".to_owned(),
+                    json!({ "flag": "GovBan".to_owned(),
+                        "accounts": vec![member],
+                        "memo": "".to_owned()
+                    })
+                    .to_string()
+                    .as_bytes()
+                    .to_vec(),
+                    0,
+                    EXECUTE_GAS,
+                );
+                return Ok(PromiseOrValue::Promise(
+                    promise.then(
+                        ext_self::ext(env::current_account_id())
+                            .with_static_gas(EXECUTE_CALLBACK_GAS)
+                            .on_ban(id, member.clone(), receiver_id.clone()),
+                    ),
+                ));
             }
             PropKind::Retain(_) => (),
         };
@@ -505,9 +469,6 @@ impl Contract {
         match env::promise_result(0) {
             PromiseResult::NotReady => unreachable!(),
             PromiseResult::Successful(_) => {
-                let mut banned_list = self.banned.get().unwrap();
-                banned_list.insert(member.clone());
-                self.banned.set(&banned_list);
                 // call remove
                 let mut promise = Promise::new(receiver_id);
                 promise = promise.function_call(
@@ -619,7 +580,7 @@ mod unit_tests {
                 PropPerm::RecurrentFundingRequest,
                 PropPerm::FundingRequest,
                 PropPerm::FunctionCall,
-                PropPerm::RemoveAndBan,
+                PropPerm::DismissAndBan,
                 PropPerm::Retain,
             ],
             hook_perms,
@@ -1126,7 +1087,7 @@ mod unit_tests {
     fn create_motion_props(ctr: &mut Contract) -> (u32, u32) {
         let motion_rem_ban = ctr
             .create_proposal(
-                PropKind::RemoveAndBan {
+                PropKind::DismissAndBan {
                     member: acc(1),
                     receiver_id: coa(),
                 },
