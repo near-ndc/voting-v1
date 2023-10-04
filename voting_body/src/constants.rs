@@ -1,14 +1,12 @@
-use near_sdk::{Balance, Gas};
+use near_sdk::{Balance, Gas, ONE_NEAR};
 
-pub const MICRO_NEAR: Balance = 1_000_000_000_000_000_000; // 1e19 yoctoNEAR
-pub const MILI_NEAR: Balance = 1_000 * MICRO_NEAR;
+pub const MILI_NEAR: Balance = ONE_NEAR / 1_000;
 
-/// 1s in nano seconds.
-pub const SECOND: u64 = 1_000_000_000;
+/// Gas reserved for final failure callback which panics if one of the callback fails.
+pub const FAILURE_CALLBACK_GAS: Gas = Gas(3 * Gas::ONE_TERA.0);
+pub const EXECUTE_CALLBACK_GAS: Gas = Gas(4 * Gas::ONE_TERA.0);
 
-// storage cost: 1E19 yoctoNEAR per byte = 1 NEAR 100kB
-// vote: 2 (prefix)+64bytes + 8 (proposal id) for key + 3 * 16  = 124 < 150
-pub const VOTE_COST: Balance = 150 * MICRO_NEAR;
+pub const EXECUTE_GAS: Gas = Gas(8 * Gas::ONE_TERA.0);
 
-pub const GAS_VOTE: Gas = Gas(70 * Gas::ONE_TERA.0);
-pub const GAS_VOTE_CALLBACK: Gas = Gas(5 * Gas::ONE_TERA.0);
+// 64bytes(accountID) + 1byte (prefix) + 4bytes(proposal_id) + vote(byte) = 72B -> add 20% margin = < 90B
+pub const VOTE_STORAGE: u64 = 90;

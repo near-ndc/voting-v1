@@ -31,6 +31,7 @@ use crate::storage::*;
 pub struct Contract {
     /// address of the community fund, where the excess of NEAR will be sent on dissolve and cleanup.
     pub community_fund: AccountId,
+    pub registry: AccountId,
 
     pub dissolved: bool,
     pub prop_counter: u32,
@@ -56,8 +57,6 @@ pub struct Contract {
     pub budget_cap: Balance,
     /// size (in yocto NEAR) of the big funding request
     pub big_funding_threshold: Balance,
-
-    pub registry: AccountId,
 }
 
 #[near_bindgen]
