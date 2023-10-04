@@ -190,8 +190,7 @@ impl Contract {
             return Err(VoteError::NotActive);
         }
 
-        // Use this threshold to ensure correct approval
-        prop.add_vote(user, vote, (members.len() / 2) as u8 + 1)?;
+        prop.add_vote(user, vote, self.threshold)?;
         self.proposals.insert(&id, &prop);
         emit_vote(id);
 
@@ -1001,13 +1000,13 @@ mod unit_tests {
 
         assert_eq!(ctr.member_permissions(acc(2)), vec![]);
 
-        // Proposal should pass with only 2 votes instead of initial threshold 3
+        // Proposal should not pass with only 2 votes
         let mut prop = ctr.get_proposal(id).unwrap();
         assert_eq!(prop.proposal.status, ProposalStatus::InProgress);
         ctr = vote(ctx.clone(), ctr, [acc(1), acc(3)].to_vec(), id);
 
         prop = ctr.get_proposal(id).unwrap();
-        assert_eq!(prop.proposal.status, ProposalStatus::Approved);
+        assert_eq!(prop.proposal.status, ProposalStatus::InProgress);
 
         ctx.predecessor_account_id = voting_body();
         testing_env!(ctx);
