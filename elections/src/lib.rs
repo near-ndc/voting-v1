@@ -2,7 +2,7 @@ use std::cmp::max;
 
 use events::{emit_bond, emit_revoke_vote, emit_vote};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::LookupMap;
+use near_sdk::collections::{LookupMap, UnorderedSet};
 use near_sdk::json_types::U128;
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise, PromiseOrValue};
 
@@ -10,6 +10,7 @@ mod constants;
 mod errors;
 mod events;
 mod ext;
+mod migrate;
 pub mod proposal;
 mod storage;
 mod view;
@@ -41,6 +42,9 @@ pub struct Contract {
     /// address which can pause the contract and make a new proposal. Should be a multisig / DAO;
     pub authority: AccountId,
     pub sbt_registry: AccountId,
+
+    /// list of disqualified candidates
+    pub disqualified_candidates: UnorderedSet<AccountId>,
 }
 
 #[near_bindgen]
@@ -66,6 +70,7 @@ impl Contract {
             prop_counter: 0,
             policy,
             finish_time,
+            disqualified_candidates: UnorderedSet::new(StorageKey::DisqualifiedCandidates),
         }
     }
 
@@ -300,7 +305,6 @@ impl Contract {
     ) -> Result<(), RevokeVoteError> {
         // check if the caller is the authority allowed to revoke votes
         self.assert_admin();
-        self.slash_bond(token_id);
         let mut p = self._proposal(prop_id);
         p.revoke_votes(token_id)?;
         self.proposals.insert(&prop_id, &p);
@@ -334,6 +338,14 @@ impl Contract {
             "new finish time must be after the existing one"
         );
         self.finish_time = finish_time;
+    }
+
+    /// Allows admin disqualify candidates.
+    pub fn admin_disqualify_candidates(&mut self, candidates: Vec<AccountId>) {
+        self.assert_admin();
+        for c in candidates.iter() {
+            self.disqualified_candidates.insert(c);
+        }
     }
 
     /*****************
@@ -436,6 +448,27 @@ impl Contract {
             "not an admin"
         );
     }
+
+    /// helper method to get the disqualified candidated indicies
+    fn disqualifed_candidates_indices(&self, prop_id: u32) -> Vec<usize> {
+        let proposal = self._proposal(prop_id);
+
+        // Use iterator methods to filter and map candidates to their indices
+        let disqualified_indices: Vec<usize> = proposal
+            .candidates
+            .iter()
+            .enumerate()
+            .filter_map(|(index, candidate)| {
+                if self.disqualified_candidates.contains(candidate) {
+                    Some(index)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        disqualified_indices
+    }
 }
 
 fn validate_setup_package(seats: u16, cs: &Vec<AccountId>) {
@@ -452,6 +485,8 @@ fn validate_setup_package(seats: u16, cs: &Vec<AccountId>) {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod unit_tests {
+    use std::ops::Mul;
+
     use near_sdk::{
         test_utils::{self, VMContextBuilder},
         testing_env, Gas, VMContext,
@@ -1715,5 +1750,41 @@ mod unit_tests {
         ctr.bond(alice(), mk_human_sbt(2), Value::String("".to_string()));
 
         assert_eq!(ctr.bonded_amounts.get(&2).unwrap(), 2 * BOND_AMOUNT);
+    }
+
+    #[test]
+    #[should_panic(expected = "not an admin")]
+    fn admin_disqualify_candidates_not_admin() {
+        let (_, mut ctr) = setup(&alice());
+        ctr.admin_disqualify_candidates(vec![candidate(1), candidate(2)])
+    }
+
+    #[test]
+    fn admin_disqualify_candidates() {
+        let (_, mut ctr) = setup(&admin());
+        let disqualified_candidates = vec![candidate(1), candidate(2)];
+        ctr.admin_disqualify_candidates(disqualified_candidates.clone());
+        assert_eq!(disqualified_candidates, ctr.disqualified_candidates());
+    }
+
+    #[test]
+    fn winners_by_proposal_disqualified_candidates() {
+        let (mut ctx, mut ctr) = setup(&admin());
+
+        // more seats than candidates
+        let prop_id = mock_proposal_and_votes(&mut ctx, &mut ctr, 5, 0);
+
+        // disqualify candidate(3)
+        ctr.admin_disqualify_candidates(vec![candidate(3), candidate(2)]);
+
+        // the method should return only the candiadtes that reach min_candidate support
+        // and are not disqualifed
+        ctx.block_timestamp = (START + 201) * MSECOND; // past cooldown
+        ctx.prepaid_gas = Gas::ONE_TERA.mul(10);
+        testing_env!(ctx.clone());
+        assert_eq!(
+            ctr.winners_by_proposal(prop_id),
+            vec![candidate(6), candidate(4), candidate(1), candidate(5)]
+        );
     }
 }
