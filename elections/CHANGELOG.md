@@ -20,6 +20,10 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ## Unreleased
 
+## v1.0.3 (2023-10-05)
+
+- Updated `revoke_vote` and `admin_revoke_vote` to not slash bonds.
+
 ## v1.0.2 (2023-10-02)
 
 ## v1.0.1 (2023-09-28)

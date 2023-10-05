@@ -300,7 +300,8 @@ impl Contract {
     ) -> Result<(), RevokeVoteError> {
         // check if the caller is the authority allowed to revoke votes
         self.assert_admin();
-        self.slash_bond(token_id);
+        // EIC decided that votes won't be slashed.
+        // self.slash_bond(token_id);
         let mut p = self._proposal(prop_id);
         p.revoke_votes(token_id)?;
         self.proposals.insert(&prop_id, &p);
