@@ -12,7 +12,7 @@ use near_units::parse_near;
 use serde_json::json;
 use workspaces::{Account, AccountId, Contract, DevNetwork, Worker};
 
-/// 1ms in seconds
+/// 1s in ms
 const MSECOND: u64 = 1_000_000;
 
 pub struct InitStruct {
