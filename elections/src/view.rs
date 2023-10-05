@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use near_sdk::{env, near_bindgen, AccountId, Balance};
 use uint::hex;
 
@@ -79,7 +81,8 @@ impl Contract {
     }
 
     /// Returns a list of winners of the proposal if the elections is over and the quorum has been reached, otherwise returns empty list.
-    /// A candidate is considered the winner only if he reached the `min_candidate_support`.
+    /// A candidate is considered the winner only if he reached the `min_candidate_support`
+    /// and is not listed as disqualified.
     /// If the number of returned winners is smaller than the number of seats it means some of the candidates
     /// did not reach the required minimum support.
     /// If there is a tie break at the tail and it exceeds the number of seats, the accounts
@@ -94,19 +97,28 @@ impl Contract {
             return Vec::new();
         }
 
-        let mut indexed_results: Vec<(usize, u64)> =
-            proposal.result.into_iter().enumerate().collect();
+        let disqualified_candidates_indices = self.disqualifed_candidates_indices(prop_id);
+
+        // Filter and sort the candidates in one step
+        let mut indexed_results: Vec<(usize, u64)> = proposal
+            .result
+            .iter()
+            .enumerate()
+            .filter(|(idx, _)| !disqualified_candidates_indices.contains(idx))
+            .map(|(idx, &votes)| (idx, votes))
+            .collect();
+
         indexed_results.sort_by_key(|&(_, value)| std::cmp::Reverse(value));
 
         let mut winners = Vec::new();
         let last_out_idx = proposal.seats as usize;
-        let last_out_votes = if indexed_results.len() > last_out_idx {
-            indexed_results[last_out_idx].1
-        } else {
-            indexed_results[0].1 + 1 // max +1
-        };
+        let last_out_votes = indexed_results
+            .get(last_out_idx)
+            .map(|&(_, votes)| votes)
+            .unwrap_or(indexed_results[0].1 + 1);
+
         for (idx, votes) in indexed_results.into_iter().take(last_out_idx) {
-            // we need to filter out tie in the tail if it could exceed the seats
+            // Filter out tie in the tail if it could exceed the seats
             if proposal.min_candidate_support <= votes && last_out_votes < votes {
                 let candidate = proposal.candidates.get(idx).unwrap();
                 winners.push(candidate.clone());
@@ -114,5 +126,14 @@ impl Contract {
         }
 
         winners
+    }
+
+    /// Returns the list of disqualified candidates
+    pub fn disqualified_candidates(&self) -> Vec<AccountId> {
+        self.disqualified_candidates
+            .get()
+            .unwrap_or(HashSet::new())
+            .into_iter()
+            .collect()
     }
 }
