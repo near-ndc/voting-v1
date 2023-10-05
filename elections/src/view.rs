@@ -129,7 +129,7 @@ impl Contract {
     /// Returns the list of disqualified candidates
     pub fn disqualified_candidates(&self) -> Vec<AccountId> {
         let mut res = Vec::new();
-        for c in self.disqualified_candidates.iter() {
+        for c in self.disqualified_candidates.get().unwrap().iter() {
             res.push(c.clone());
         }
         res

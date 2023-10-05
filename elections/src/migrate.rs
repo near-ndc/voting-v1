@@ -22,7 +22,7 @@ impl Contract {
     pub fn migrate() -> Self {
         let old_state: OldState = env::state_read().expect("failed");
         // new field in the smart contract :
-        // + disqualified_candidates: Vec<AccountId>,
+        // + disqualified_candidates: LazyOption<HashSet<AccountId>>,
 
         Self {
             pause: old_state.pause,
@@ -35,7 +35,7 @@ impl Contract {
             finish_time: old_state.finish_time,
             authority: old_state.authority,
             sbt_registry: old_state.sbt_registry,
-            disqualified_candidates: UnorderedSet::new(StorageKey::DisqualifiedCandidates),
+            disqualified_candidates: LazyOption::new(StorageKey::DisqualifiedCandidates, None),
         }
     }
 }

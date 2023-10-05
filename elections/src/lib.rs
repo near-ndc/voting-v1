@@ -1,8 +1,9 @@
 use std::cmp::max;
+use std::collections::HashSet;
 
 use events::{emit_bond, emit_revoke_vote, emit_vote};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::{LookupMap, UnorderedSet};
+use near_sdk::collections::{LazyOption, LookupMap, UnorderedSet};
 use near_sdk::json_types::U128;
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise, PromiseOrValue};
 
@@ -44,7 +45,7 @@ pub struct Contract {
     pub sbt_registry: AccountId,
 
     /// list of disqualified candidates
-    pub disqualified_candidates: UnorderedSet<AccountId>,
+    pub disqualified_candidates: LazyOption<HashSet<AccountId>>,
 }
 
 #[near_bindgen]
@@ -70,7 +71,7 @@ impl Contract {
             prop_counter: 0,
             policy,
             finish_time,
-            disqualified_candidates: UnorderedSet::new(StorageKey::DisqualifiedCandidates),
+            disqualified_candidates: LazyOption::new(StorageKey::DisqualifiedCandidates, None),
         }
     }
 
@@ -343,9 +344,11 @@ impl Contract {
     /// Allows admin to disqualify candidates.
     pub fn admin_disqualify_candidates(&mut self, candidates: Vec<AccountId>) {
         self.assert_admin();
+        let mut to_disqualify: HashSet<AccountId> = HashSet::new();
         for c in candidates.iter() {
-            self.disqualified_candidates.insert(c);
+            to_disqualify.insert(c.clone());
         }
+        self.disqualified_candidates.set(&to_disqualify);
     }
 
     /*****************
@@ -459,7 +462,12 @@ impl Contract {
             .iter()
             .enumerate()
             .filter_map(|(index, candidate)| {
-                if self.disqualified_candidates.contains(candidate) {
+                if self
+                    .disqualified_candidates
+                    .get()
+                    .unwrap_or(HashSet::new())
+                    .contains(candidate)
+                {
                     Some(index)
                 } else {
                     None
