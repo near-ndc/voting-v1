@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use congress::view::MembersOutput;
-use congress::{ActionCall, HookPerm, PropKind, PropPerm, Vote};
+use congress::view::{MembersOutput, ProposalOutput};
+use congress::{ActionCall, HookPerm, PropKind, PropPerm, ProposalStatus, Vote};
 
 use integrations::setup_registry;
 use near_sdk::base64::{decode, encode};
@@ -62,6 +62,19 @@ async fn instantiate_congress(
     assert!(res1.await?.is_success());
 
     Ok(congress_contract)
+}
+
+async fn vote(users: Vec<Account>, dao: &Contract, proposal_id: u32) -> anyhow::Result<()> {
+    for user in users.into_iter() {
+        let res = user
+            .call(dao.id(), "vote")
+            .args_json(json!({"id": proposal_id, "vote": Vote::Approve,}))
+            .max_gas()
+            .transact()
+            .await?;
+        assert!(res.is_success(), "{:?}", res);
+    }
+    Ok(())
 }
 
 async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<InitStruct> {
@@ -146,7 +159,7 @@ async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<InitStruct> {
             PropPerm::FundingRequest,
             PropPerm::RecurrentFundingRequest,
         ],
-        HashMap::new(),
+        hom_hook,
         community_fund.clone(),
         registry_contract.id(),
     )
@@ -184,29 +197,18 @@ async fn full_prop_flow() -> anyhow::Result<()> {
     // fast forward to the voting period
     worker.fast_forward(10).await?;
 
-    let res = setup
-        .alice
-        .call(setup.hom_contract.id(), "vote")
-        .args_json(json!({"id": setup.proposal_id, "vote": Vote::Approve,}))
-        .max_gas()
-        .transact()
-        .await?;
-    assert!(res.is_success(), "{:?}", res);
-
-    let res = setup
-        .john
-        .call(setup.hom_contract.id(), "vote")
-        .args_json(json!({"id": setup.proposal_id, "vote": Vote::Approve,}))
-        .max_gas()
-        .transact()
-        .await?;
-    assert!(res.is_success(), "{:?}", res);
+    vote(
+        vec![setup.alice, setup.john],
+        &setup.hom_contract,
+        setup.proposal_id,
+    )
+    .await?;
 
     // fast forward to after cooldown
     worker.fast_forward(50).await?;
 
     let res = setup
-        .john
+        .bob
         .call(setup.hom_contract.id(), "execute")
         .args_json(json!({"id": setup.proposal_id,}))
         .max_gas()
@@ -217,7 +219,7 @@ async fn full_prop_flow() -> anyhow::Result<()> {
     worker.fast_forward(100).await?;
     // fast forward after end time is over
     let res = setup
-        .john
+        .bob
         .call(setup.hom_contract.id(), "execute")
         .args_json(json!({"id": setup.proposal_id,}))
         .max_gas()
@@ -273,23 +275,12 @@ async fn tc_dismiss_coa() -> anyhow::Result<()> {
         .transact();
     let proposal_id: u32 = res2.await?.json()?;
 
-    let res = setup
-        .alice
-        .call(setup.tc_contract.id(), "vote")
-        .args_json(json!({"id": proposal_id, "vote": Vote::Approve,}))
-        .max_gas()
-        .transact()
-        .await?;
-    assert!(res.is_success(), "{:?}", res);
-
-    let res = setup
-        .john
-        .call(setup.tc_contract.id(), "vote")
-        .args_json(json!({"id": proposal_id, "vote": Vote::Approve,}))
-        .max_gas()
-        .transact()
-        .await?;
-    assert!(res.is_success(), "{:?}", res);
+    vote(
+        vec![setup.john.clone(), setup.bob.clone()],
+        &setup.tc_contract,
+        setup.proposal_id,
+    )
+    .await?;
 
     // fast forward to after cooldown
     worker.fast_forward(50).await?;
@@ -338,7 +329,67 @@ async fn tc_dismiss_coa() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-async fn tc_dismiss_hom() -> anyhow::Result<()> {
+async fn coa_veto_hom() -> anyhow::Result<()> {
+    let worker = workspaces::sandbox().await?;
+    let setup = init(&worker).await?;
+
+    let encoded = encode(json!({"id": setup.proposal_id}).to_string());
+
+    let res2 = setup
+        .alice
+        .call(setup.coa_contract.id(), "create_proposal")
+        .args_json(json!({
+            "kind": PropKind::FunctionCall { receiver_id: to_near_account(setup.hom_contract.id()), actions: [ActionCall {
+                method_name: "veto_hook".to_string(),
+                args: decode(encoded).unwrap().into(),
+                deposit: U128(0),
+                gas: U64(10_000_000_000_000),
+            }].to_vec() }, "description": "Veto proposal 1",
+        }))
+        .max_gas()
+        .deposit(parse_near!("0.01 N"))
+        .transact();
+    let proposal_id: u32 = res2.await?.json()?;
+
+    vote(
+        vec![setup.john.clone(), setup.bob.clone()],
+        &setup.coa_contract,
+        proposal_id,
+    )
+    .await?;
+
+    // fast forward to after cooldown
+    worker.fast_forward(50).await?;
+
+    // before execution proposal should be in progress
+    let members = setup
+        .alice
+        .call(setup.hom_contract.id(), "get_proposal")
+        .args_json(json!({"id": setup.proposal_id}))
+        .view()
+        .await?
+        .json::<Option<ProposalOutput>>()?;
+    assert_eq!(members.unwrap().proposal.status, ProposalStatus::InProgress);
+
+    let res = setup
+        .john
+        .call(setup.coa_contract.id(), "execute")
+        .args_json(json!({"id": proposal_id,}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success(), "{:?}", res);
+
+    // After execution proposal should be in Vetoed
+    let members = setup
+        .alice
+        .call(setup.hom_contract.id(), "get_proposal")
+        .args_json(json!({"id": setup.proposal_id}))
+        .view()
+        .await?
+        .json::<Option<ProposalOutput>>()?;
+    assert_eq!(members.unwrap().proposal.status, ProposalStatus::Vetoed);
+
     Ok(())
 }
 
