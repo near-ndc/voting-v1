@@ -136,10 +136,10 @@ impl Contract {
         let mut new_budget = 0;
         match kind {
             PropKind::FundingRequest(b) => {
-                new_budget = self.budget_spent + b;
+                new_budget = self.budget_spent + b.0;
             }
             PropKind::RecurrentFundingRequest(b) => {
-                new_budget = self.budget_spent + b * (self.remaining_months(now) as u128);
+                new_budget = self.budget_spent + b.0 * (self.remaining_months(now) as u128);
             }
             _ => (),
         };
@@ -243,9 +243,9 @@ impl Contract {
                 }
                 result = promise.into();
             }
-            PropKind::FundingRequest(b) => budget = *b,
+            PropKind::FundingRequest(b) => budget = b.0,
             PropKind::RecurrentFundingRequest(b) => {
-                budget = *b * self.remaining_months(now) as u128
+                budget = b.0 * self.remaining_months(now) as u128
             }
             PropKind::Text => (),
             PropKind::DismissAndBan { member, house } => {
@@ -310,7 +310,7 @@ impl Contract {
         self.assert_active();
         let mut proposal = self.assert_proposal(id);
         let is_big_or_recurrent = match proposal.kind {
-            PropKind::FundingRequest(b) => b >= self.big_funding_threshold,
+            PropKind::FundingRequest(b) => b.0 >= self.big_funding_threshold,
             PropKind::RecurrentFundingRequest(_) => true,
             _ => false,
         };
@@ -481,6 +481,7 @@ mod unit_tests {
     };
 
     use crate::{view::MembersOutput, *};
+    use near_sdk::json_types::U128;
 
     /// 1ms in nano seconds
     const MSECOND: u64 = 1_000_000;
@@ -657,12 +658,12 @@ mod unit_tests {
         let (members, _) = ctr.members.get().unwrap();
         ctr.members.set(&(members, vec![PropPerm::FundingRequest]));
 
-        ctr.create_proposal(PropKind::FundingRequest(10), "".to_string())
+        ctr.create_proposal(PropKind::FundingRequest(U128(10)), "".to_string())
             .unwrap();
 
         // creating other proposal kinds should fail
         assert_create_prop_not_allowed(
-            ctr.create_proposal(PropKind::RecurrentFundingRequest(10), "".to_string()),
+            ctr.create_proposal(PropKind::RecurrentFundingRequest(U128(10)), "".to_string()),
         );
         assert_create_prop_not_allowed(ctr.create_proposal(PropKind::Text, "".to_string()));
         assert_create_prop_not_allowed(ctr.create_proposal(
@@ -676,7 +677,7 @@ mod unit_tests {
         ctx.attached_deposit = 1;
         testing_env!(ctx.clone());
 
-        match ctr.create_proposal(PropKind::FundingRequest(1), "".to_string()) {
+        match ctr.create_proposal(PropKind::FundingRequest(U128(1)), "".to_string()) {
             Err(CreatePropError::Storage(_)) => (),
             Ok(_) => panic!("expected Storage, got: OK"),
             Err(err) => panic!("expected Storage got: {:?}", err),
@@ -700,7 +701,7 @@ mod unit_tests {
         testing_env!(ctx);
 
         match ctr.create_proposal(
-            PropKind::RecurrentFundingRequest((ctr.budget_cap / 2) + 1),
+            PropKind::RecurrentFundingRequest(U128((ctr.budget_cap / 2) + 1)),
             "".to_string(),
         ) {
             Err(CreatePropError::BudgetOverflow) => (),
@@ -742,7 +743,10 @@ mod unit_tests {
         let (mut ctx, mut ctr, _) = setup_ctr(100);
 
         let id = ctr
-            .create_proposal(PropKind::FundingRequest(1000u128), "Funding req".to_owned())
+            .create_proposal(
+                PropKind::FundingRequest(U128(1000u128)),
+                "Funding req".to_owned(),
+            )
             .unwrap();
         ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
 
@@ -754,7 +758,7 @@ mod unit_tests {
         assert_eq!(ctr.budget_spent, 1000);
 
         let res = ctr.create_proposal(
-            PropKind::FundingRequest(10000u128),
+            PropKind::FundingRequest(U128(10000u128)),
             "Funding req".to_owned(),
         );
         match res {
@@ -769,7 +773,7 @@ mod unit_tests {
 
         let id = ctr
             .create_proposal(
-                PropKind::RecurrentFundingRequest(10u128),
+                PropKind::RecurrentFundingRequest(U128(10u128)),
                 "Rec Funding req".to_owned(),
             )
             .unwrap();
@@ -904,19 +908,19 @@ mod unit_tests {
 
         let prop_big = ctr
             .create_proposal(
-                PropKind::FundingRequest(1100),
+                PropKind::FundingRequest(U128(1100)),
                 "big funding request".to_string(),
             )
             .unwrap();
         let prop_small = ctr
             .create_proposal(
-                PropKind::FundingRequest(200),
+                PropKind::FundingRequest(U128(200)),
                 "small funding request".to_string(),
             )
             .unwrap();
         let prop_rec = ctr
             .create_proposal(
-                PropKind::RecurrentFundingRequest(200),
+                PropKind::RecurrentFundingRequest(U128(200)),
                 "recurrent funding request".to_string(),
             )
             .unwrap();
@@ -971,7 +975,7 @@ mod unit_tests {
         assert!(ctr.dissolved);
 
         ctr.create_proposal(
-            PropKind::FundingRequest(10000u128),
+            PropKind::FundingRequest(U128(10000u128)),
             "Funding req".to_owned(),
         )
         .unwrap();
