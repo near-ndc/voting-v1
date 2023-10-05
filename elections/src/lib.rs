@@ -449,7 +449,7 @@ impl Contract {
         );
     }
 
-    /// helper method to get the disqualified candidated indicies
+    /// helper method to get the disqualified candidate indices
     fn disqualifed_candidates_indices(&self, prop_id: u32) -> Vec<usize> {
         let proposal = self._proposal(prop_id);
 
