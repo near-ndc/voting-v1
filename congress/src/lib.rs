@@ -189,6 +189,7 @@ impl Contract {
         if env::block_timestamp_ms() > prop.submission_time + self.voting_duration {
             return Err(VoteError::NotActive);
         }
+
         prop.add_vote(user, vote, self.threshold)?;
         self.proposals.insert(&id, &prop);
         emit_vote(id);
@@ -978,7 +979,7 @@ mod unit_tests {
 
     #[test]
     fn dismiss_hook() {
-        let (mut ctx, mut ctr, _) = setup_ctr(100);
+        let (mut ctx, mut ctr, id) = setup_ctr(100);
 
         match ctr.dismiss_hook(acc(2)) {
             Err(HookError::NotAuthorized) => (),
@@ -986,7 +987,7 @@ mod unit_tests {
         }
 
         ctx.predecessor_account_id = voting_body();
-        testing_env!(ctx);
+        testing_env!(ctx.clone());
 
         match ctr.dismiss_hook(acc(10)) {
             Err(HookError::NoMember) => (),
@@ -998,6 +999,17 @@ mod unit_tests {
         assert_eq!(vec![expected], get_logs());
 
         assert_eq!(ctr.member_permissions(acc(2)), vec![]);
+
+        // Proposal should not pass with only 2 votes
+        let mut prop = ctr.get_proposal(id).unwrap();
+        assert_eq!(prop.proposal.status, ProposalStatus::InProgress);
+        ctr = vote(ctx.clone(), ctr, [acc(1), acc(3)].to_vec(), id);
+
+        prop = ctr.get_proposal(id).unwrap();
+        assert_eq!(prop.proposal.status, ProposalStatus::InProgress);
+
+        ctx.predecessor_account_id = voting_body();
+        testing_env!(ctx);
 
         assert!(!ctr.dissolved);
         // Remove more members to check dissolve
