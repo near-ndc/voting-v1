@@ -97,14 +97,13 @@ impl Contract {
             return Vec::new();
         }
 
-        let disqualified_candidates_indices = self.disqualifed_candidates_indices(prop_id);
-
         // Filter and sort the candidates in one step
+        let disqualified = self.disqualified_candidates.get().unwrap_or_default();
         let mut indexed_results: Vec<(usize, u64)> = proposal
             .result
             .iter()
             .enumerate()
-            .filter(|(idx, _)| !disqualified_candidates_indices.contains(idx))
+            .filter(|(idx, _)| !disqualified.contains(&proposal.candidates[*idx]))
             .map(|(idx, &votes)| (idx, votes))
             .collect();
 

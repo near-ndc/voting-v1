@@ -453,32 +453,6 @@ impl Contract {
             "not an admin"
         );
     }
-
-    /// helper method to get the disqualified candidate indices
-    fn disqualifed_candidates_indices(&self, prop_id: u32) -> Vec<usize> {
-        let proposal = self._proposal(prop_id);
-
-        // Use iterator methods to filter and map candidates to their indices
-        let disqualified_indices: Vec<usize> = proposal
-            .candidates
-            .iter()
-            .enumerate()
-            .filter_map(|(index, candidate)| {
-                if self
-                    .disqualified_candidates
-                    .get()
-                    .unwrap_or(HashSet::new())
-                    .contains(candidate)
-                {
-                    Some(index)
-                } else {
-                    None
-                }
-            })
-            .collect();
-
-        disqualified_indices
-    }
 }
 
 fn validate_setup_package(seats: u16, cs: &Vec<AccountId>) {
