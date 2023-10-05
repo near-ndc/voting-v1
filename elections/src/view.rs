@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use near_sdk::{env, near_bindgen, AccountId, Balance};
 use uint::hex;
 
@@ -129,7 +131,12 @@ impl Contract {
     /// Returns the list of disqualified candidates
     pub fn disqualified_candidates(&self) -> Vec<AccountId> {
         let mut res = Vec::new();
-        for c in self.disqualified_candidates.get().unwrap().iter() {
+        for c in self
+            .disqualified_candidates
+            .get()
+            .unwrap_or(HashSet::new())
+            .iter()
+        {
             res.push(c.clone());
         }
         res

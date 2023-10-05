@@ -1772,7 +1772,10 @@ mod unit_tests {
         let (_, mut ctr) = setup(&admin());
         let disqualified_candidates = vec![candidate(1), candidate(2)];
         ctr.admin_disqualify_candidates(disqualified_candidates.clone());
-        assert_eq!(disqualified_candidates, ctr.disqualified_candidates());
+        let res = ctr.disqualified_candidates();
+        assert_eq!(res.len(), 2);
+        assert!(res.contains(&disqualified_candidates[0]));
+        assert!(res.contains(&disqualified_candidates[1]));
     }
 
     #[test]
