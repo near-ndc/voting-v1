@@ -7,8 +7,12 @@ use std::collections::HashMap;
 
 use crate::VoteError;
 
+/// Consent sets the conditions for vote to pass. It specifies a quorum (minimum amount of
+/// accounts that have to vote) and the approval threshold for a proposal to pass.
 pub enum Consent {
+    // quorum=(7% of the voting body) AND #approve > 50% * (#approve + #reject + #spam)
     Simple,
+    // quorum=(12% of the voting body) AND #approve > 60% * (#approve + #reject + #spam)
     Super,
 }
 
@@ -93,8 +97,8 @@ pub enum PropKind {
         receiver_id: AccountId,
         actions: Vec<ActionCall>,
     },
-    /// a default, text based proposal.
-    /// Note: NewBudget, UpdateBudge are modelled using Text.
+    /// A default, text based proposal.
+    /// NewBudget, UpdateBudget are modelled using Text.
     // NOTE: In Sputnik, this variant kind is called `Vote`
     Text,
 }
@@ -124,9 +128,12 @@ pub enum ProposalStatus {
     InProgress,
     Approved,
     Rejected,
+    /// Spam is a tempral status when set when the proposal reached spam threshold and will be
+    /// removed.
     Spam,
     Executed,
-    /// If proposal has failed when executing. Allowed to re-finalize again to either expire or approved.
+    /// If proposal has failed when executing. Allowed to re-finalize again to either expire or
+    /// approved.
     Failed,
     Vetoed,
 }
@@ -138,6 +145,8 @@ pub enum ProposalStatus {
 pub enum Vote {
     Approve = 0x0,
     Reject = 0x1,
+    /// Spam vote indicates that the proposals creates spam, must be removed and the bond
+    /// slashed.
     Spam = 0x2,
     Abstain = 0x3,
     // note: we don't have Remove
