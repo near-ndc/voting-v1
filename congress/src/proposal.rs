@@ -1,7 +1,7 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::json_types::{Base64VecU8, U128, U64};
 use near_sdk::serde::{Deserialize, Serialize};
-use near_sdk::{env, AccountId, Balance};
+use near_sdk::{env, AccountId};
 
 use std::collections::HashMap;
 
@@ -77,10 +77,10 @@ pub enum PropKind {
     // NOTE: In Sputnik, this variant kind is called `Vote`
     Text,
     /// Single funding request.
-    FundingRequest(Balance),
+    FundingRequest(U128),
     /// Funding request that will renew every month until the end of the terms. The balance
     /// parameter is the size of the single month spending for this funding request.
-    RecurrentFundingRequest(Balance),
+    RecurrentFundingRequest(U128),
     // TODO: support self upgrade.
     // /// Upgrade this contract with given hash from blob store.
     // UpgradeSelf { hash: Base58CryptoHash },

@@ -537,6 +537,89 @@ async fn revoke_vote() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[tokio::test]
+async fn migration_mainnet() -> anyhow::Result<()> {
+    let worker_sandbox = workspaces::sandbox().await?;
+    let worker_mainnet = workspaces::mainnet().await?;
+    let elections_id: AccountId = "elections.ndc-gwg.near".parse()?;
+    let elections = worker_sandbox
+        .import_contract(&elections_id, &worker_mainnet)
+        .initial_balance(parse_near!("10000000 N"))
+        .transact()
+        .await?;
+
+    let admin = worker_sandbox.dev_create_account().await?;
+    let registry = worker_sandbox.dev_create_account().await?;
+    let alice = worker_sandbox.dev_create_account().await?;
+    let bob = worker_sandbox.dev_create_account().await?;
+
+    // init the contract
+    let res = elections
+        .call("new")
+        .args_json(json!({
+            "authority": admin.id(),
+            "sbt_registry": registry.id(),
+            "policy": policy1(),
+            "finish_time": 1,
+        }))
+        .max_gas()
+        .transact()
+        .await?;
+
+    assert!(res.is_success(), "{:?}", res.receipt_failures());
+
+    // deploy the new contract
+    let res = elections
+        .as_account()
+        .deploy(include_bytes!("../../res/elections.wasm"))
+        .await?;
+    assert!(res.is_success());
+
+    let new_elections = res.into_result()?;
+
+    // call the migrate method
+    let res = new_elections
+        .call("migrate")
+        .args_json(json!({}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success(), "{:?}", res.receipt_failures());
+
+    let disqualified_candidates: Vec<AccountId> = new_elections
+        .call("disqualified_candidates")
+        .args_json(json!({}))
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+
+    assert_eq!(disqualified_candidates.len(), 0);
+
+    // add disqualified_candidates
+    let candidates_to_disqualify: Vec<AccountId> = vec![alice.id().clone(), bob.id().clone()];
+
+    let res = admin
+        .call(new_elections.id(), "admin_disqualify_candidates")
+        .args_json(json!({ "candidates": candidates_to_disqualify }))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success(), "{:?}", res.receipt_failures());
+
+    let disqualified_candidates: Vec<AccountId> = new_elections
+        .call("disqualified_candidates")
+        .args_json(json!({}))
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+
+    assert_eq!(disqualified_candidates, candidates_to_disqualify);
+
+    Ok(())
+}
+
 async fn accept_policy_and_bond(
     registry: Contract,
     election: Contract,

@@ -10,6 +10,7 @@ pub enum StorageKey {
     AcceptedPolicy,
     BondedAmount,
     UserSBT(u32),
+    DisqualifiedCandidates,
 }
 
 #[derive(PartialEq, Deserialize)]
