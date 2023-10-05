@@ -23,14 +23,18 @@ Change log entries are to be added to the Unreleased section. Example entry:
 ## v1.0.3 (2023-10-05)
 
 - Updated `revoke_vote` and `admin_revoke_vote` to not slash bonds.
+- Added `disqualify_candidates`.
 
 ## v1.0.2 (2023-10-02)
 
+- `winners_by_proposal(prop_id)` should return empty list if the elections didn't finish.
+
 ## v1.0.1 (2023-09-28)
 
-### Bug Fixes
+- Added `admin_set_finish_time` method.
+- Added `finish_time` query.
 
-- `winners_by_proposal(prop_id)` should return empty list if the elections didn't finish.
+### Bug Fixes
 
 ### Features
 

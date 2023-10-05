@@ -422,12 +422,12 @@ impl Contract {
      * INTERNAL
      ****************/
 
-    fn slash_bond(&mut self, token_id: TokenId) {
-        let bond_amount = self.bonded_amounts.remove(&token_id);
-        if let Some(value) = bond_amount {
-            self.total_slashed += value;
-        }
-    }
+    // fn slash_bond(&mut self, token_id: TokenId) {
+    //     let bond_amount = self.bonded_amounts.remove(&token_id);
+    //     if let Some(value) = bond_amount {
+    //         self.total_slashed += value;
+    //     }
+    // }
 
     fn fail(reason: &str) -> Promise {
         Self::ext(env::current_account_id())
