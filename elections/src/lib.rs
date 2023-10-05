@@ -1419,9 +1419,9 @@ mod unit_tests {
             x => panic!("expected OK, got: {:?}", x),
         }
 
-        // Bond amount should be slashed
-        assert_eq!(ctr.bonded_amounts.get(&1), None);
-        assert_eq!(ctr.total_slashed, BOND_AMOUNT);
+        // Bond amount should not be slashed
+        assert_eq!(ctr.bonded_amounts.get(&1), Some(BOND_AMOUNT));
+        assert_eq!(ctr.total_slashed, 0);
 
         let p = ctr._proposal(1);
         assert_eq!(p.voters_num, 0, "vote should be revoked");
