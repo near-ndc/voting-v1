@@ -20,6 +20,10 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ## Unreleased
 
+## v1.0.5 (2023-10-06)
+
+- `winners_by_proposal`: added optional boolean argument: `ongoing`. When set to true, it will return ongoing results, rather than an empty list.
+
 ## v1.0.4 (2023-10-06)
 
 ### Breaking changes
