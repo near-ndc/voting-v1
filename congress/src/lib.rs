@@ -673,7 +673,7 @@ mod unit_tests {
             .unwrap();
 
         ctx.block_timestamp = (prop.proposal.submission_time + ctr.voting_duration + 1) * MSECOND;
-        testing_env!(ctx.clone());
+        testing_env!(ctx);
 
         let prop = ctr.get_proposal(id).unwrap();
         assert_eq!(prop.proposal.status, ProposalStatus::Rejected);
