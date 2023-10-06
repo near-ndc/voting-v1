@@ -1,4 +1,4 @@
-use std::cmp::{max, min};
+use std::cmp::min;
 
 use near_sdk::serde::Serialize;
 
@@ -42,10 +42,10 @@ impl Contract {
             let mut start = 1;
             let end_index = min(from_index, self.prop_counter);
             if end_index > limit {
-                start = end_index - limit - 1;
+                start = end_index - limit + 1;
             }
 
-            return (max(start, 1)..=end_index)
+            return (start..=end_index)
                 .rev()
                 .filter_map(|id| {
                     self.proposals.get(&id).map(|mut proposal| {

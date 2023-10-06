@@ -614,6 +614,9 @@ mod unit_tests {
             ]
         );
 
+        let res = ctr.get_proposals(3, 1, Some(true));
+        assert_eq!(res, vec![ctr.get_proposal(id3).unwrap(),]);
+
         ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
 
         prop = ctr.get_proposal(id);
