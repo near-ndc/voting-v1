@@ -60,6 +60,16 @@ impl Proposal {
         self.votes.insert(user, vote);
         Ok(())
     }
+
+    pub fn proposal_status(&self, voting_duration: u64) -> ProposalStatus {
+        if &self.status == &ProposalStatus::InProgress
+            && env::block_timestamp_ms() > self.submission_time + voting_duration
+        {
+            return ProposalStatus::Rejected;
+        }
+
+        self.status
+    }
 }
 
 /// Kinds of proposals, doing different action.
@@ -114,7 +124,7 @@ impl PropKind {
     }
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq, Clone, Copy)]
 #[serde(crate = "near_sdk::serde")]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
 pub enum ProposalStatus {
