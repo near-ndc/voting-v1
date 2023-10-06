@@ -302,14 +302,21 @@ impl Contract {
     pub fn admin_revoke_vote(
         &mut self,
         prop_id: u32,
-        token_id: TokenId,
+        token_ids: Vec<TokenId>,
     ) -> Result<(), RevokeVoteError> {
         // check if the caller is the authority allowed to revoke votes
         self.assert_admin();
         // EIC decided that votes won't be slashed.
         // self.slash_bond(token_id);
+
+        if env::block_timestamp_ms() > self.finish_time {
+            return Err(RevokeVoteError::NotActive);
+        }
+
         let mut p = self._proposal(prop_id);
-        p.revoke_votes(token_id)?;
+        for t in token_ids {
+            p.revoke_votes(t)?;
+        }
         self.proposals.insert(&prop_id, &p);
         emit_revoke_vote(prop_id);
         Ok(())

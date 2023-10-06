@@ -20,6 +20,12 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ## Unreleased
 
+## v1.0.4 (2023-10-06)
+
+### Breaking changes
+
+- Updated `admin_revoke_vote` to accept list of SBTs rather a single SBT.
+
 ## v1.0.3 (2023-10-05)
 
 - Updated `revoke_vote` and `admin_revoke_vote` to not slash bonds.
