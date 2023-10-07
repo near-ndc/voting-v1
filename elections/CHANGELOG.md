@@ -20,6 +20,16 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ## Unreleased
 
+## v1.0.5 (2023-10-06)
+
+- `winners_by_proposal`: added optional boolean argument: `ongoing`. When set to true, it will return ongoing results, rather than an empty list.
+
+## v1.0.4 (2023-10-06)
+
+### Breaking changes
+
+- Updated `admin_revoke_vote` to accept list of SBTs rather a single SBT.
+
 ## v1.0.3 (2023-10-05)
 
 - Updated `revoke_vote` and `admin_revoke_vote` to not slash bonds.

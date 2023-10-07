@@ -87,12 +87,13 @@ impl Contract {
     /// did not reach the required minimum support.
     /// If there is a tie break at the tail and it exceeds the number of seats, the accounts
     /// in tie at the tail are not considered winners.
-    pub fn winners_by_proposal(&self, prop_id: u32) -> Vec<AccountId> {
+    pub fn winners_by_proposal(&self, prop_id: u32, ongoing: Option<bool>) -> Vec<AccountId> {
         let proposal = self._proposal(prop_id);
 
         if !(proposal.is_past_cooldown()
             && env::block_timestamp_ms() > self.finish_time
             && proposal.voters_num >= proposal.quorum)
+            && !ongoing.unwrap_or(false)
         {
             return Vec::new();
         }

@@ -302,14 +302,21 @@ impl Contract {
     pub fn admin_revoke_vote(
         &mut self,
         prop_id: u32,
-        token_id: TokenId,
+        token_ids: Vec<TokenId>,
     ) -> Result<(), RevokeVoteError> {
         // check if the caller is the authority allowed to revoke votes
         self.assert_admin();
         // EIC decided that votes won't be slashed.
         // self.slash_bond(token_id);
+
+        if env::block_timestamp_ms() > self.finish_time {
+            return Err(RevokeVoteError::NotActive);
+        }
+
         let mut p = self._proposal(prop_id);
-        p.revoke_votes(token_id)?;
+        for t in token_ids {
+            p.revoke_votes(t)?;
+        }
         self.proposals.insert(&prop_id, &p);
         emit_revoke_vote(prop_id);
         Ok(())
@@ -670,7 +677,7 @@ mod unit_tests {
             .is_view(false)
             .build();
         testing_env!(ctx.clone());
-        let ctr = Contract::new(admin(), sbt_registry(), policy1(), 1);
+        let ctr = Contract::new(admin(), sbt_registry(), policy1(), START + 100);
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
         (ctx, ctr)
@@ -1304,7 +1311,7 @@ mod unit_tests {
     fn admin_revoke_vote_not_admin() {
         let (_, mut ctr) = setup(&alice());
         let prop_id = mk_proposal(&mut ctr);
-        let res = ctr.admin_revoke_vote(prop_id, 1);
+        let res = ctr.admin_revoke_vote(prop_id, vec![1]);
         // this will never be checked since the method is panicing not returning an error
         assert!(res.is_err());
     }
@@ -1315,7 +1322,7 @@ mod unit_tests {
         let prop_id = mk_proposal(&mut ctr);
         ctx.block_timestamp = (START + 100) * MSECOND;
         testing_env!(ctx);
-        match ctr.admin_revoke_vote(prop_id, 1) {
+        match ctr.admin_revoke_vote(prop_id, vec![1]) {
             Err(RevokeVoteError::NotVoted) => (),
             x => panic!("expected NotVoted, got: {:?}", x),
         }
@@ -1327,7 +1334,7 @@ mod unit_tests {
     fn admin_revoke_vote_no_proposal() {
         let (_, mut ctr) = setup(&admin());
         let prop_id = 2;
-        match ctr.admin_revoke_vote(prop_id, 1) {
+        match ctr.admin_revoke_vote(prop_id, vec![1]) {
             x => panic!("{:?}", x),
         }
     }
@@ -1432,7 +1439,7 @@ mod unit_tests {
         assert_eq!(ctr.bonded_amounts.get(&1), Some(BOND_AMOUNT));
 
         // revoke vote
-        match ctr.admin_revoke_vote(prop_id, 1) {
+        match ctr.admin_revoke_vote(prop_id, vec![1]) {
             Ok(_) => (),
             x => panic!("expected OK, got: {:?}", x),
         }
@@ -1671,25 +1678,25 @@ mod unit_tests {
         let prop_id = mock_proposal_and_votes(&mut ctx, &mut ctr, 8, 6);
 
         // elections not over yet
-        assert_eq!(ctr.winners_by_proposal(prop_id), vec![]);
+        assert_eq!(ctr.winners_by_proposal(prop_id, None), vec![]);
 
         // voting over but cooldown not yet
         ctx.block_timestamp = (START + 11) * MSECOND;
         testing_env!(ctx.clone());
-        assert_eq!(ctr.winners_by_proposal(prop_id), vec![]);
+        assert_eq!(ctr.winners_by_proposal(prop_id, None), vec![]);
 
         // cooldown over but not past `finish_time`
         ctr.admin_set_finish_time(START + 200);
         ctx.block_timestamp = (START + 150) * MSECOND;
         testing_env!(ctx.clone());
-        assert_eq!(ctr.winners_by_proposal(prop_id), vec![]);
+        assert_eq!(ctr.winners_by_proposal(prop_id, None), vec![]);
 
         // the method should return only the candiadtes that reach min_candidate support
         // thats why we have only 4 winners rather than 5
         ctx.block_timestamp = (START + 201) * MSECOND; // past cooldown
         testing_env!(ctx.clone());
         assert_eq!(
-            ctr.winners_by_proposal(prop_id),
+            ctr.winners_by_proposal(prop_id, None),
             vec![candidate(3), candidate(6), candidate(2), candidate(4)]
         );
     }
@@ -1716,10 +1723,10 @@ mod unit_tests {
             candidate(1),
             candidate(5),
         ];
-        assert_eq!(ctr.winners_by_proposal(prop_id1), all);
-        assert_eq!(ctr.winners_by_proposal(prop_id2), all[0..2]);
-        assert_eq!(ctr.winners_by_proposal(prop_id3), all[0..4]);
-        assert_eq!(ctr.winners_by_proposal(prop_id4), all[0..4]);
+        assert_eq!(ctr.winners_by_proposal(prop_id1, None), all);
+        assert_eq!(ctr.winners_by_proposal(prop_id2, None), all[0..2]);
+        assert_eq!(ctr.winners_by_proposal(prop_id3, None), all[0..4]);
+        assert_eq!(ctr.winners_by_proposal(prop_id4, None), all[0..4]);
     }
 
     #[test]
@@ -1770,7 +1777,7 @@ mod unit_tests {
         ctx.prepaid_gas = Gas::ONE_TERA.mul(10);
         testing_env!(ctx.clone());
         assert_eq!(
-            ctr.winners_by_proposal(prop_id),
+            ctr.winners_by_proposal(prop_id, None),
             vec![candidate(6), candidate(4), candidate(1), candidate(5)]
         );
     }
