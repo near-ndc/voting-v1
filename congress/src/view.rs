@@ -49,7 +49,7 @@ impl Contract {
                 .rev()
                 .filter_map(|id| {
                     self.proposals.get(&id).map(|mut proposal| {
-                        proposal.status = proposal.proposal_status(self.voting_duration);
+                        proposal.recompute_status(self.voting_duration);
                         ProposalOutput { id, proposal }
                     })
                 })
@@ -59,7 +59,7 @@ impl Contract {
         (from_index..=min(self.prop_counter, from_index + limit))
             .filter_map(|id| {
                 self.proposals.get(&id).map(|mut proposal| {
-                    proposal.status = proposal.proposal_status(self.voting_duration);
+                    proposal.recompute_status(self.voting_duration);
                     ProposalOutput { id, proposal }
                 })
             })
@@ -69,7 +69,7 @@ impl Contract {
     /// Get specific proposal.
     pub fn get_proposal(&self, id: u32) -> Option<ProposalOutput> {
         self.proposals.get(&id).map(|mut proposal| {
-            proposal.status = proposal.proposal_status(self.voting_duration);
+            proposal.recompute_status(self.voting_duration);
             ProposalOutput { id, proposal }
         })
     }
