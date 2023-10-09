@@ -15,6 +15,18 @@ use workspaces::{Account, AccountId, Contract, DevNetwork, Worker};
 /// 1s in ms
 const MSECOND: u64 = 1_000_000;
 
+#[derive(Deserialize, PartialEq, Debug)]
+#[serde(crate = "near_sdk::serde")]
+pub enum AccountFlag {
+    /// Account is "blacklisted" when it was marked as a scam or suspectible to be a mnipulated account or not a human.
+    Blacklisted,
+    /// Manually verified account.
+    Verified,
+    /// Account misbehaved and should be refused to have a significant governance role. However
+    /// it will be able to vote as a Voting Body member.
+    GovBan,
+}
+
 pub struct InitStruct {
     pub hom_contract: Contract,
     pub coa_contract: Contract,
@@ -37,10 +49,10 @@ async fn instantiate_congress(
     registry: &AccountId,
 ) -> anyhow::Result<Contract> {
     let start_time = now + 20 * 1000;
-    let end_time: u64 = now + 100 * 1_000;
+    let end_time: u64 = now + 100 * 1000;
     let cooldown = 10 * 1000;
     let voting_duration = 20 * 1000;
-    // initialize contracts
+    // initialize contract
     let res1 = congress_contract
         .call("new")
         .args_json(json!({
@@ -107,7 +119,7 @@ async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<InitStruct> {
 
     // get current block time
     let block = worker.view_block().await?;
-    let now = block.timestamp() / MSECOND; // timestamp in seconds
+    let now = block.timestamp() / MSECOND; // timestamp in milliseconds
 
     // initialize TC
     tc_contract = instantiate_congress(
@@ -310,7 +322,7 @@ async fn tc_dismiss_coa() -> anyhow::Result<()> {
         .await?;
     assert!(res.is_success(), "{:?}", res);
 
-    // After removal less members
+    // after removal less members
     let members = setup
         .alice
         .call(setup.coa_contract.id(), "get_members")
@@ -380,7 +392,7 @@ async fn coa_veto_hom() -> anyhow::Result<()> {
         .await?;
     assert!(res.is_success(), "{:?}", res);
 
-    // After execution proposal should be in Vetoed
+    // after execution proposal should be in Vetoed
     let members = setup
         .alice
         .call(setup.hom_contract.id(), "get_proposal")
@@ -457,7 +469,7 @@ async fn tc_ban() -> anyhow::Result<()> {
         .await?;
     assert!(res.is_success(), "{:?}", res);
 
-    // After removal less members
+    // after removal less members
     let members = setup
         .alice
         .call(setup.coa_contract.id(), "get_members")
@@ -489,17 +501,4 @@ async fn tc_ban() -> anyhow::Result<()> {
 
 fn to_near_account(acc: &AccountId) -> NearAccountId {
     NearAccountId::new_unchecked(acc.to_string())
-}
-
-#[derive(Deserialize, PartialEq, Debug)]
-#[serde(crate = "near_sdk::serde")]
-//#[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
-pub enum AccountFlag {
-    /// Account is "blacklisted" when it was marked as a scam or suspectible to be a mnipulated account or not a human.
-    Blacklisted,
-    /// Manually verified account.
-    Verified,
-    /// Account misbehaved and should be refused to have a significant governance role. However
-    /// it will be able to vote as a Voting Body member.
-    GovBan,
 }
