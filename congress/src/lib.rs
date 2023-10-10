@@ -1117,7 +1117,7 @@ mod unit_tests {
         ctr = vote(
             ctx.clone(),
             ctr,
-            [acc(1), acc(2), acc(3)].to_vec(),
+            [acc(4), acc(2), acc(3)].to_vec(),
             motion_rem_ban,
         );
         let mut prop = ctr.get_proposal(motion_rem_ban).unwrap();
