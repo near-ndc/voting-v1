@@ -5,9 +5,9 @@ use common::finalize_storage_check;
 use events::*;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap};
-use near_sdk::json_types::U128;
+use near_sdk::json_types::{Base64VecU8, U128};
 use near_sdk::{
-    env, near_bindgen, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseError,
+    env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseError,
     PromiseOrValue, PromiseResult,
 };
 use serde_json::json;
@@ -182,6 +182,8 @@ impl Contract {
             return Err(VoteError::NotAuthorized);
         }
         let mut prop = self.assert_proposal(id);
+
+        self.assert_member_involve(&prop, &user);
 
         if !matches!(prop.status, ProposalStatus::InProgress) {
             return Err(VoteError::NotInProgress);
@@ -407,6 +409,30 @@ impl Contract {
 
     fn assert_proposal(&self, id: u32) -> Proposal {
         self.proposals.get(&id).expect("proposal does not exist")
+    }
+
+    fn assert_member_involve(&self, prop: &Proposal, user: &AccountId) {
+        match &prop.kind {
+            PropKind::DismissAndBan { member, house: _ } => {
+                require!(member != user, "not allowed to vote on own proposal");
+            }
+            PropKind::FunctionCall {
+                receiver_id: _,
+                actions,
+            } => {
+                for action in actions {
+                    if action.method_name == "dismiss_hook".to_string() {
+                        let encoded =
+                            Base64VecU8(json!({ "member": user }).to_string().as_bytes().to_vec());
+                        require!(
+                            encoded != action.args,
+                            "not allowed to vote on own proposal"
+                        );
+                    }
+                }
+            }
+            _ => {}
+        }
     }
 
     fn assert_active(&self) {
