@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use near_sdk::{env, near_bindgen, AccountId, Balance};
 use uint::hex;
 
+use crate::storage::ClassMetadata;
 use crate::{proposal::*, TokenId};
 use crate::{Contract, ContractExt};
 
@@ -135,5 +136,9 @@ impl Contract {
             .unwrap_or(HashSet::new())
             .into_iter()
             .collect()
+    }
+
+    pub fn class_metadata(&self) -> ClassMetadata {
+        self.class_metadata.clone()
     }
 }

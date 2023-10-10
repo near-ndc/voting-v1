@@ -20,6 +20,12 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ## Unreleased
 
+### Features
+
+- new field in the smart contract `class_metadata`
+- new method `admin_set_class_metadata`
+- new view `class_metadata`
+
 ## v1.0.5 (2023-10-06)
 
 - `winners_by_proposal`: added optional boolean argument: `ongoing`. When set to true, it will return ongoing results, rather than an empty list.
