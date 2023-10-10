@@ -507,7 +507,7 @@ mod unit_tests {
     };
 
     use crate::{view::MembersOutput, *};
-    use near_sdk::json_types::U128;
+    use near_sdk::json_types::{U128, U64};
 
     /// 1ms in nano seconds
     const MSECOND: u64 = 1_000_000;
@@ -1145,5 +1145,47 @@ mod unit_tests {
         ctr.on_ban_dismiss(Ok(()), Result::Err(PromiseError::Failed), motion_rem_ban);
         prop = ctr.get_proposal(motion_rem_ban).unwrap();
         assert_eq!(prop.proposal.status, ProposalStatus::Failed);
+    }
+
+    #[test]
+    #[should_panic(expected = "not allowed to vote on own proposal")]
+    fn dismiss_ban_vote_own() {
+        let (ctx, mut ctr, _) = setup_ctr(100);
+        let motion_rem_ban = ctr
+            .create_proposal(
+                PropKind::DismissAndBan {
+                    member: acc(1),
+                    house: coa(),
+                },
+                "Motion to remove member and ban".to_string(),
+            )
+            .unwrap();
+
+        vote(ctx.clone(), ctr, [acc(1)].to_vec(), motion_rem_ban);
+    }
+
+    #[test]
+    #[should_panic(expected = "not allowed to vote on own proposal")]
+    fn dismiss_vote_own() {
+        let (ctx, mut ctr, _) = setup_ctr(100);
+        let motion_rem_ban = ctr
+            .create_proposal(
+                PropKind::FunctionCall {
+                    receiver_id: coa(),
+                    actions: [ActionCall {
+                        method_name: "dismiss_hook".to_string(),
+                        args: Base64VecU8(
+                            json!({ "member": acc(2) }).to_string().as_bytes().to_vec(),
+                        ),
+                        deposit: U128(0),
+                        gas: U64(0),
+                    }]
+                    .to_vec(),
+                },
+                "Proposal to remove member".to_string(),
+            )
+            .unwrap();
+
+        vote(ctx.clone(), ctr, [acc(2)].to_vec(), motion_rem_ban);
     }
 }

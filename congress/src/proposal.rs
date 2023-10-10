@@ -140,6 +140,7 @@ pub enum Vote {
 
 /// Function call arguments.
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug, PartialEq)]
+#[cfg_attr(test, derive(Clone))]
 #[serde(crate = "near_sdk::serde")]
 pub struct ActionCall {
     pub method_name: String,
