@@ -7,7 +7,7 @@ use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap};
 use near_sdk::json_types::{Base64VecU8, U128};
 use near_sdk::{
-    env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseError,
+    env, near_bindgen, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseError,
     PromiseOrValue, PromiseResult,
 };
 use serde_json::json;
@@ -183,7 +183,7 @@ impl Contract {
         }
         let mut prop = self.assert_proposal(id);
 
-        self.assert_member_involve(&prop, &user);
+        self.assert_member_involve(&prop, &user)?;
 
         if !matches!(prop.status, ProposalStatus::InProgress) {
             return Err(VoteError::NotInProgress);
@@ -411,10 +411,12 @@ impl Contract {
         self.proposals.get(&id).expect("proposal does not exist")
     }
 
-    fn assert_member_involve(&self, prop: &Proposal, user: &AccountId) {
+    fn assert_member_involve(&self, prop: &Proposal, user: &AccountId) -> Result<(), VoteError> {
         match &prop.kind {
             PropKind::DismissAndBan { member, house: _ } => {
-                require!(member != user, "not allowed to vote on own proposal");
+                if member == user {
+                    return Err(VoteError::NotAllowedAgainst);
+                }
             }
             PropKind::FunctionCall {
                 receiver_id: _,
@@ -424,15 +426,15 @@ impl Contract {
                     if action.method_name == "dismiss_hook".to_string() {
                         let encoded =
                             Base64VecU8(json!({ "member": user }).to_string().as_bytes().to_vec());
-                        require!(
-                            encoded != action.args,
-                            "not allowed to vote on own proposal"
-                        );
+                        if encoded == action.args {
+                            return Err(VoteError::NotAllowedAgainst);
+                        }
                     }
                 }
             }
-            _ => {}
+            _ => (),
         }
+        Ok(())
     }
 
     fn assert_active(&self) {
@@ -1148,10 +1150,9 @@ mod unit_tests {
     }
 
     #[test]
-    #[should_panic(expected = "not allowed to vote on own proposal")]
-    fn dismiss_ban_vote_own() {
-        let (ctx, mut ctr, _) = setup_ctr(100);
-        let motion_rem_ban = ctr
+    fn dismiss_ban_vote_against() {
+        let (mut ctx, mut ctr, _) = setup_ctr(100);
+        let prop = ctr
             .create_proposal(
                 PropKind::DismissAndBan {
                     member: acc(1),
@@ -1161,14 +1162,18 @@ mod unit_tests {
             )
             .unwrap();
 
-        vote(ctx.clone(), ctr, [acc(1)].to_vec(), motion_rem_ban);
+        ctx.predecessor_account_id = acc(1);
+        testing_env!(ctx.clone());
+        match ctr.vote(prop, Vote::Approve) {
+            Err(VoteError::NotAllowedAgainst) => (),
+            x => panic!("expected NotAllowedAgainst, got: {:?}", x),
+        }
     }
 
     #[test]
-    #[should_panic(expected = "not allowed to vote on own proposal")]
-    fn dismiss_vote_own() {
-        let (ctx, mut ctr, _) = setup_ctr(100);
-        let motion_rem_ban = ctr
+    fn dismiss_vote_against() {
+        let (mut ctx, mut ctr, _) = setup_ctr(100);
+        let prop = ctr
             .create_proposal(
                 PropKind::FunctionCall {
                     receiver_id: coa(),
@@ -1186,6 +1191,11 @@ mod unit_tests {
             )
             .unwrap();
 
-        vote(ctx.clone(), ctr, [acc(2)].to_vec(), motion_rem_ban);
+        ctx.predecessor_account_id = acc(2);
+        testing_env!(ctx.clone());
+        match ctr.vote(prop, Vote::Approve) {
+            Err(VoteError::NotAllowedAgainst) => (),
+            x => panic!("expected NotAllowedAgainst, got: {:?}", x),
+        }
     }
 }
