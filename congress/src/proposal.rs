@@ -60,6 +60,14 @@ impl Proposal {
         self.votes.insert(user, vote);
         Ok(())
     }
+
+    pub fn recompute_status(&mut self, voting_duration: u64) {
+        if &self.status == &ProposalStatus::InProgress
+            && env::block_timestamp_ms() > self.submission_time + voting_duration
+        {
+            self.status = ProposalStatus::Rejected;
+        }
+    }
 }
 
 /// Kinds of proposals, doing different action.
