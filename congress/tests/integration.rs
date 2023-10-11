@@ -9,8 +9,8 @@ use near_sdk::json_types::{U128, U64};
 use near_sdk::serde::Deserialize;
 use near_sdk::AccountId as NearAccountId;
 use near_units::parse_near;
+use near_workspaces::{Account, AccountId, Contract, DevNetwork, Worker};
 use serde_json::json;
-use workspaces::{Account, AccountId, Contract, DevNetwork, Worker};
 
 /// 1s in ms
 const MSECOND: u64 = 1_000_000;
@@ -203,7 +203,7 @@ async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<InitStruct> {
 
 #[tokio::test]
 async fn full_prop_flow() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let setup = init(&worker).await?;
 
     // fast forward to the voting period
@@ -244,7 +244,7 @@ async fn full_prop_flow() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn vote_by_non_member() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let setup = init(&worker).await?;
 
     // fast forward to the voting period
@@ -266,7 +266,7 @@ async fn vote_by_non_member() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn tc_dismiss_coa() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let setup = init(&worker).await?;
 
     let encoded = encode(json!({"member": setup.alice.id()}).to_string());
@@ -342,7 +342,7 @@ async fn tc_dismiss_coa() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn coa_veto_hom() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let setup = init(&worker).await?;
 
     let encoded = encode(json!({"id": setup.proposal_id}).to_string());
@@ -407,7 +407,7 @@ async fn coa_veto_hom() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn tc_ban() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let setup = init(&worker).await?;
 
     let res2 = setup
