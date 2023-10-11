@@ -614,6 +614,9 @@ mod unit_tests {
             ]
         );
 
+        let res = ctr.get_proposals(3, 1, Some(true));
+        assert_eq!(res, vec![ctr.get_proposal(id3).unwrap(),]);
+
         ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
 
         prop = ctr.get_proposal(id);
@@ -660,9 +663,20 @@ mod unit_tests {
         let id = ctr
             .create_proposal(PropKind::Text, "Proposal unit test 2".to_string())
             .unwrap();
-        ctr = vote(ctx, ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
+        ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
         let prop = ctr.get_proposal(id).unwrap();
         assert_eq!(prop.proposal.status, ProposalStatus::Executed);
+
+        // create proposal, set timestamp past voting period, status should be rejected
+        let id = ctr
+            .create_proposal(PropKind::Text, "Proposal unit test query 3".to_string())
+            .unwrap();
+
+        ctx.block_timestamp = (prop.proposal.submission_time + ctr.voting_duration + 1) * MSECOND;
+        testing_env!(ctx);
+
+        let prop = ctr.get_proposal(id).unwrap();
+        assert_eq!(prop.proposal.status, ProposalStatus::Rejected);
     }
 
     #[test]
