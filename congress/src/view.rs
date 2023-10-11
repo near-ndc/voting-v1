@@ -42,33 +42,36 @@ impl Contract {
             let mut start = 1;
             let end_index = min(from_index, self.prop_counter);
             if end_index > limit {
-                start = end_index - limit;
+                start = end_index - limit + 1;
             }
 
             return (start..=end_index)
                 .rev()
                 .filter_map(|id| {
-                    self.proposals
-                        .get(&id)
-                        .map(|proposal| ProposalOutput { id, proposal })
+                    self.proposals.get(&id).map(|mut proposal| {
+                        proposal.recompute_status(self.voting_duration);
+                        ProposalOutput { id, proposal }
+                    })
                 })
                 .collect();
         }
 
         (from_index..=min(self.prop_counter, from_index + limit))
             .filter_map(|id| {
-                self.proposals
-                    .get(&id)
-                    .map(|proposal| ProposalOutput { id, proposal })
+                self.proposals.get(&id).map(|mut proposal| {
+                    proposal.recompute_status(self.voting_duration);
+                    ProposalOutput { id, proposal }
+                })
             })
             .collect()
     }
 
     /// Get specific proposal.
     pub fn get_proposal(&self, id: u32) -> Option<ProposalOutput> {
-        self.proposals
-            .get(&id)
-            .map(|proposal| ProposalOutput { id, proposal })
+        self.proposals.get(&id).map(|mut proposal| {
+            proposal.recompute_status(self.voting_duration);
+            ProposalOutput { id, proposal }
+        })
     }
 
     pub fn number_of_proposals(&self) -> u32 {
