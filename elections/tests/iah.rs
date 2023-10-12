@@ -1,7 +1,7 @@
 use integrations::setup_registry;
 use near_units::parse_near;
+use near_workspaces::{Account, AccountId, Contract, DevNetwork, Worker};
 use serde_json::json;
-use workspaces::{Account, AccountId, Contract, DevNetwork, Worker};
 
 /// 1ms in nano seconds
 //extern crate elections;
@@ -161,7 +161,7 @@ async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<InitStruct> {
 
 #[tokio::test]
 async fn vote_by_human() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let setup = init(&worker).await?;
 
     // fast forward to the voting period
@@ -181,7 +181,7 @@ async fn vote_by_human() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn vote_by_non_human() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let setup = init(&worker).await?;
 
     let non_human = worker.dev_create_account().await?;
@@ -207,7 +207,7 @@ async fn vote_by_non_human() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn vote_expired_iah_token() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let setup = init(&worker).await?;
 
     // fast forward to the voting period
@@ -233,7 +233,7 @@ async fn vote_expired_iah_token() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn vote_without_accepting_policy() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let setup = init(&worker).await?;
     let zen_acc = worker.dev_create_account().await?;
     // fast forward to the voting period
@@ -258,7 +258,7 @@ async fn vote_without_accepting_policy() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn vote_without_deposit_bond() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let setup = init(&worker).await?;
 
     let res = setup
@@ -296,7 +296,7 @@ async fn vote_without_deposit_bond() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn unbond_amount_before_election_end() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let setup = init(&worker).await?;
 
     // fast forward to the voting period
@@ -331,7 +331,7 @@ async fn unbond_amount_before_election_end() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn unbond_amount() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let setup = init(&worker).await?;
 
     // fast forward to the voting period
@@ -381,7 +381,7 @@ async fn unbond_amount() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn sbt_mint_no_vote() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let setup = init(&worker).await?;
 
     let block = worker.view_block().await?;
@@ -449,7 +449,7 @@ async fn sbt_mint_no_vote() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn state_change() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let setup = init(&worker).await?;
 
     // fast forward to the voting period
@@ -489,7 +489,7 @@ async fn state_change() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn revoke_vote() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let setup = init(&worker).await?;
 
     // fast forward to the voting period
@@ -540,8 +540,8 @@ async fn revoke_vote() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn migration_mainnet() -> anyhow::Result<()> {
-    let worker_sandbox = workspaces::sandbox().await?;
-    let worker_mainnet = workspaces::mainnet().await?;
+    let worker_sandbox = near_workspaces::sandbox().await?;
+    let worker_mainnet = near_workspaces::mainnet().await?;
     let elections_id: AccountId = "elections.ndc-gwg.near".parse()?;
     let elections = worker_sandbox
         .import_contract(&elections_id, &worker_mainnet)
