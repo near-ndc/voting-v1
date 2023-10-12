@@ -20,7 +20,7 @@ common = { path = "../common" }
 [dev-dependencies]
 anyhow.workspace = true
 tokio.workspace = true
-workspaces.workspace = true
+near-workspaces.workspace = true
 near-primitives.workspace = true
 near-units.workspace = true
 integrations = { path = "../integrations" }
