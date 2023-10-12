@@ -16,6 +16,7 @@ near-sdk.workspace = true
 serde_json.workspace = true
 
 common = { path = "../common" }
+sbt = { git = "https://github.com/near-ndc/i-am-human.git" }
 
 [dev-dependencies]
 anyhow.workspace = true

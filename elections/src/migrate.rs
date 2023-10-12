@@ -20,7 +20,7 @@ impl Contract {
     #[private]
     #[init(ignore_state)]
     /* pub  */
-    pub fn migrate(class_metadata: ClassMetadata) -> Self {
+    pub fn migrate(class_metadata: sbt::ClassMetadata) -> Self {
         let old_state: OldState = env::state_read().expect("failed");
         // new field in the smart contract :
         // + class_metadata: ClassMetadata,

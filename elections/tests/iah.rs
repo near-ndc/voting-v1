@@ -1,13 +1,14 @@
 use integrations::setup_registry;
 use near_units::parse_near;
 use near_workspaces::{Account, AccountId, Contract, DevNetwork, Worker};
+use sbt::ClassMetadata;
 use serde_json::json;
 
 /// 1ms in nano seconds
 //extern crate elections;
 use elections::{
-    proposal::ProposalType, ClassMetadata, OwnedToken, ProposalView, TokenMetadata,
-    ACCEPT_POLICY_COST, BOND_AMOUNT, MILI_NEAR, MINT_COST,
+    proposal::ProposalType, OwnedToken, ProposalView, TokenMetadata, ACCEPT_POLICY_COST,
+    BOND_AMOUNT, MILI_NEAR, MINT_COST,
 };
 
 /// 1ms in seconds

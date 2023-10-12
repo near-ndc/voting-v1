@@ -6,6 +6,7 @@ use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap};
 use near_sdk::json_types::U128;
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise, PromiseOrValue};
+use sbt::ClassMetadata;
 
 mod constants;
 mod errors;
@@ -1812,10 +1813,10 @@ mod unit_tests {
     fn admin_set_class_metadata() {
         let (_, mut ctr) = setup(&admin());
         let res = ctr.class_metadata();
-        assert_eq!(res, class_metadata("test1".to_string()));
+        assert_eq!(*res, class_metadata("test1".to_string()));
         ctr.admin_set_class_metadata(class_metadata("test2".to_string()));
         let res = ctr.class_metadata();
-        assert_eq!(res, class_metadata("test2".to_string()));
+        assert_eq!(*res, class_metadata("test2".to_string()));
     }
 
     #[test]
