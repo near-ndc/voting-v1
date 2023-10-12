@@ -1,5 +1,13 @@
 [workspace]
-members = ["voting_body", "elections", "nominations", "integrations", "common", "congress"]
+resolver = "1"
+members = [
+    "voting_body",
+    "elections",
+    "nominations",
+    "integrations",
+    "common",
+    "congress",
+]
 
 [workspace.package]
 edition = "2021"
@@ -30,8 +38,8 @@ thiserror = "1.0"
 
 # workspace doesn't have dev-dependencies field, so we have to put the dependencies here
 # https://doc.rust-lang.org/cargo/reference/workspaces.html
-tokio = { version = "1.29.1", features = ["full"] }
-workspaces = "0.7.0"
+tokio = { version = "1.28.0", features = ["full"] }
+near-workspaces = "0.8.0"
 near-primitives = "0.17.0"
 near-units = "0.2.0"
 anyhow = "1.0"
