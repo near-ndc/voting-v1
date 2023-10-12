@@ -9,8 +9,8 @@ use near_sdk::json_types::{U128, U64};
 use near_sdk::serde::Deserialize;
 use near_sdk::AccountId as NearAccountId;
 use near_units::parse_near;
+use near_workspaces::{Account, AccountId, Contract, DevNetwork, Worker};
 use serde_json::json;
-use workspaces::{Account, AccountId, Contract, DevNetwork, Worker};
 
 /// 1s in ms
 const MSECOND: u64 = 1_000_000;
@@ -47,10 +47,10 @@ async fn instantiate_congress(
     hook_auth: HashMap<AccountId, Vec<HookPerm>>,
     community_fund: Account,
     registry: &AccountId,
+    cooldown: u64,
 ) -> anyhow::Result<Contract> {
     let start_time = now + 20 * 1000;
     let end_time: u64 = now + 100 * 1000;
-    let cooldown = 10 * 1000;
     let voting_duration = 20 * 1000;
     // initialize contract
     let res1 = congress_contract
@@ -134,6 +134,7 @@ async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<InitStruct> {
         HashMap::new(),
         community_fund.clone(),
         registry_contract.id(),
+        0,
     )
     .await?;
 
@@ -151,6 +152,7 @@ async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<InitStruct> {
         coa_hook,
         community_fund.clone(),
         registry_contract.id(),
+        0,
     )
     .await?;
 
@@ -174,6 +176,7 @@ async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<InitStruct> {
         hom_hook,
         community_fund.clone(),
         registry_contract.id(),
+        10 * 1000,
     )
     .await?;
 
@@ -203,7 +206,7 @@ async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<InitStruct> {
 
 #[tokio::test]
 async fn full_prop_flow() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let setup = init(&worker).await?;
 
     // fast forward to the voting period
@@ -244,7 +247,7 @@ async fn full_prop_flow() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn vote_by_non_member() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let setup = init(&worker).await?;
 
     // fast forward to the voting period
@@ -266,7 +269,7 @@ async fn vote_by_non_member() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn tc_dismiss_coa() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let setup = init(&worker).await?;
 
     let encoded = encode(json!({"member": setup.alice.id()}).to_string());
@@ -290,37 +293,9 @@ async fn tc_dismiss_coa() -> anyhow::Result<()> {
     vote(
         vec![setup.john.clone(), setup.bob.clone()],
         &setup.tc_contract,
-        setup.proposal_id,
+        proposal_id,
     )
     .await?;
-
-    // fast forward to after cooldown
-    worker.fast_forward(50).await?;
-
-    // before execution coa should have all members
-    let members = setup
-        .alice
-        .call(setup.coa_contract.id(), "get_members")
-        .view()
-        .await?
-        .json::<MembersOutput>()?;
-
-    let mut expected = vec![
-        to_near_account(setup.bob.id()),
-        to_near_account(setup.john.id()),
-        to_near_account(setup.alice.id()),
-    ];
-    expected.sort();
-    assert_eq!(members.members, expected);
-
-    let res = setup
-        .john
-        .call(setup.tc_contract.id(), "execute")
-        .args_json(json!({"id": proposal_id,}))
-        .max_gas()
-        .transact()
-        .await?;
-    assert!(res.is_success(), "{:?}", res);
 
     // after removal less members
     let members = setup
@@ -330,7 +305,7 @@ async fn tc_dismiss_coa() -> anyhow::Result<()> {
         .await?
         .json::<MembersOutput>()?;
 
-    expected = vec![
+    let mut expected = vec![
         to_near_account(setup.bob.id()),
         to_near_account(setup.john.id()),
     ];
@@ -342,7 +317,7 @@ async fn tc_dismiss_coa() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn coa_veto_hom() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let setup = init(&worker).await?;
 
     let encoded = encode(json!({"id": setup.proposal_id}).to_string());
@@ -370,28 +345,6 @@ async fn coa_veto_hom() -> anyhow::Result<()> {
     )
     .await?;
 
-    // fast forward to after cooldown
-    worker.fast_forward(50).await?;
-
-    // before execution proposal should be in progress
-    let members = setup
-        .alice
-        .call(setup.hom_contract.id(), "get_proposal")
-        .args_json(json!({"id": setup.proposal_id}))
-        .view()
-        .await?
-        .json::<Option<ProposalOutput>>()?;
-    assert_eq!(members.unwrap().proposal.status, ProposalStatus::InProgress);
-
-    let res = setup
-        .john
-        .call(setup.coa_contract.id(), "execute")
-        .args_json(json!({"id": proposal_id,}))
-        .max_gas()
-        .transact()
-        .await?;
-    assert!(res.is_success(), "{:?}", res);
-
     // after execution proposal should be in Vetoed
     let members = setup
         .alice
@@ -406,8 +359,8 @@ async fn coa_veto_hom() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
-async fn tc_ban() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+async fn tc_ban_and_dismiss() -> anyhow::Result<()> {
+    let worker = near_workspaces::sandbox().await?;
     let setup = init(&worker).await?;
 
     let res2 = setup
@@ -441,34 +394,6 @@ async fn tc_ban() -> anyhow::Result<()> {
         .await?;
     assert!(res.is_success(), "{:?}", res);
 
-    // fast forward to after cooldown
-    worker.fast_forward(50).await?;
-
-    // before execution coa should have all members
-    let members = setup
-        .alice
-        .call(setup.coa_contract.id(), "get_members")
-        .view()
-        .await?
-        .json::<MembersOutput>()?;
-
-    let mut expected = vec![
-        to_near_account(setup.bob.id()),
-        to_near_account(setup.john.id()),
-        to_near_account(setup.alice.id()),
-    ];
-    expected.sort();
-    assert_eq!(members.members, expected);
-
-    let res = setup
-        .john
-        .call(setup.tc_contract.id(), "execute")
-        .args_json(json!({"id": proposal_id,}))
-        .max_gas()
-        .transact()
-        .await?;
-    assert!(res.is_success(), "{:?}", res);
-
     // after removal less members
     let members = setup
         .alice
@@ -477,7 +402,7 @@ async fn tc_ban() -> anyhow::Result<()> {
         .await?
         .json::<MembersOutput>()?;
 
-    expected = vec![
+    let mut expected = vec![
         to_near_account(setup.bob.id()),
         to_near_account(setup.john.id()),
     ];
