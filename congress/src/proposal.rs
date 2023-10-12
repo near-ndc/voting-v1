@@ -30,7 +30,7 @@ pub struct Proposal {
     pub submission_time: u64,
     /// Unix time in miliseconds when the proposal reached approval threshold. `None` if it is not approved.
     pub approved_at: Option<u64>,
-    /// Can be executed at
+    /// Unix time in milliseconds from which the proposal can be executed 
     pub execution_time: u64,
 }
 
