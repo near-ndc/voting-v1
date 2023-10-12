@@ -360,7 +360,7 @@ async fn coa_veto_hom() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn tc_ban_and_dismiss() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let setup = init(&worker).await?;
 
     let res2 = setup
