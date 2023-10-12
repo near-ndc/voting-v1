@@ -443,16 +443,80 @@ async fn tc_ban_and_dismiss_fail_cases() -> anyhow::Result<()> {
     let proposal_id: u32 = res2.await?.json()?;
 
     // remove tc as flagger
-    registry_contract
+    let res = setup
+        .admin
+        .call(
+            setup.registry_contract.id(),
+            "admin_set_authorized_flaggers",
+        )
+        .args_json(json!({
+        "authorized_flaggers": [],
+        }))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success());
 
     vote(
         vec![setup.john.clone(), setup.alice.clone()],
-        &setup.coa_contract,
+        &setup.tc_contract,
         proposal_id,
     )
     .await?;
 
     // after removal less members
+    let members = setup
+        .alice
+        .call(setup.coa_contract.id(), "get_members")
+        .view()
+        .await?
+        .json::<MembersOutput>()?;
+
+    let mut expected = vec![
+        to_near_account(setup.bob.id()),
+        to_near_account(setup.john.id()),
+    ];
+    expected.sort();
+    assert_eq!(members.members, expected);
+
+    // verify
+    // admin flag
+    let res = setup
+        .alice
+        .call(setup.registry_contract.id(), "account_flagged")
+        .args_json(json!({"account": to_near_account(setup.alice.id())}))
+        .view()
+        .await?
+        .json::<Option<AccountFlag>>()?;
+
+    assert_eq!(res, None);
+
+    // execute after adding flagger again
+    // remove tc as flagger
+    let res = setup
+        .admin
+        .call(
+            setup.registry_contract.id(),
+            "admin_set_authorized_flaggers",
+        )
+        .args_json(json!({
+        "authorized_flaggers": [setup.tc_contract.id()],
+        }))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success());
+
+    let res = setup
+        .bob
+        .call(setup.tc_contract.id(), "execute")
+        .args_json(json!({"id": proposal_id,}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success(), "{:?}", res);
+
+    // no dismiss(already succeeded)
     let members = setup
         .alice
         .call(setup.coa_contract.id(), "get_members")
