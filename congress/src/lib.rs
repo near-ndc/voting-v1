@@ -278,7 +278,7 @@ impl Contract {
                         ban_promise.then(
                             ext_self::ext(env::current_account_id())
                                 .with_static_gas(EXECUTE_CALLBACK_GAS)
-                                .on_execute(id, U128(0), true),
+                                .on_execute(id, U128(0)),
                         ),
                     ));
                 }
@@ -304,7 +304,7 @@ impl Contract {
                 .then(
                     ext_self::ext(env::current_account_id())
                         .with_static_gas(EXECUTE_CALLBACK_GAS)
-                        .on_execute(id, budget.into(), false),
+                        .on_execute(id, budget.into()),
                 )
                 .into(),
             _ => {
@@ -371,14 +371,13 @@ impl Contract {
         Ok(())
     }
 
-    #[handle_result]
-    pub fn dismiss_hook(&mut self, member: AccountId) -> Result<(), HookError> {
+    pub fn dismiss_hook(&mut self, member: AccountId) -> bool {
         self.assert_active();
-        self.assert_hook_perm(&env::predecessor_account_id(), &[HookPerm::Dismiss])?;
+        let res = self.assert_hook_perm(&env::predecessor_account_id(), &[HookPerm::Dismiss]);
         let (mut members, perms) = self.members.get().unwrap();
         let idx = members.binary_search(&member);
-        if idx.is_err() {
-            return Err(HookError::NoMember);
+        if idx.is_err() || res.is_err() {
+            return false;
         }
         members.remove(idx.unwrap());
 
@@ -389,7 +388,7 @@ impl Contract {
         }
 
         self.members.set(&(members, perms));
-        Ok(())
+        true
     }
 
     /*****************
@@ -450,7 +449,7 @@ impl Contract {
     }
 
     #[private]
-    pub fn on_execute(&mut self, prop_id: u32, budget: U128, ban_callback: bool) {
+    pub fn on_execute(&mut self, prop_id: u32, budget: U128) {
         assert_eq!(
             env::promise_results_count(),
             1,
@@ -458,13 +457,7 @@ impl Contract {
         );
         match env::promise_result(0) {
             PromiseResult::NotReady => unreachable!(),
-            PromiseResult::Successful(_) => {
-                if ban_callback {
-                    let mut list = self.ban_failed.get().unwrap();
-                    list.remove(&prop_id);
-                    self.ban_failed.set(&list);
-                }
-            }
+            PromiseResult::Successful(_) => {}
             PromiseResult::Failed => {
                 let mut prop = self.assert_proposal(prop_id);
                 self.budget_spent -= budget.0;
@@ -487,12 +480,6 @@ impl Contract {
             prop.status = ProposalStatus::Failed;
             self.proposals.insert(&prop_id, &prop);
             emit_executed(prop_id);
-        }
-        // only ban failed
-        if ban_result.is_err() && dismiss_result.is_ok() {
-            let mut list = self.ban_failed.get().unwrap();
-            list.insert(prop_id);
-            self.ban_failed.set(&list);
         }
     }
 }
@@ -1043,20 +1030,15 @@ mod unit_tests {
     fn dismiss_hook() {
         let (mut ctx, mut ctr, id) = setup_ctr(100);
 
-        match ctr.dismiss_hook(acc(2)) {
-            Err(HookError::NotAuthorized) => (),
-            x => panic!("expected NotAuthorized, got: {:?}", x),
-        }
+        assert_eq!(ctr.dismiss_hook(acc(2)), false);
 
         ctx.predecessor_account_id = voting_body();
         testing_env!(ctx.clone());
 
-        match ctr.dismiss_hook(acc(10)) {
-            Err(HookError::NoMember) => (),
-            x => panic!("expected NoMember, got: {:?}", x),
-        }
+        assert_eq!(ctr.dismiss_hook(acc(10)), false);
 
-        ctr.dismiss_hook(acc(2)).unwrap();
+        assert_eq!(ctr.dismiss_hook(acc(2)), true);
+
         let expected = r#"EVENT_JSON:{"standard":"ndc-congress","version":"1.0.0","event":"dismiss","data":{"member":"user-2.near"}}"#;
         assert_eq!(vec![expected], get_logs());
 
@@ -1075,7 +1057,7 @@ mod unit_tests {
 
         assert!(!ctr.dissolved);
         // Remove more members to check dissolve
-        ctr.dismiss_hook(acc(1)).unwrap();
+        assert_eq!(ctr.dismiss_hook(acc(1)), true);
         assert!(ctr.dissolved);
     }
 
@@ -1091,7 +1073,7 @@ mod unit_tests {
         ctr.members.set(&(members, permissions.clone()));
 
         // remove from middle
-        ctr.dismiss_hook(acc(2)).unwrap();
+        assert_eq!(ctr.dismiss_hook(acc(2)), true);
 
         // should be sorted list
         assert_eq!(
@@ -1103,7 +1085,7 @@ mod unit_tests {
         );
 
         // Remove more members
-        ctr.dismiss_hook(acc(1)).unwrap();
+        assert_eq!(ctr.dismiss_hook(acc(1)), true);
         assert_eq!(
             ctr.get_members(),
             MembersOutput {

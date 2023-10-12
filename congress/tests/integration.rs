@@ -493,7 +493,7 @@ async fn tc_ban_and_dismiss_fail_cases() -> anyhow::Result<()> {
 
     let proposal = setup
         .alice
-        .call(setup.hom_contract.id(), "get_proposal")
+        .call(setup.tc_contract.id(), "get_proposal")
         .args_json(json!({ "id": proposal_id }))
         .view()
         .await?
@@ -554,7 +554,7 @@ async fn tc_ban_and_dismiss_fail_cases() -> anyhow::Result<()> {
 
     let proposal = setup
         .alice
-        .call(setup.hom_contract.id(), "get_proposal")
+        .call(setup.tc_contract.id(), "get_proposal")
         .args_json(json!({ "id": proposal_id }))
         .view()
         .await?
