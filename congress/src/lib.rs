@@ -359,13 +359,14 @@ impl Contract {
         Ok(())
     }
 
-    pub fn dismiss_hook(&mut self, member: AccountId) -> bool {
+    #[handle_result]
+    pub fn dismiss_hook(&mut self, member: AccountId) -> Result<(), HookError> {
         self.assert_active();
-        let res = self.assert_hook_perm(&env::predecessor_account_id(), &[HookPerm::Dismiss]);
+        self.assert_hook_perm(&env::predecessor_account_id(), &[HookPerm::Dismiss])?;
         let (mut members, perms) = self.members.get().unwrap();
         let idx = members.binary_search(&member);
-        if idx.is_err() || res.is_err() {
-            return false;
+        if idx.is_err() {
+            return Ok(());
         }
         members.remove(idx.unwrap());
 
@@ -376,7 +377,7 @@ impl Contract {
         }
 
         self.members.set(&(members, perms));
-        true
+        Ok(())
     }
 
     /*****************
@@ -1018,14 +1019,17 @@ mod unit_tests {
     fn dismiss_hook() {
         let (mut ctx, mut ctr, id) = setup_ctr(100);
 
-        assert_eq!(ctr.dismiss_hook(acc(2)), false);
+        match ctr.dismiss_hook(acc(2)) {
+            Err(HookError::NotAuthorized) => (),
+            x => panic!("expected NotAuthorized, got: {:?}", x),
+        }
 
         ctx.predecessor_account_id = voting_body();
         testing_env!(ctx.clone());
 
-        assert_eq!(ctr.dismiss_hook(acc(10)), false);
+        assert_eq!(ctr.dismiss_hook(acc(10)), Ok(()));
 
-        assert_eq!(ctr.dismiss_hook(acc(2)), true);
+        ctr.dismiss_hook(acc(2)).unwrap();
 
         let expected = r#"EVENT_JSON:{"standard":"ndc-congress","version":"1.0.0","event":"dismiss","data":{"member":"user-2.near"}}"#;
         assert_eq!(vec![expected], get_logs());
@@ -1045,7 +1049,7 @@ mod unit_tests {
 
         assert!(!ctr.dissolved);
         // Remove more members to check dissolve
-        assert_eq!(ctr.dismiss_hook(acc(1)), true);
+        ctr.dismiss_hook(acc(1)).unwrap();
         assert!(ctr.dissolved);
     }
 
@@ -1061,7 +1065,7 @@ mod unit_tests {
         ctr.members.set(&(members, permissions.clone()));
 
         // remove from middle
-        assert_eq!(ctr.dismiss_hook(acc(2)), true);
+        ctr.dismiss_hook(acc(2)).unwrap();
 
         // should be sorted list
         assert_eq!(
@@ -1073,7 +1077,7 @@ mod unit_tests {
         );
 
         // Remove more members
-        assert_eq!(ctr.dismiss_hook(acc(1)), true);
+        ctr.dismiss_hook(acc(1)).unwrap();
         assert_eq!(
             ctr.get_members(),
             MembersOutput {

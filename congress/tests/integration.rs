@@ -220,7 +220,7 @@ async fn full_prop_flow() -> anyhow::Result<()> {
     .await?;
 
     // fast forward to after cooldown
-    worker.fast_forward(50).await?;
+    worker.fast_forward(100).await?;
 
     let res = setup
         .bob
@@ -360,7 +360,7 @@ async fn coa_veto_hom() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn tc_ban_and_dismiss() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let setup = init(&worker).await?;
 
     let res2 = setup
@@ -426,7 +426,7 @@ async fn tc_ban_and_dismiss() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn tc_ban_and_dismiss_fail_cases() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let setup = init(&worker).await?;
 
     let res2 = setup
