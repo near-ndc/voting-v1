@@ -183,7 +183,7 @@ impl Contract {
         }
         let mut prop = self.assert_proposal(id);
 
-        self.assert_member_involve(&prop, &user)?;
+        self.assert_member_not_involved(&prop, &user)?;
 
         if !matches!(prop.status, ProposalStatus::InProgress) {
             return Err(VoteError::NotInProgress);
@@ -411,11 +411,15 @@ impl Contract {
         self.proposals.get(&id).expect("proposal does not exist")
     }
 
-    fn assert_member_not_involved(&self, prop: &Proposal, user: &AccountId) -> Result<(), VoteError> {
+    fn assert_member_not_involved(
+        &self,
+        prop: &Proposal,
+        user: &AccountId,
+    ) -> Result<(), VoteError> {
         match &prop.kind {
             PropKind::DismissAndBan { member, house: _ } => {
                 if member == user {
-                    return Err(VoteError::NotAllowedAgainst);
+                    return Err(VoteError::NoSelfVote);
                 }
             }
             PropKind::FunctionCall {
@@ -427,7 +431,7 @@ impl Contract {
                         let encoded =
                             Base64VecU8(json!({ "member": user }).to_string().as_bytes().to_vec());
                         if encoded == action.args {
-                            return Err(VoteError::NotAllowedAgainst);
+                            return Err(VoteError::NoSelfVote);
                         }
                     }
                 }
@@ -1179,7 +1183,7 @@ mod unit_tests {
         ctx.predecessor_account_id = acc(1);
         testing_env!(ctx.clone());
         match ctr.vote(prop, Vote::Approve) {
-            Err(VoteError::NotAllowedAgainst) => (),
+            Err(VoteError::NoSelfVote) => (),
             x => panic!("expected NotAllowedAgainst, got: {:?}", x),
         }
     }
@@ -1208,7 +1212,7 @@ mod unit_tests {
         ctx.predecessor_account_id = acc(2);
         testing_env!(ctx.clone());
         match ctr.vote(prop, Vote::Approve) {
-            Err(VoteError::NotAllowedAgainst) => (),
+            Err(VoteError::NoSelfVote) => (),
             x => panic!("expected NotAllowedAgainst, got: {:?}", x),
         }
     }
