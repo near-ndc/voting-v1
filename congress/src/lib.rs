@@ -31,6 +31,7 @@ use crate::storage::*;
 pub struct Contract {
     /// address of the community fund, where the excess of NEAR will be sent on dissolve and cleanup.
     pub community_fund: AccountId,
+    /// I Am Human registry
     pub registry: AccountId,
 
     pub dissolved: bool,
