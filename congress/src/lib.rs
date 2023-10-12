@@ -161,7 +161,6 @@ impl Contract {
                 votes: HashMap::new(),
                 submission_time: now,
                 approved_at: None,
-                execution_time: now + self.voting_duration + self.cooldown + 1,
             },
         );
 
