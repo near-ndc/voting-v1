@@ -411,7 +411,7 @@ impl Contract {
         self.proposals.get(&id).expect("proposal does not exist")
     }
 
-    fn assert_member_involve(&self, prop: &Proposal, user: &AccountId) -> Result<(), VoteError> {
+    fn assert_member_not_involved(&self, prop: &Proposal, user: &AccountId) -> Result<(), VoteError> {
         match &prop.kind {
             PropKind::DismissAndBan { member, house: _ } => {
                 if member == user {
@@ -423,7 +423,7 @@ impl Contract {
                 actions,
             } => {
                 for action in actions {
-                    if action.method_name == "dismiss_hook".to_string() {
+                    if &action.method_name == "dismiss_hook" {
                         let encoded =
                             Base64VecU8(json!({ "member": user }).to_string().as_bytes().to_vec());
                         if encoded == action.args {

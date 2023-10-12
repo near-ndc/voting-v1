@@ -18,7 +18,7 @@ impl FunctionError for VoteError {
             VoteError::DoubleVote => panic_str("user already voted"),
             VoteError::NotInProgress => panic_str("proposal not in progress"),
             VoteError::NotActive => panic_str("voting time is over"),
-            VoteError::NotAllowedAgainst => {
+            VoteError::NoSelfVote => {
                 panic_str("not allowed to vote on proposal against them")
             }
         }
