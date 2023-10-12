@@ -1,5 +1,5 @@
 use std::cmp::min;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use common::finalize_storage_check;
 use events::*;
@@ -31,6 +31,7 @@ use crate::storage::*;
 pub struct Contract {
     /// address of the community fund, where the excess of NEAR will be sent on dissolve and cleanup.
     pub community_fund: AccountId,
+    pub registry: AccountId,
 
     pub dissolved: bool,
     pub prop_counter: u32,
@@ -57,7 +58,7 @@ pub struct Contract {
     /// size (in yocto NEAR) of the big funding request
     pub big_funding_threshold: Balance,
 
-    pub registry: AccountId,
+    pub ban_failed: LazyOption<HashSet<u32>>,
 }
 
 #[near_bindgen]
@@ -98,6 +99,7 @@ impl Contract {
             budget_cap: budget_cap.0,
             big_funding_threshold: big_funding_threshold.0,
             registry,
+            ban_failed: LazyOption::new(StorageKey::BanFailed, Some(&HashSet::new())),
         }
     }
 
@@ -161,7 +163,6 @@ impl Contract {
                 votes: HashMap::new(),
                 submission_time: now,
                 approved_at: None,
-                execution_time: now + self.voting_duration + self.cooldown + 1,
             },
         );
 
@@ -271,6 +272,16 @@ impl Contract {
                     0,
                     EXECUTE_GAS,
                 );
+
+                if self.ban_failed.get().unwrap().contains(&id) {
+                    return Ok(PromiseOrValue::Promise(
+                        ban_promise.then(
+                            ext_self::ext(env::current_account_id())
+                                .with_static_gas(EXECUTE_CALLBACK_GAS)
+                                .on_execute(id, U128(0), true),
+                        ),
+                    ));
+                }
                 return Ok(PromiseOrValue::Promise(
                     ban_promise.and(dismiss_promise).then(
                         ext_self::ext(env::current_account_id())
@@ -293,7 +304,7 @@ impl Contract {
                 .then(
                     ext_self::ext(env::current_account_id())
                         .with_static_gas(EXECUTE_CALLBACK_GAS)
-                        .on_execute(id, budget.into()),
+                        .on_execute(id, budget.into(), false),
                 )
                 .into(),
             _ => {
@@ -439,7 +450,7 @@ impl Contract {
     }
 
     #[private]
-    pub fn on_execute(&mut self, prop_id: u32, budget: U128) {
+    pub fn on_execute(&mut self, prop_id: u32, budget: U128, ban_callback: bool) {
         assert_eq!(
             env::promise_results_count(),
             1,
@@ -447,7 +458,13 @@ impl Contract {
         );
         match env::promise_result(0) {
             PromiseResult::NotReady => unreachable!(),
-            PromiseResult::Successful(_) => (),
+            PromiseResult::Successful(_) => {
+                if ban_callback {
+                    let mut list = self.ban_failed.get().unwrap();
+                    list.remove(&prop_id);
+                    self.ban_failed.set(&list);
+                }
+            }
             PromiseResult::Failed => {
                 let mut prop = self.assert_proposal(prop_id);
                 self.budget_spent -= budget.0;
@@ -470,6 +487,12 @@ impl Contract {
             prop.status = ProposalStatus::Failed;
             self.proposals.insert(&prop_id, &prop);
             emit_executed(prop_id);
+        }
+        // only ban failed
+        if ban_result.is_err() && dismiss_result.is_ok() {
+            let mut list = self.ban_failed.get().unwrap();
+            list.insert(prop_id);
+            self.ban_failed.set(&list);
         }
     }
 }
