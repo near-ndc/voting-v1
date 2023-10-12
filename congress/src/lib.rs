@@ -1,5 +1,5 @@
 use std::cmp::min;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use common::finalize_storage_check;
 use events::*;
@@ -57,8 +57,6 @@ pub struct Contract {
     pub budget_cap: Balance,
     /// size (in yocto NEAR) of the big funding request
     pub big_funding_threshold: Balance,
-
-    pub ban_failed: LazyOption<HashSet<u32>>,
 }
 
 #[near_bindgen]
@@ -99,7 +97,6 @@ impl Contract {
             budget_cap: budget_cap.0,
             big_funding_threshold: big_funding_threshold.0,
             registry,
-            ban_failed: LazyOption::new(StorageKey::BanFailed, Some(&HashSet::new())),
         }
     }
 
@@ -273,15 +270,6 @@ impl Contract {
                     EXECUTE_GAS,
                 );
 
-                if self.ban_failed.get().unwrap().contains(&id) {
-                    return Ok(PromiseOrValue::Promise(
-                        ban_promise.then(
-                            ext_self::ext(env::current_account_id())
-                                .with_static_gas(EXECUTE_CALLBACK_GAS)
-                                .on_execute(id, U128(0)),
-                        ),
-                    ));
-                }
                 return Ok(PromiseOrValue::Promise(
                     ban_promise.and(dismiss_promise).then(
                         ext_self::ext(env::current_account_id())
