@@ -491,6 +491,15 @@ async fn tc_ban_and_dismiss_fail_cases() -> anyhow::Result<()> {
 
     assert_eq!(res, None);
 
+    let proposal = setup
+        .alice
+        .call(setup.hom_contract.id(), "get_proposal")
+        .args_json(json!({ "id": proposal_id }))
+        .view()
+        .await?
+        .json::<Option<ProposalOutput>>()?;
+    assert_eq!(proposal.unwrap().proposal.status, ProposalStatus::Failed);
+
     // execute after adding flagger again
     // remove tc as flagger
     let res = setup
@@ -542,6 +551,15 @@ async fn tc_ban_and_dismiss_fail_cases() -> anyhow::Result<()> {
         .json::<Option<AccountFlag>>()?;
 
     assert_eq!(res, Some(AccountFlag::GovBan));
+
+    let proposal = setup
+        .alice
+        .call(setup.hom_contract.id(), "get_proposal")
+        .args_json(json!({ "id": proposal_id }))
+        .view()
+        .await?
+        .json::<Option<ProposalOutput>>()?;
+    assert_eq!(proposal.unwrap().proposal.status, ProposalStatus::Executed);
 
     Ok(())
 }
