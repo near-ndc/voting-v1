@@ -424,6 +424,64 @@ async fn tc_ban_and_dismiss() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[tokio::test]
+async fn tc_ban_and_dismiss_fail_cases() -> anyhow::Result<()> {
+    let worker = workspaces::sandbox().await?;
+    let setup = init(&worker).await?;
+
+    let res2 = setup
+        .alice
+        .call(setup.tc_contract.id(), "create_proposal")
+        .args_json(json!({
+            "kind": PropKind::DismissAndBan { member: to_near_account(setup.alice.id()), house:  to_near_account(setup.coa_contract.id())
+            },
+            "description": "Dismiss and ban alice".to_string()
+        }))
+        .max_gas()
+        .deposit(parse_near!("0.01 N"))
+        .transact();
+    let proposal_id: u32 = res2.await?.json()?;
+
+    // remove tc as flagger
+    registry_contract
+
+    vote(
+        vec![setup.john.clone(), setup.alice.clone()],
+        &setup.coa_contract,
+        proposal_id,
+    )
+    .await?;
+
+    // after removal less members
+    let members = setup
+        .alice
+        .call(setup.coa_contract.id(), "get_members")
+        .view()
+        .await?
+        .json::<MembersOutput>()?;
+
+    let mut expected = vec![
+        to_near_account(setup.bob.id()),
+        to_near_account(setup.john.id()),
+    ];
+    expected.sort();
+    assert_eq!(members.members, expected);
+
+    // verify
+    // admin flag
+    let res = setup
+        .alice
+        .call(setup.registry_contract.id(), "account_flagged")
+        .args_json(json!({"account": to_near_account(setup.alice.id())}))
+        .view()
+        .await?
+        .json::<Option<AccountFlag>>()?;
+
+    assert_eq!(res, Some(AccountFlag::GovBan));
+
+    Ok(())
+}
+
 fn to_near_account(acc: &AccountId) -> NearAccountId {
     NearAccountId::new_unchecked(acc.to_string())
 }
