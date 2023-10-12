@@ -15,6 +15,20 @@ pub struct ProposalOutput {
     pub proposal: Proposal,
 }
 
+/// This is format of output via JSON for the config.
+#[derive(Serialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct ConfigOutput {
+    pub threshold: u8,
+    pub start_time: u64,
+    pub end_time: u64,
+    pub cooldown: u64,
+    pub voting_duration: u64,
+    pub budget_spent: U128,
+    pub budget_cap: U128,
+    pub big_funding_threshold: U128,
+}
+
 #[derive(Serialize, Deserialize)]
 #[cfg_attr(test, derive(Debug, PartialEq))]
 #[serde(crate = "near_sdk::serde")]
@@ -110,5 +124,18 @@ impl Contract {
             return vec![];
         }
         res.unwrap()
+    }
+
+    pub fn config(&self) -> ConfigOutput {
+        ConfigOutput {
+            threshold: self.threshold,
+            start_time: self.start_time,
+            end_time: self.end_time,
+            cooldown: self.cooldown,
+            voting_duration: self.voting_duration,
+            budget_spent: U128(self.budget_spent),
+            budget_cap: U128(self.budget_cap),
+            big_funding_threshold: U128(self.big_funding_threshold),
+        }
     }
 }
