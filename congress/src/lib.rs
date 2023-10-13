@@ -369,6 +369,7 @@ impl Contract {
         let (mut members, perms) = self.members.get().unwrap();
         let idx = members.binary_search(&member);
         if idx.is_err() {
+            // We need to return OK to allow to call this function multiple times to execute proposal which may compose other actions
             return Ok(());
         }
         members.remove(idx.unwrap());
