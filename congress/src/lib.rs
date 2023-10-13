@@ -5,7 +5,7 @@ use common::finalize_storage_check;
 use events::*;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap};
-use near_sdk::json_types::U128;
+use near_sdk::json_types::{Base64VecU8, U128};
 use near_sdk::{
     env, near_bindgen, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseError,
     PromiseOrValue, PromiseResult,
@@ -182,6 +182,8 @@ impl Contract {
             return Err(VoteError::NotAuthorized);
         }
         let mut prop = self.assert_proposal(id);
+
+        self.assert_member_not_involved(&prop, &user)?;
 
         if !matches!(prop.status, ProposalStatus::InProgress) {
             return Err(VoteError::NotInProgress);
@@ -409,6 +411,36 @@ impl Contract {
         self.proposals.get(&id).expect("proposal does not exist")
     }
 
+    fn assert_member_not_involved(
+        &self,
+        prop: &Proposal,
+        user: &AccountId,
+    ) -> Result<(), VoteError> {
+        match &prop.kind {
+            PropKind::DismissAndBan { member, house: _ } => {
+                if member == user {
+                    return Err(VoteError::NoSelfVote);
+                }
+            }
+            PropKind::FunctionCall {
+                receiver_id: _,
+                actions,
+            } => {
+                for action in actions {
+                    if &action.method_name == "dismiss_hook" {
+                        let encoded =
+                            Base64VecU8(json!({ "member": user }).to_string().as_bytes().to_vec());
+                        if encoded == action.args {
+                            return Err(VoteError::NoSelfVote);
+                        }
+                    }
+                }
+            }
+            _ => (),
+        }
+        Ok(())
+    }
+
     fn assert_active(&self) {
         near_sdk::require!(!self.dissolved, "dao is dissolved");
         near_sdk::require!(
@@ -481,7 +513,7 @@ mod unit_tests {
     };
 
     use crate::{view::MembersOutput, *};
-    use near_sdk::json_types::U128;
+    use near_sdk::json_types::{U128, U64};
 
     /// 1ms in nano seconds
     const MSECOND: u64 = 1_000_000;
@@ -1105,7 +1137,7 @@ mod unit_tests {
         ctr = vote(
             ctx.clone(),
             ctr,
-            [acc(1), acc(2), acc(3)].to_vec(),
+            [acc(4), acc(2), acc(3)].to_vec(),
             motion_rem_ban,
         );
         let mut prop = ctr.get_proposal(motion_rem_ban).unwrap();
@@ -1133,5 +1165,55 @@ mod unit_tests {
         ctr.on_ban_dismiss(Ok(()), Result::Err(PromiseError::Failed), motion_rem_ban);
         prop = ctr.get_proposal(motion_rem_ban).unwrap();
         assert_eq!(prop.proposal.status, ProposalStatus::Failed);
+    }
+
+    #[test]
+    fn dismiss_ban_vote_against() {
+        let (mut ctx, mut ctr, _) = setup_ctr(100);
+        let prop = ctr
+            .create_proposal(
+                PropKind::DismissAndBan {
+                    member: acc(1),
+                    house: coa(),
+                },
+                "Motion to remove member and ban".to_string(),
+            )
+            .unwrap();
+
+        ctx.predecessor_account_id = acc(1);
+        testing_env!(ctx.clone());
+        match ctr.vote(prop, Vote::Approve) {
+            Err(VoteError::NoSelfVote) => (),
+            x => panic!("expected NotAllowedAgainst, got: {:?}", x),
+        }
+    }
+
+    #[test]
+    fn dismiss_vote_against() {
+        let (mut ctx, mut ctr, _) = setup_ctr(100);
+        let prop = ctr
+            .create_proposal(
+                PropKind::FunctionCall {
+                    receiver_id: coa(),
+                    actions: [ActionCall {
+                        method_name: "dismiss_hook".to_string(),
+                        args: Base64VecU8(
+                            json!({ "member": acc(2) }).to_string().as_bytes().to_vec(),
+                        ),
+                        deposit: U128(0),
+                        gas: U64(0),
+                    }]
+                    .to_vec(),
+                },
+                "Proposal to remove member".to_string(),
+            )
+            .unwrap();
+
+        ctx.predecessor_account_id = acc(2);
+        testing_env!(ctx.clone());
+        match ctr.vote(prop, Vote::Approve) {
+            Err(VoteError::NoSelfVote) => (),
+            x => panic!("expected NotAllowedAgainst, got: {:?}", x),
+        }
     }
 }
