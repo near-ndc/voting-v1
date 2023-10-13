@@ -31,6 +31,8 @@ use crate::storage::*;
 pub struct Contract {
     /// address of the community fund, where the excess of NEAR will be sent on dissolve and cleanup.
     pub community_fund: AccountId,
+    /// I Am Human registry
+    pub registry: AccountId,
 
     pub dissolved: bool,
     pub prop_counter: u32,
@@ -56,8 +58,6 @@ pub struct Contract {
     pub budget_cap: Balance,
     /// size (in yocto NEAR) of the big funding request
     pub big_funding_threshold: Balance,
-
-    pub registry: AccountId,
 }
 
 #[near_bindgen]
@@ -272,6 +272,7 @@ impl Contract {
                     0,
                     EXECUTE_GAS,
                 );
+
                 return Ok(PromiseOrValue::Promise(
                     ban_promise.and(dismiss_promise).then(
                         ext_self::ext(env::current_account_id())
@@ -368,7 +369,8 @@ impl Contract {
         let (mut members, perms) = self.members.get().unwrap();
         let idx = members.binary_search(&member);
         if idx.is_err() {
-            return Err(HookError::NoMember);
+            // We need to return OK to allow to call this function multiple times to execute proposal which may compose other actions
+            return Ok(());
         }
         members.remove(idx.unwrap());
 
@@ -478,7 +480,7 @@ impl Contract {
         );
         match env::promise_result(0) {
             PromiseResult::NotReady => unreachable!(),
-            PromiseResult::Successful(_) => (),
+            PromiseResult::Successful(_) => {}
             PromiseResult::Failed => {
                 let mut prop = self.assert_proposal(prop_id);
                 self.budget_spent -= budget.0;
@@ -1059,12 +1061,10 @@ mod unit_tests {
         ctx.predecessor_account_id = voting_body();
         testing_env!(ctx.clone());
 
-        match ctr.dismiss_hook(acc(10)) {
-            Err(HookError::NoMember) => (),
-            x => panic!("expected NoMember, got: {:?}", x),
-        }
+        assert_eq!(ctr.dismiss_hook(acc(10)), Ok(()));
 
         ctr.dismiss_hook(acc(2)).unwrap();
+
         let expected = r#"EVENT_JSON:{"standard":"ndc-congress","version":"1.0.0","event":"dismiss","data":{"member":"user-2.near"}}"#;
         assert_eq!(vec![expected], get_logs());
 
