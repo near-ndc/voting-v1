@@ -6,6 +6,7 @@ use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap};
 use near_sdk::json_types::U128;
 use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise, PromiseOrValue};
+use sbt::ClassMetadata;
 
 mod constants;
 mod errors;
@@ -13,14 +14,14 @@ mod events;
 mod ext;
 mod migrate;
 pub mod proposal;
-mod storage;
+pub mod storage;
 mod view;
 
 pub use crate::constants::*;
 pub use crate::errors::*;
 pub use crate::ext::*;
 pub use crate::proposal::*;
-use crate::storage::*;
+pub use crate::storage::*;
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -46,6 +47,9 @@ pub struct Contract {
 
     /// list of disqualified candidates
     pub disqualified_candidates: LazyOption<HashSet<AccountId>>,
+
+    /// class metadata for I-Voted SBT
+    pub class_metadata: ClassMetadata,
 }
 
 #[near_bindgen]
@@ -57,6 +61,7 @@ impl Contract {
         sbt_registry: AccountId,
         policy: String,
         finish_time: u64,
+        class_metadata: ClassMetadata,
     ) -> Self {
         let policy = assert_hash_hex_string(&policy);
 
@@ -72,6 +77,7 @@ impl Contract {
             policy,
             finish_time,
             disqualified_candidates: LazyOption::new(StorageKey::DisqualifiedCandidates, None),
+            class_metadata,
         }
     }
 
@@ -359,6 +365,11 @@ impl Contract {
             to_disqualify.insert(c.clone());
         }
         self.disqualified_candidates.set(&to_disqualify);
+    }
+
+    pub fn admin_set_class_metadata(&mut self, class_metadata: ClassMetadata) {
+        self.assert_admin();
+        self.class_metadata = class_metadata;
     }
 
     /*****************
@@ -657,6 +668,16 @@ mod unit_tests {
         vec![(human_issuer(), vec![sbt]), (admin(), vec![sbt])]
     }
 
+    fn class_metadata(name: String) -> ClassMetadata {
+        ClassMetadata {
+            name,
+            symbol: None,
+            icon: None,
+            reference: None,
+            reference_hash: None,
+        }
+    }
+
     fn alice_voting_context(ctx: &mut VMContext, ctr: &mut Contract) {
         ctx.predecessor_account_id = alice();
         ctx.attached_deposit = ACCEPT_POLICY_COST;
@@ -678,7 +699,13 @@ mod unit_tests {
             .is_view(false)
             .build();
         testing_env!(ctx.clone());
-        let ctr = Contract::new(admin(), sbt_registry(), policy1(), START + 100);
+        let ctr = Contract::new(
+            admin(),
+            sbt_registry(),
+            policy1(),
+            START + 100,
+            class_metadata("test1".to_string()),
+        );
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
         (ctx, ctr)
@@ -1781,5 +1808,22 @@ mod unit_tests {
             ctr.winners_by_proposal(prop_id, None),
             vec![candidate(6), candidate(4), candidate(1), candidate(5)]
         );
+    }
+
+    #[test]
+    fn admin_set_class_metadata() {
+        let (_, mut ctr) = setup(&admin());
+        let res = ctr.class_metadata();
+        assert_eq!(*res, class_metadata("test1".to_string()));
+        ctr.admin_set_class_metadata(class_metadata("test2".to_string()));
+        let res = ctr.class_metadata();
+        assert_eq!(*res, class_metadata("test2".to_string()));
+    }
+
+    #[test]
+    #[should_panic(expected = "not an admin")]
+    fn admin_set_class_metadata_not_admin() {
+        let (_, mut ctr) = setup(&alice());
+        ctr.admin_set_class_metadata(class_metadata("test2".to_string()));
     }
 }

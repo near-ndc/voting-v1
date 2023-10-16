@@ -1,6 +1,7 @@
 use integrations::setup_registry;
 use near_units::parse_near;
 use near_workspaces::{Account, AccountId, Contract, DevNetwork, Worker};
+use sbt::ClassMetadata;
 use serde_json::json;
 
 /// 1ms in nano seconds
@@ -53,6 +54,7 @@ async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<InitStruct> {
             "sbt_registry": registry_contract.id(),
             "policy": policy1(),
             "finish_time": 1,
+            "class_metadata": ClassMetadata { name: "I Voted SBT".to_string(), symbol: None, icon: None, reference: None, reference_hash: None},
         }))
         .max_gas()
         .transact();
@@ -550,8 +552,6 @@ async fn migration_mainnet() -> anyhow::Result<()> {
 
     let admin = worker_sandbox.dev_create_account().await?;
     let registry = worker_sandbox.dev_create_account().await?;
-    let alice = worker_sandbox.dev_create_account().await?;
-    let bob = worker_sandbox.dev_create_account().await?;
 
     // init the contract
     let res = elections
@@ -576,46 +576,32 @@ async fn migration_mainnet() -> anyhow::Result<()> {
     assert!(res.is_success());
 
     let new_elections = res.into_result()?;
+    let class_metadata = ClassMetadata {
+        name: "I Voted SBT".to_string(),
+        symbol: None,
+        icon: None,
+        reference: None,
+        reference_hash: None,
+    };
 
     // call the migrate method
     let res = new_elections
         .call("migrate")
-        .args_json(json!({}))
+        .args_json(json!({ "class_metadata": class_metadata }))
         .max_gas()
         .transact()
         .await?;
     assert!(res.is_success(), "{:?}", res.receipt_failures());
 
-    let disqualified_candidates: Vec<AccountId> = new_elections
-        .call("disqualified_candidates")
+    let res: ClassMetadata = new_elections
+        .call("class_metadata")
         .args_json(json!({}))
         .max_gas()
         .transact()
         .await?
         .json()?;
 
-    assert_eq!(disqualified_candidates.len(), 0);
-
-    // add disqualified_candidates
-    let candidates_to_disqualify: Vec<AccountId> = vec![alice.id().clone(), bob.id().clone()];
-
-    let res = admin
-        .call(new_elections.id(), "admin_disqualify_candidates")
-        .args_json(json!({ "candidates": candidates_to_disqualify }))
-        .max_gas()
-        .transact()
-        .await?;
-    assert!(res.is_success(), "{:?}", res.receipt_failures());
-
-    let disqualified_candidates: Vec<AccountId> = new_elections
-        .call("disqualified_candidates")
-        .args_json(json!({}))
-        .max_gas()
-        .transact()
-        .await?
-        .json()?;
-
-    assert_eq!(disqualified_candidates, candidates_to_disqualify);
+    assert_eq!(res, class_metadata);
 
     Ok(())
 }

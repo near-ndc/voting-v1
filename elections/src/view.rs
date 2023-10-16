@@ -1,6 +1,7 @@
 
 
 use near_sdk::{env, near_bindgen, AccountId, Balance};
+use sbt::ClassMetadata;
 use uint::hex;
 
 use crate::{proposal::*, TokenId};
@@ -135,5 +136,9 @@ impl Contract {
             .unwrap_or_default()
             .into_iter()
             .collect()
+    }
+
+    pub fn class_metadata(&self) -> &ClassMetadata {
+        &self.class_metadata
     }
 }
