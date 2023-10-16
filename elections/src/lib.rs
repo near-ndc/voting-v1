@@ -5,8 +5,10 @@ use events::{emit_bond, emit_revoke_vote, emit_vote};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap};
 use near_sdk::json_types::U128;
-use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise, PromiseOrValue};
-use sbt::ClassMetadata;
+use near_sdk::{
+    env, near_bindgen, require, AccountId, Gas, PanicOnDefault, Promise, PromiseOrValue,
+};
+use sbt::{ClassId, ClassMetadata};
 
 mod constants;
 mod errors;
@@ -367,24 +369,33 @@ impl Contract {
         self.disqualified_candidates.set(&to_disqualify);
     }
 
-    /// Allows admin to mint SBT for any account
-    pub fn admin_mint_sbt(&mut self, recipient: AccountId) {
+    /// Allows admin to mint SBT to the given list of accounts.
+    pub fn admin_mint_sbt(&mut self, recipients: Vec<AccountId>, class: ClassId) {
         self.assert_admin();
+        let now = env::block_timestamp_ms();
+        let len = recipients.len();
+        let token_spec = recipients
+            .into_iter()
+            .map(|r| {
+                (
+                    r,
+                    vec![TokenMetadata {
+                        class,
+                        issued_at: Some(now),
+                        expires_at: None,
+                        reference: None,
+                        reference_hash: None,
+                    }],
+                )
+            })
+            .collect();
+
         ext_sbtreg::ext(self.sbt_registry.clone())
-            .with_static_gas(MINT_GAS)
-            .with_attached_deposit(MINT_COST)
-            .sbt_mint(vec![(
-                recipient,
-                vec![TokenMetadata {
-                    class: I_VOTED_SBT_CLASS,
-                    issued_at: Some(env::block_timestamp_ms()),
-                    expires_at: None,
-                    reference: None,
-                    reference_hash: None,
-                }],
-            )]);
+            .with_static_gas(Gas(10 * len as u64 * Gas::ONE_TERA.0))
+            .with_attached_deposit(9 * len as u128 * MILI_NEAR)
+            .sbt_mint(token_spec);
     }
-  
+
     pub fn admin_set_class_metadata(&mut self, class_metadata: ClassMetadata) {
         self.assert_admin();
         self.class_metadata = class_metadata;
@@ -1832,7 +1843,7 @@ mod unit_tests {
     #[should_panic(expected = "not an admin")]
     fn admin_mint_sbt_not_admin() {
         let (_, mut ctr) = setup(&alice());
-        ctr.admin_mint_sbt(candidate(1));
+        ctr.admin_mint_sbt(vec![candidate(1), candidate(2)], I_VOTED_SBT_CLASS);
     }
 
     #[test]
