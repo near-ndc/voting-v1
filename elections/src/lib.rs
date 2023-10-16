@@ -292,6 +292,7 @@ impl Contract {
                     }],
                 )])
         } else {
+            env::log_str("Didn't vote for all proposals. Skipping I Voted SBT mint.");
             Promise::new(caller.clone()).transfer(unbond_amount)
         }
     }

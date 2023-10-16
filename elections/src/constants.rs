@@ -10,7 +10,7 @@ pub const BOND_AMOUNT: Balance = 3 * ONE_NEAR;
 pub const GRAY_BOND_AMOUNT: Balance = 300 * ONE_NEAR;
 pub const MINT_COST: Balance = 10 * MILI_NEAR; // 0.01 NEAR
 
-pub const MINT_GAS: Gas = Gas(9 * Gas::ONE_TERA.0);
+pub const MINT_GAS: Gas = Gas(15 * Gas::ONE_TERA.0);
 pub const VOTE_GAS: Gas = Gas(110 * Gas::ONE_TERA.0);
 pub const VOTE_GAS_CALLBACK: Gas = Gas(10 * Gas::ONE_TERA.0);
 pub const REVOKE_VOTE_GAS_CALLBACK: Gas = Gas(5 * Gas::ONE_TERA.0);
