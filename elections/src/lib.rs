@@ -361,6 +361,24 @@ impl Contract {
         self.disqualified_candidates.set(&to_disqualify);
     }
 
+    /// Allows admin to mint SBT for any account
+    pub fn admin_mint_sbt(&mut self, recipient: AccountId) {
+        self.assert_admin();
+        ext_sbtreg::ext(self.sbt_registry.clone())
+            .with_static_gas(MINT_GAS)
+            .with_attached_deposit(MINT_COST)
+            .sbt_mint(vec![(
+                recipient,
+                vec![TokenMetadata {
+                    class: I_VOTED_SBT_CLASS,
+                    issued_at: None,
+                    expires_at: None,
+                    reference: None,
+                    reference_hash: None,
+                }],
+            )]);
+    }
+
     /*****************
      * PRIVATE
      ****************/
@@ -1781,5 +1799,12 @@ mod unit_tests {
             ctr.winners_by_proposal(prop_id, None),
             vec![candidate(6), candidate(4), candidate(1), candidate(5)]
         );
+    }
+
+    #[test]
+    #[should_panic(expected = "not an admin")]
+    fn admin_mint_sbt_not_admin() {
+        let (_, mut ctr) = setup(&alice());
+        ctr.admin_mint_sbt(candidate(1));
     }
 }

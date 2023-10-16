@@ -1,5 +1,3 @@
-
-
 use near_sdk::{env, near_bindgen, AccountId, Balance};
 use uint::hex;
 
