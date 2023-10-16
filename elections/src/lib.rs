@@ -285,7 +285,7 @@ impl Contract {
                     caller,
                     vec![TokenMetadata {
                         class: I_VOTED_SBT_CLASS,
-                        issued_at: None,
+                        issued_at: Some(env::block_timestamp_ms()),
                         expires_at: None,
                         reference: None,
                         reference_hash: None,
@@ -371,7 +371,7 @@ impl Contract {
                 recipient,
                 vec![TokenMetadata {
                     class: I_VOTED_SBT_CLASS,
-                    issued_at: None,
+                    issued_at: Some(env::block_timestamp_ms()),
                     expires_at: None,
                     reference: None,
                     reference_hash: None,
