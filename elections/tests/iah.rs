@@ -449,6 +449,31 @@ async fn sbt_mint_no_vote() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
+async fn admin_mint_voted_sbt() -> anyhow::Result<()> {
+    let worker = near_workspaces::sandbox().await?;
+    let setup = init(&worker).await?;
+
+    let res = setup
+        .admin
+        .call(setup.ndc_elections_contract.id(), "admin_mint_sbt")
+        .args_json(json!({"recipient": setup.alice.id()}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success(), "{:?}", res);
+
+    let sbt = verify_i_voted_sbt_tokens_by_owner(
+        setup.registry_contract.id(),
+        setup.ndc_elections_contract.id(),
+        setup.alice,
+    )
+    .await?;
+    assert!(sbt);
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn state_change() -> anyhow::Result<()> {
     let worker = near_workspaces::sandbox().await?;
     let setup = init(&worker).await?;
