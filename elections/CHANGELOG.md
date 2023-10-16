@@ -20,6 +20,10 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ## Unreleased
 
+## v1.0.6 (2023-10-16)
+
+- increase gas set to I Voted SBT mint call in the `unbond` method.
+
 ## v1.0.5 (2023-10-06)
 
 - `winners_by_proposal`: added optional boolean argument: `ongoing`. When set to true, it will return ongoing results, rather than an empty list.
