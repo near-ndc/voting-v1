@@ -466,7 +466,7 @@ async fn admin_mint_voted_sbt() -> anyhow::Result<()> {
         setup.alice,
     )
     .await?;
-    assert!(!sbt);
+    assert!(sbt);
 
     Ok(())
 }
