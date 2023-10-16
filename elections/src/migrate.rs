@@ -12,6 +12,7 @@ pub struct OldState {
     pub finish_time: u64,
     pub authority: AccountId,
     pub sbt_registry: AccountId,
+    pub disqualified_candidates: LazyOption<HashSet<AccountId>>,
 }
 
 #[near_bindgen]
@@ -19,10 +20,10 @@ impl Contract {
     #[private]
     #[init(ignore_state)]
     /* pub  */
-    pub fn migrate() -> Self {
+    pub fn migrate(class_metadata: sbt::ClassMetadata) -> Self {
         let old_state: OldState = env::state_read().expect("failed");
         // new field in the smart contract :
-        // + disqualified_candidates: LazyOption<HashSet<AccountId>>,
+        // + class_metadata: ClassMetadata,
 
         Self {
             pause: old_state.pause,
@@ -35,7 +36,8 @@ impl Contract {
             finish_time: old_state.finish_time,
             authority: old_state.authority,
             sbt_registry: old_state.sbt_registry,
-            disqualified_candidates: LazyOption::new(StorageKey::DisqualifiedCandidates, None),
+            disqualified_candidates: old_state.disqualified_candidates,
+            class_metadata,
         }
     }
 }
