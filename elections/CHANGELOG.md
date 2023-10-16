@@ -20,11 +20,17 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ## Unreleased
 
+
 ### Features
 
 - new field in the smart contract `class_metadata`
 - new method `admin_set_class_metadata`
 - new view `class_metadata`
+
+## v1.0.6 (2023-10-16)
+
+- increase gas set to I Voted SBT mint call in the `unbond` method.
+
 
 ## v1.0.5 (2023-10-06)
 

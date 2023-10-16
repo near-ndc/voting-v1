@@ -5,7 +5,7 @@ use common::finalize_storage_check;
 use events::*;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap};
-use near_sdk::json_types::U128;
+use near_sdk::json_types::{Base64VecU8, U128};
 use near_sdk::{
     env, near_bindgen, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseError,
     PromiseOrValue, PromiseResult,
@@ -31,6 +31,8 @@ use crate::storage::*;
 pub struct Contract {
     /// address of the community fund, where the excess of NEAR will be sent on dissolve and cleanup.
     pub community_fund: AccountId,
+    /// I Am Human registry
+    pub registry: AccountId,
 
     pub dissolved: bool,
     pub prop_counter: u32,
@@ -56,8 +58,6 @@ pub struct Contract {
     pub budget_cap: Balance,
     /// size (in yocto NEAR) of the big funding request
     pub big_funding_threshold: Balance,
-
-    pub registry: AccountId,
 }
 
 #[near_bindgen]
@@ -183,6 +183,8 @@ impl Contract {
         }
         let mut prop = self.assert_proposal(id);
 
+        self.assert_member_not_involved(&prop, &user)?;
+
         if !matches!(prop.status, ProposalStatus::InProgress) {
             return Err(VoteError::NotInProgress);
         }
@@ -270,6 +272,7 @@ impl Contract {
                     0,
                     EXECUTE_GAS,
                 );
+
                 return Ok(PromiseOrValue::Promise(
                     ban_promise.and(dismiss_promise).then(
                         ext_self::ext(env::current_account_id())
@@ -366,7 +369,8 @@ impl Contract {
         let (mut members, perms) = self.members.get().unwrap();
         let idx = members.binary_search(&member);
         if idx.is_err() {
-            return Err(HookError::NoMember);
+            // We need to return OK to allow to call this function multiple times to execute proposal which may compose other actions
+            return Ok(());
         }
         members.remove(idx.unwrap());
 
@@ -409,6 +413,36 @@ impl Contract {
         self.proposals.get(&id).expect("proposal does not exist")
     }
 
+    fn assert_member_not_involved(
+        &self,
+        prop: &Proposal,
+        user: &AccountId,
+    ) -> Result<(), VoteError> {
+        match &prop.kind {
+            PropKind::DismissAndBan { member, house: _ } => {
+                if member == user {
+                    return Err(VoteError::NoSelfVote);
+                }
+            }
+            PropKind::FunctionCall {
+                receiver_id: _,
+                actions,
+            } => {
+                for action in actions {
+                    if &action.method_name == "dismiss_hook" {
+                        let encoded =
+                            Base64VecU8(json!({ "member": user }).to_string().as_bytes().to_vec());
+                        if encoded == action.args {
+                            return Err(VoteError::NoSelfVote);
+                        }
+                    }
+                }
+            }
+            _ => (),
+        }
+        Ok(())
+    }
+
     fn assert_active(&self) {
         near_sdk::require!(!self.dissolved, "dao is dissolved");
         near_sdk::require!(
@@ -446,7 +480,7 @@ impl Contract {
         );
         match env::promise_result(0) {
             PromiseResult::NotReady => unreachable!(),
-            PromiseResult::Successful(_) => (),
+            PromiseResult::Successful(_) => {}
             PromiseResult::Failed => {
                 let mut prop = self.assert_proposal(prop_id);
                 self.budget_spent -= budget.0;
@@ -481,7 +515,7 @@ mod unit_tests {
     };
 
     use crate::{view::MembersOutput, *};
-    use near_sdk::json_types::U128;
+    use near_sdk::json_types::{U128, U64};
 
     /// 1ms in nano seconds
     const MSECOND: u64 = 1_000_000;
@@ -1027,12 +1061,10 @@ mod unit_tests {
         ctx.predecessor_account_id = voting_body();
         testing_env!(ctx.clone());
 
-        match ctr.dismiss_hook(acc(10)) {
-            Err(HookError::NoMember) => (),
-            x => panic!("expected NoMember, got: {:?}", x),
-        }
+        assert_eq!(ctr.dismiss_hook(acc(10)), Ok(()));
 
         ctr.dismiss_hook(acc(2)).unwrap();
+
         let expected = r#"EVENT_JSON:{"standard":"ndc-congress","version":"1.0.0","event":"dismiss","data":{"member":"user-2.near"}}"#;
         assert_eq!(vec![expected], get_logs());
 
@@ -1105,7 +1137,7 @@ mod unit_tests {
         ctr = vote(
             ctx.clone(),
             ctr,
-            [acc(1), acc(2), acc(3)].to_vec(),
+            [acc(4), acc(2), acc(3)].to_vec(),
             motion_rem_ban,
         );
         let mut prop = ctr.get_proposal(motion_rem_ban).unwrap();
@@ -1133,5 +1165,55 @@ mod unit_tests {
         ctr.on_ban_dismiss(Ok(()), Result::Err(PromiseError::Failed), motion_rem_ban);
         prop = ctr.get_proposal(motion_rem_ban).unwrap();
         assert_eq!(prop.proposal.status, ProposalStatus::Failed);
+    }
+
+    #[test]
+    fn dismiss_ban_vote_against() {
+        let (mut ctx, mut ctr, _) = setup_ctr(100);
+        let prop = ctr
+            .create_proposal(
+                PropKind::DismissAndBan {
+                    member: acc(1),
+                    house: coa(),
+                },
+                "Motion to remove member and ban".to_string(),
+            )
+            .unwrap();
+
+        ctx.predecessor_account_id = acc(1);
+        testing_env!(ctx.clone());
+        match ctr.vote(prop, Vote::Approve) {
+            Err(VoteError::NoSelfVote) => (),
+            x => panic!("expected NotAllowedAgainst, got: {:?}", x),
+        }
+    }
+
+    #[test]
+    fn dismiss_vote_against() {
+        let (mut ctx, mut ctr, _) = setup_ctr(100);
+        let prop = ctr
+            .create_proposal(
+                PropKind::FunctionCall {
+                    receiver_id: coa(),
+                    actions: [ActionCall {
+                        method_name: "dismiss_hook".to_string(),
+                        args: Base64VecU8(
+                            json!({ "member": acc(2) }).to_string().as_bytes().to_vec(),
+                        ),
+                        deposit: U128(0),
+                        gas: U64(0),
+                    }]
+                    .to_vec(),
+                },
+                "Proposal to remove member".to_string(),
+            )
+            .unwrap();
+
+        ctx.predecessor_account_id = acc(2);
+        testing_env!(ctx.clone());
+        match ctr.vote(prop, Vote::Approve) {
+            Err(VoteError::NoSelfVote) => (),
+            x => panic!("expected NotAllowedAgainst, got: {:?}", x),
+        }
     }
 }

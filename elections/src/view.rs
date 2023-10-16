@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+
 
 use near_sdk::{env, near_bindgen, AccountId, Balance};
 use sbt::ClassMetadata;
@@ -133,7 +133,7 @@ impl Contract {
     pub fn disqualified_candidates(&self) -> Vec<AccountId> {
         self.disqualified_candidates
             .get()
-            .unwrap_or(HashSet::new())
+            .unwrap_or_default()
             .into_iter()
             .collect()
     }

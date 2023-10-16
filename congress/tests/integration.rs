@@ -220,7 +220,7 @@ async fn full_prop_flow() -> anyhow::Result<()> {
     .await?;
 
     // fast forward to after cooldown
-    worker.fast_forward(50).await?;
+    worker.fast_forward(100).await?;
 
     let res = setup
         .bob
@@ -420,6 +420,146 @@ async fn tc_ban_and_dismiss() -> anyhow::Result<()> {
         .json::<Option<AccountFlag>>()?;
 
     assert_eq!(res, Some(AccountFlag::GovBan));
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn tc_ban_and_dismiss_fail_cases() -> anyhow::Result<()> {
+    let worker = near_workspaces::sandbox().await?;
+    let setup = init(&worker).await?;
+
+    let res2 = setup
+        .alice
+        .call(setup.tc_contract.id(), "create_proposal")
+        .args_json(json!({
+            "kind": PropKind::DismissAndBan { member: to_near_account(setup.alice.id()), house:  to_near_account(setup.coa_contract.id())
+            },
+            "description": "Dismiss and ban alice".to_string()
+        }))
+        .max_gas()
+        .deposit(parse_near!("0.01 N"))
+        .transact();
+    let proposal_id: u32 = res2.await?.json()?;
+
+    // remove tc as flagger
+    let res = setup
+        .admin
+        .call(
+            setup.registry_contract.id(),
+            "admin_set_authorized_flaggers",
+        )
+        .args_json(json!({
+        "authorized_flaggers": [],
+        }))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success());
+
+    vote(
+        vec![setup.john.clone(), setup.alice.clone()],
+        &setup.tc_contract,
+        proposal_id,
+    )
+    .await?;
+
+    // after removal less members
+    let members = setup
+        .alice
+        .call(setup.coa_contract.id(), "get_members")
+        .view()
+        .await?
+        .json::<MembersOutput>()?;
+
+    let mut expected = vec![
+        to_near_account(setup.bob.id()),
+        to_near_account(setup.john.id()),
+    ];
+    expected.sort();
+    assert_eq!(members.members, expected);
+
+    // verify
+    // admin flag
+    let res = setup
+        .alice
+        .call(setup.registry_contract.id(), "account_flagged")
+        .args_json(json!({"account": to_near_account(setup.alice.id())}))
+        .view()
+        .await?
+        .json::<Option<AccountFlag>>()?;
+
+    assert_eq!(res, None);
+
+    let proposal = setup
+        .alice
+        .call(setup.tc_contract.id(), "get_proposal")
+        .args_json(json!({ "id": proposal_id }))
+        .view()
+        .await?
+        .json::<Option<ProposalOutput>>()?;
+    assert_eq!(proposal.unwrap().proposal.status, ProposalStatus::Failed);
+
+    // execute after adding flagger again
+    // remove tc as flagger
+    let res = setup
+        .admin
+        .call(
+            setup.registry_contract.id(),
+            "admin_set_authorized_flaggers",
+        )
+        .args_json(json!({
+        "authorized_flaggers": [setup.tc_contract.id()],
+        }))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success());
+
+    let res = setup
+        .bob
+        .call(setup.tc_contract.id(), "execute")
+        .args_json(json!({"id": proposal_id,}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success(), "{:?}", res);
+
+    // no dismiss(already succeeded)
+    let members = setup
+        .alice
+        .call(setup.coa_contract.id(), "get_members")
+        .view()
+        .await?
+        .json::<MembersOutput>()?;
+
+    let mut expected = vec![
+        to_near_account(setup.bob.id()),
+        to_near_account(setup.john.id()),
+    ];
+    expected.sort();
+    assert_eq!(members.members, expected);
+
+    // verify
+    // admin flag
+    let res = setup
+        .alice
+        .call(setup.registry_contract.id(), "account_flagged")
+        .args_json(json!({"account": to_near_account(setup.alice.id())}))
+        .view()
+        .await?
+        .json::<Option<AccountFlag>>()?;
+
+    assert_eq!(res, Some(AccountFlag::GovBan));
+
+    let proposal = setup
+        .alice
+        .call(setup.tc_contract.id(), "get_proposal")
+        .args_json(json!({ "id": proposal_id }))
+        .view()
+        .await?
+        .json::<Option<ProposalOutput>>()?;
+    assert_eq!(proposal.unwrap().proposal.status, ProposalStatus::Executed);
 
     Ok(())
 }
