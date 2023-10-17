@@ -6,8 +6,8 @@ use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::LookupMap;
 use near_sdk::json_types::U128;
 use near_sdk::{
-    env, near_bindgen, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseError,
-    PromiseOrValue, PromiseResult,
+    env, near_bindgen, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseOrValue,
+    PromiseResult,
 };
 
 mod constants;
@@ -91,7 +91,6 @@ impl Contract {
         kind: PropKind,
         description: String,
     ) -> Result<u32, CreatePropError> {
-        self.assert_active();
         let storage_start = env::storage_usage();
         let user = env::predecessor_account_id();
 
@@ -129,7 +128,6 @@ impl Contract {
     #[handle_result]
     // TODO: must be called via iah_call
     pub fn vote(&mut self, id: u32, vote: Vote) -> Result<(), VoteError> {
-        self.assert_active();
         let user = env::predecessor_account_id();
         let mut prop = self.assert_proposal(id);
 
@@ -168,7 +166,6 @@ impl Contract {
     /// (submission_time + voting_duration + cooldown).
     #[handle_result]
     pub fn execute(&mut self, id: u32) -> Result<PromiseOrValue<()>, ExecError> {
-        self.assert_active();
         let mut prop = self.assert_proposal(id);
         if !matches!(
             prop.status,
@@ -226,14 +223,6 @@ impl Contract {
 
     fn assert_proposal(&self, id: u32) -> Proposal {
         self.proposals.get(&id).expect("proposal does not exist")
-    }
-
-    fn assert_active(&self) {
-        near_sdk::require!(!self.dissolved, "dao is dissolved");
-        near_sdk::require!(
-            env::block_timestamp_ms() <= self.end_time,
-            "dao term is over, call dissolve_hook!"
-        );
     }
 
     #[private]

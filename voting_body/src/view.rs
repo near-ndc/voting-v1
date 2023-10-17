@@ -15,15 +15,6 @@ pub struct ProposalOutput {
     pub proposal: Proposal,
 }
 
-#[derive(Serialize)]
-#[cfg_attr(test, derive(Debug, PartialEq))]
-#[serde(crate = "near_sdk::serde")]
-pub struct MembersOutput {
-    /// Id of the proposal.
-    pub members: Vec<AccountId>,
-    pub permissions: Vec<PropPerm>,
-}
-
 #[near_bindgen]
 impl Contract {
     /**********
@@ -51,39 +42,5 @@ impl Contract {
 
     pub fn number_of_proposals(&self) -> u32 {
         self.prop_counter
-    }
-
-    pub fn is_dissolved(&self) -> bool {
-        self.dissolved
-    }
-
-    /// Returns all members with permissions
-    pub fn get_members(&self) -> MembersOutput {
-        let (members, permissions) = self.members.get().unwrap();
-        MembersOutput {
-            members,
-            permissions,
-        }
-    }
-
-    /// Returns permissions of a given member.
-    /// Returns empty vector (`[]`) if not a member.
-    pub fn member_permissions(&self, member: AccountId) -> Vec<PropPerm> {
-        let (members, perms) = self.members.get().unwrap();
-        if members.binary_search(&member).is_ok() {
-            return perms;
-        }
-        vec![]
-    }
-
-    /// Returns hook permissions for given account
-    /// Returns empty vector `[]` if not a hook.
-    pub fn hook_permissions(&self, user: AccountId) -> Vec<HookPerm> {
-        let hooks = self.hook_auth.get().unwrap();
-        let res = hooks.get(&user).cloned();
-        if res.is_none() {
-            return vec![];
-        }
-        res.unwrap()
     }
 }
