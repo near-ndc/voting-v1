@@ -1217,4 +1217,12 @@ mod unit_tests {
             x => panic!("expected NotAllowedAgainst, got: {:?}", x),
         }
     }
+
+    #[test]
+    fn abstain_vote() {
+        let (_, mut ctr, id) = setup_ctr(100);
+        ctr.vote(id, Vote::Abstain).unwrap();
+        let prop = ctr.get_proposal(id).unwrap();
+        assert_eq!(prop.proposal.abstain, 1);
+    }
 }
