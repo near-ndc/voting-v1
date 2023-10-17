@@ -1,168 +1,168 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::LookupMap;
+use near_sdk::json_types::{Base64VecU8, U128, U64};
 use near_sdk::serde::{Deserialize, Serialize};
-use near_sdk::{env, require, AccountId};
+use near_sdk::{env, AccountId};
 
-use crate::consent::Consent;
-use crate::constants::*;
-use uint::hex;
+use std::collections::HashMap;
 
-#[derive(Serialize, Deserialize, BorshDeserialize, BorshSerialize)]
-#[serde(crate = "near_sdk::serde")]
-pub enum PropType {
-    Constitution,
-    HouseDismiss(HouseType),
-    // TODO: consider TextProposal
+use crate::VoteError;
+
+/// Consent sets the conditions for vote to pass. It specifies a quorum (minimum amount of
+/// accounts that have to vote) and the approval threshold for a proposal to pass.
+pub enum Consent {
+    // quorum=(7% of the voting body) AND #approve > 50% * (#approve + #reject + #spam)
+    Simple,
+    // quorum=(12% of the voting body) AND #approve > 60% * (#approve + #reject + #spam)
+    Super,
 }
 
-#[derive(Serialize, Deserialize, BorshDeserialize, BorshSerialize)]
+/// Proposals that are sent to this DAO.
+#[derive(BorshSerialize, BorshDeserialize, Serialize)]
 #[serde(crate = "near_sdk::serde")]
-pub enum HouseType {
-    HouseOfMerit,
-    CouncilOfAdvisors,
-    TransparencyCommission,
-}
-
-/// Simple vote: user uses his all power to vote for a single option.
-#[derive(Serialize, Deserialize, BorshDeserialize, BorshSerialize, PartialEq)]
-#[serde(crate = "near_sdk::serde")]
-pub enum Vote {
-    Abstain,
-    Yes,
-    No,
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(crate = "near_sdk::serde")]
-pub enum Result {
-    Ongoing,
-    Yes,
-    No,
-}
-
-#[derive(BorshDeserialize, BorshSerialize)]
+#[cfg_attr(
+    not(target_arch = "wasm32"),
+    derive(Deserialize, Debug, PartialEq, Clone)
+)]
 pub struct Proposal {
-    pub prop_type: PropType,
-    pub title: String,
-    pub ref_link: String,
-    pub ref_hash: Vec<u8>,
-    pub votes: LookupMap<AccountId, Vote>,
-    pub yes: u64,
-    pub no: u64,
-    pub abstain: u64,
-    /// start of voting as Unix timestamp (in seconds)
-    pub start: u64,
-    /// end of voting as Unix timestamp (in seconds)
-    pub end: u64,
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(crate = "near_sdk::serde")]
-pub struct ProposalView {
-    pub result: Result,
-    pub yes: u64,
-    pub no: u64,
-    pub abstain: u64,
-    /// start of voting as Unix timestamp (in seconds)
-    pub start: u64,
-    /// end of voting as Unix timestamp (in seconds)
-    pub end: u64,
-    title: String,
-    ref_link: String,
-    ref_hash: String,
+    /// Original proposer.
+    pub proposer: AccountId,
+    /// Description of this proposal.
+    pub description: String,
+    /// Kind of proposal with relevant information.
+    pub kind: PropKind,
+    /// Current status of the proposal.
+    pub status: ProposalStatus,
+    pub approve: u32,
+    pub reject: u32,
+    pub spam: u32,
+    pub abstain: u32,
+    /// Map of who voted and how.
+    // TODO: must not be a hashmap
+    pub votes: HashMap<AccountId, Vote>,
+    /// Submission time (for voting period).
+    pub submission_time: u64,
+    /// Unix time in miliseconds when the proposal reached approval threshold. `None` if it is not approved.
+    pub approved_at: Option<u64>,
 }
 
 impl Proposal {
-    pub fn new(
-        prop_type: PropType,
-        prop_id: u32,
-        start: u64,
-        end: u64,
-        title: String,
-        ref_link: String,
-        ref_hash: String,
-    ) -> Self {
-        require!(
-            10 <= title.len() && title.len() <= 250,
-            "title length must be between 10 and 250 bytes"
-        );
-        require!(
-            6 <= ref_link.len() && ref_link.len() <= 120,
-            "ref_link length must be between 6 and 120 bytes"
-        );
-        require!(ref_hash.len() == 64, "ref_hash length must be 64 hex");
-        let ref_hash = hex::decode(ref_hash).expect("ref_hash must be a proper hex string");
-        Self {
-            prop_type,
-            title,
-            ref_link,
-            ref_hash,
-            votes: LookupMap::new(crate::StorageKey::ProposalVotes(prop_id)),
-            yes: 0,
-            no: 0,
-            abstain: 0,
-            start,
-            end,
+    pub fn add_vote(
+        &mut self,
+        user: AccountId,
+        vote: Vote,
+        threshold: u32,
+        //TODO: quorum
+    ) -> Result<(), VoteError> {
+        if self.votes.contains_key(&user) {
+            return Err(VoteError::DoubleVote);
         }
-    }
-
-    pub fn compute_result(&self, c: &Consent) -> Result {
-        if self.end <= env::block_timestamp() / SECOND {
-            return Result::Ongoing;
-        }
-        let yesno = self.yes + self.no;
-        if yesno + self.abstain >= c.quorum && self.yes > (yesno * c.threshold as u64 / 100) {
-            Result::Yes
-        } else {
-            Result::No
-        }
-    }
-
-    pub fn to_view(&self, c: &Consent) -> ProposalView {
-        ProposalView {
-            result: self.compute_result(c),
-            yes: self.yes,
-            no: self.no,
-            abstain: self.abstain,
-            start: self.start,
-            end: self.end,
-            title: self.title.clone(),
-            ref_link: self.ref_link.clone(),
-            ref_hash: hex::encode(&self.ref_hash),
-        }
-    }
-
-    pub fn assert_active(&self) {
-        let now = env::block_timestamp() / SECOND;
-        require!(
-            self.start <= now && now <= self.end,
-            "can only vote between proposal start and end time"
-        )
-    }
-
-    /// once vote proof has been verify, we call this function to register a vote.
-    /// User can vote multiple times, as long as the vote is active. Subsequent
-    /// calls will overwrite previous votes.
-    pub fn vote_on_verified(&mut self, user: &AccountId, vote: Vote) {
-        self.assert_active();
-
-        // TODO: save Aggregated Vote to make sure we handle vote overwrite correctly
-        if let Some(previous) = self.votes.get(user) {
-            if previous == vote {
-                return;
-            }
-            match previous {
-                Vote::No => self.no -= 1,
-                Vote::Yes => self.no -= 1,
-                Vote::Abstain => self.abstain -= 1,
-            }
-        }
-
-        self.votes.insert(user, &vote);
         match vote {
-            Vote::No => self.no += 1,
-            Vote::Yes => self.no += 1,
-            Vote::Abstain => self.abstain += 1,
+            Vote::Approve => {
+                self.approve += 1;
+                if self.approve >= threshold {
+                    self.status = ProposalStatus::Approved;
+                    self.approved_at = Some(env::block_timestamp_ms());
+                }
+            }
+            Vote::Reject => {
+                self.reject += 1;
+                if self.reject + self.spam >= threshold {
+                    self.status = ProposalStatus::Spam;
+                } else {
+                    self.status = ProposalStatus::Rejected;
+                }
+            }
+            Vote::Abstain => {
+                self.abstain += 1;
+                // TODO
+            }
+            Vote::Spam => {
+                self.spam += 1;
+                if self.reject + self.spam >= threshold && self.spam > self.reject {
+                    self.status = ProposalStatus::Spam;
+                } else {
+                    self.status = ProposalStatus::Rejected;
+                }
+            }
+        }
+        self.votes.insert(user, vote);
+        Ok(())
+    }
+}
+
+/// Kinds of proposals, doing different action.
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Clone))]
+#[serde(crate = "near_sdk::serde")]
+pub enum PropKind {
+    /// Calls `receiver_id` with list of method names in a single promise.
+    /// Allows this contract to execute any arbitrary set of actions in other contracts.
+    FunctionCall {
+        receiver_id: AccountId,
+        actions: Vec<ActionCall>,
+    },
+    /// A default, text based proposal.
+    /// NewBudget, UpdateBudget are modelled using Text.
+    // NOTE: In Sputnik, this variant kind is called `Vote`
+    Text,
+}
+
+// TODO: we need to finalize how Consent should be assigned
+impl PropKind {
+    pub fn consent(&self) -> Consent {
+        match self {
+            PropKind::FunctionCall { .. } => Consent::Simple,
+            PropKind::Text { .. } => Consent::Super,
         }
     }
+
+    /// name of the kind
+    pub fn to_name(&self) -> String {
+        match self {
+            PropKind::FunctionCall { .. } => "function-call".to_string(),
+            PropKind::Text { .. } => "text".to_string(),
+        }
+    }
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq)]
+#[serde(crate = "near_sdk::serde")]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Clone))]
+pub enum ProposalStatus {
+    InProgress,
+    Approved,
+    Rejected,
+    /// Spam is a tempral status when set when the proposal reached spam threshold and will be
+    /// removed.
+    Spam,
+    Executed,
+    /// If proposal has failed when executing. Allowed to re-finalize again to either expire or
+    /// approved.
+    Failed,
+    Vetoed,
+}
+
+/// Votes recorded in the proposal.
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Clone, Debug, PartialEq))]
+#[serde(crate = "near_sdk::serde")]
+pub enum Vote {
+    Approve = 0x0,
+    Reject = 0x1,
+    /// Spam vote indicates that the proposal creates a spam, must be removed and the bond
+    /// slashed.
+    Spam = 0x2,
+    Abstain = 0x3,
+    // note: we don't have Remove
+}
+
+/// Function call arguments.
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Clone))]
+#[serde(crate = "near_sdk::serde")]
+pub struct ActionCall {
+    pub method_name: String,
+    pub args: Base64VecU8,
+    pub deposit: U128,
+    pub gas: U64,
 }

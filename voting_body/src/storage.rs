@@ -5,5 +5,4 @@ use near_sdk::BorshStorageKey;
 #[derive(BorshSerialize, BorshStorageKey)]
 pub enum StorageKey {
     Proposals,
-    ProposalVotes(u32),
 }
