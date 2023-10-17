@@ -254,21 +254,6 @@ impl Contract {
             }
         };
     }
-
-    #[private]
-    pub fn on_ban_dismiss(
-        &mut self,
-        #[callback_result] ban_result: Result<(), PromiseError>,
-        #[callback_result] dismiss_result: Result<(), PromiseError>,
-        prop_id: u32,
-    ) {
-        if ban_result.is_err() || dismiss_result.is_err() {
-            let mut prop = self.assert_proposal(prop_id);
-            prop.status = ProposalStatus::Failed;
-            self.proposals.insert(&prop_id, &prop);
-            emit_executed(prop_id);
-        }
-    }
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
