@@ -158,6 +158,7 @@ impl Contract {
                 status: ProposalStatus::InProgress,
                 approve: 0,
                 reject: 0,
+                abstain: 0,
                 votes: HashMap::new(),
                 submission_time: now,
                 approved_at: None,
