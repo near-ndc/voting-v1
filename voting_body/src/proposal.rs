@@ -16,7 +16,7 @@ pub enum Consent {
     Super,
 }
 
-/// Proposal that are sent to this DAO.
+/// Proposals that are sent to this DAO.
 #[derive(BorshSerialize, BorshDeserialize, Serialize)]
 #[serde(crate = "near_sdk::serde")]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Deserialize, Debug, PartialEq))]
@@ -145,7 +145,7 @@ pub enum ProposalStatus {
 pub enum Vote {
     Approve = 0x0,
     Reject = 0x1,
-    /// Spam vote indicates that the proposals creates spam, must be removed and the bond
+    /// Spam vote indicates that the proposal creates a spam, must be removed and the bond
     /// slashed.
     Spam = 0x2,
     Abstain = 0x3,

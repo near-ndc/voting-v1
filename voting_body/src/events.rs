@@ -42,7 +42,7 @@ pub(crate) fn emit_executed(prop_id: u32) {
     });
 }
 
-/// spam event is emitted when a proopsal is marked as spam, removed and bond is slashed.
+/// spam event is emitted when a proposal is marked as spam, removed and bond is slashed.
 pub(crate) fn emit_spam(prop_id: u32) {
     emit_event(EventPayload {
         event: "spam",
