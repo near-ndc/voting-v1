@@ -19,7 +19,10 @@ pub enum Consent {
 /// Proposals that are sent to this DAO.
 #[derive(BorshSerialize, BorshDeserialize, Serialize)]
 #[serde(crate = "near_sdk::serde")]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Deserialize, Debug, PartialEq))]
+#[cfg_attr(
+    not(target_arch = "wasm32"),
+    derive(Deserialize, Debug, PartialEq, Clone)
+)]
 pub struct Proposal {
     /// Original proposer.
     pub proposer: AccountId,
@@ -29,10 +32,10 @@ pub struct Proposal {
     pub kind: PropKind,
     /// Current status of the proposal.
     pub status: ProposalStatus,
-    pub approve: u64,
-    pub reject: u64,
-    pub spam: u64,
-    pub abstain: u64,
+    pub approve: u32,
+    pub reject: u32,
+    pub spam: u32,
+    pub abstain: u32,
     /// Map of who voted and how.
     // TODO: must not be a hashmap
     pub votes: HashMap<AccountId, Vote>,
@@ -47,7 +50,7 @@ impl Proposal {
         &mut self,
         user: AccountId,
         vote: Vote,
-        threshold: u64,
+        threshold: u32,
         //TODO: quorum
     ) -> Result<(), VoteError> {
         if self.votes.contains_key(&user) {
@@ -88,7 +91,8 @@ impl Proposal {
 }
 
 /// Kinds of proposals, doing different action.
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Clone))]
 #[serde(crate = "near_sdk::serde")]
 pub enum PropKind {
     /// Calls `receiver_id` with list of method names in a single promise.
@@ -123,7 +127,7 @@ impl PropKind {
 
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq)]
 #[serde(crate = "near_sdk::serde")]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Clone))]
 pub enum ProposalStatus {
     InProgress,
     Approved,
@@ -153,7 +157,8 @@ pub enum Vote {
 }
 
 /// Function call arguments.
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Clone))]
 #[serde(crate = "near_sdk::serde")]
 pub struct ActionCall {
     pub method_name: String,

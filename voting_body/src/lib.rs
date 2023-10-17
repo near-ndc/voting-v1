@@ -34,14 +34,13 @@ pub struct Contract {
     /// spam.
     pub bond: Balance,
     /// minimum amount of members to approve the proposal
-    pub threshold: u64,
+    /// u32 can hold a number up to 4.2 B. That is enough for many future iterations.
+    pub threshold: u32,
 
     /// all times below are in miliseconds
     pub end_time: u64,
     pub voting_duration: u64,
 
-    /// address of the community fund, where the excess of NEAR will be sent on dissolve and cleanup.
-    pub community_fund: AccountId,
     pub iah_registry: AccountId,
 }
 
@@ -51,10 +50,10 @@ impl Contract {
     /// * hook_auth : map of accounts authorized to call hooks
     pub fn new(
         end_time: u64,
-        cooldown: u64,
         voting_duration: u64,
-        community_fund: AccountId,
         iah_registry: AccountId,
+        // TODO: make sure the threshold is calculate properly
+        threshold: u32,
         bond: U128,
     ) -> Self {
         Self {
@@ -62,10 +61,9 @@ impl Contract {
             proposals: LookupMap::new(StorageKey::Proposals),
             end_time,
             voting_duration,
-            community_fund,
             iah_registry,
             bond: bond.0,
-            threshold: 1, // TODO, need to add dynamic quorum and threshold
+            threshold, // TODO, need to add dynamic quorum and threshold
         }
     }
 
@@ -95,7 +93,6 @@ impl Contract {
         let user = env::predecessor_account_id();
 
         let now = env::block_timestamp_ms();
-        let mut new_budget = 0;
 
         self.prop_counter += 1;
         emit_prop_created(self.prop_counter, &kind);
@@ -139,13 +136,14 @@ impl Contract {
         }
 
         prop.add_vote(user, vote, self.threshold)?;
-        self.proposals.insert(&id, &prop);
 
         if prop.status == ProposalStatus::Spam {
             self.proposals.remove(&id);
             emit_spam(id);
             // TODO: slash bonds
             return Ok(());
+        } else {
+            self.proposals.insert(&id, &prop);
         }
 
         emit_vote(id);
@@ -162,8 +160,6 @@ impl Contract {
     }
 
     /// Allows anyone to execute proposal.
-    /// If `contract.cooldown` is set, then a proposal can be only executed after the cooldown:
-    /// (submission_time + voting_duration + cooldown).
     #[handle_result]
     pub fn execute(&mut self, id: u32) -> Result<PromiseOrValue<()>, ExecError> {
         let mut prop = self.assert_proposal(id);
@@ -247,12 +243,9 @@ impl Contract {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod unit_tests {
-    use near_sdk::{
-        test_utils::{get_logs, VMContextBuilder},
-        testing_env, VMContext,
-    };
+    use near_sdk::{test_utils::VMContextBuilder, testing_env, VMContext, ONE_NEAR};
 
-    use crate::{view::MembersOutput, *};
+    use crate::*;
 
     /// 1ms in nano seconds
     const MSECOND: u64 = 1_000_000;
@@ -261,61 +254,26 @@ mod unit_tests {
     const START: u64 = 60 * 5 * 1000;
     const TERM: u64 = 60 * 15 * 1000;
     const VOTING_DURATION: u64 = 60 * 5 * 1000;
-    const COOLDOWN_DURATION: u64 = 60 * 5 * 1000;
+    const BOND: u128 = ONE_NEAR * 10;
 
     fn acc(idx: u8) -> AccountId {
         AccountId::new_unchecked(format!("user-{}.near", idx))
-    }
-
-    fn community_fund() -> AccountId {
-        AccountId::new_unchecked("community-fund.near".to_string())
-    }
-
-    fn voting_body() -> AccountId {
-        AccountId::new_unchecked("voting-body.near".to_string())
     }
 
     fn coa() -> AccountId {
         AccountId::new_unchecked("coa.near".to_string())
     }
 
-    fn registry() -> AccountId {
+    fn iah_registry() -> AccountId {
         AccountId::new_unchecked("registry.near".to_string())
     }
 
+    /// creates a test contract with proposal threshold=3
     fn setup_ctr(attach_deposit: u128) -> (VMContext, Contract, u32) {
         let mut context = VMContextBuilder::new().build();
         let end_time = START + TERM;
-        let mut hook_perms = HashMap::new();
-        hook_perms.insert(coa(), vec![HookPerm::VetoAll]);
-        hook_perms.insert(
-            voting_body(),
-            vec![
-                HookPerm::Dismiss,
-                HookPerm::Dissolve,
-                HookPerm::VetoBigOrReccurentFundingReq,
-            ],
-        );
 
-        let mut contract = Contract::new(
-            community_fund(),
-            START,
-            end_time,
-            COOLDOWN_DURATION,
-            VOTING_DURATION,
-            vec![acc(1), acc(2), acc(3), acc(4)],
-            vec![
-                PropPerm::Text,
-                PropPerm::RecurrentFundingRequest,
-                PropPerm::FundingRequest,
-                PropPerm::FunctionCall,
-                PropPerm::DismissAndBan,
-            ],
-            hook_perms,
-            U128(10000),
-            U128(1000),
-            registry(),
-        );
+        let mut contract = Contract::new(end_time, VOTING_DURATION, iah_registry(), 3, U128(BOND));
         context.block_timestamp = START * MSECOND;
         context.predecessor_account_id = acc(1);
         context.attached_deposit = attach_deposit * MILI_NEAR;
@@ -327,49 +285,32 @@ mod unit_tests {
         (context, contract, id)
     }
 
-    fn vote(mut ctx: VMContext, mut ctr: Contract, accounts: Vec<AccountId>, id: u32) -> Contract {
+    fn vote(mut ctx: VMContext, ctr: &mut Contract, accounts: Vec<AccountId>, id: u32) {
         for account in accounts {
             ctx.predecessor_account_id = account;
             testing_env!(ctx.clone());
             let res = ctr.vote(id, Vote::Approve);
-            assert!(res.is_ok());
+            assert_eq!(res, Ok(()));
         }
-        ctr
-    }
-
-    fn assert_hook_not_auth(res: Result<(), HookError>) {
-        assert!(
-            matches!(res, Err(HookError::NotAuthorized)),
-            "got: {:?}",
-            res
-        );
-    }
-
-    fn assert_create_prop_not_allowed(res: Result<u32, CreatePropError>) {
-        assert!(
-            matches!(res, Err(CreatePropError::KindNotAllowed)),
-            "got: {:?}",
-            res
-        );
     }
 
     #[test]
     fn basic_flow() {
         let (mut ctx, mut ctr, id) = setup_ctr(100);
-        let mut prop = ctr.get_proposal(id);
-        assert!(prop.is_some());
-        assert_eq!(prop.unwrap().proposal.status, ProposalStatus::InProgress);
+        let mut prop = ctr.get_proposal(id).unwrap();
+        assert_eq!(prop.proposal.status, ProposalStatus::InProgress);
 
         assert_eq!(ctr.number_of_proposals(), 1);
 
         // check `get_proposals` query
-        let res = ctr.get_proposals(0, 10);
-        assert_eq!(res, vec![ctr.get_proposal(id).unwrap()]);
-        ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
+        assert_eq!(ctr.get_proposals(1, 10), vec![prop.clone()]);
+        assert_eq!(ctr.get_proposals(0, 10), vec![prop.clone()]);
+        assert_eq!(ctr.get_proposals(2, 10), vec![]);
 
-        prop = ctr.get_proposal(id);
-        assert!(prop.is_some());
-        assert_eq!(prop.unwrap().proposal.status, ProposalStatus::Approved);
+        vote(ctx.clone(), &mut ctr, vec![acc(1), acc(2), acc(3)], id);
+
+        prop = ctr.get_proposal(id).unwrap();
+        assert_eq!(prop.proposal.status, ProposalStatus::Approved);
 
         ctx.predecessor_account_id = acc(4);
         testing_env!(ctx.clone());
@@ -377,43 +318,44 @@ mod unit_tests {
             Err(VoteError::NotInProgress) => (),
             x => panic!("expected NotInProgress, got: {:?}", x),
         }
-        //let (mut ctx, mut contract, id) = setup_ctr(100);
+
+        //
+        // Create a new proposal
         let id = ctr
             .create_proposal(PropKind::Text, "proposal".to_owned())
             .unwrap();
 
-        let res = ctr.vote(id, Vote::Approve);
-        assert!(res.is_ok());
+        assert_eq!(ctr.vote(id, Vote::Approve), Ok(()));
 
         match ctr.vote(id, Vote::Approve) {
             Err(VoteError::DoubleVote) => (),
             x => panic!("expected DoubleVoted, got: {:?}", x),
         }
 
-        ctx.block_timestamp = (ctr.start_time + ctr.voting_duration + 1) * MSECOND;
+        ctx.block_timestamp = (START + ctr.voting_duration + 1) * MSECOND;
         testing_env!(ctx.clone());
         match ctr.vote(id, Vote::Approve) {
             Err(VoteError::NotActive) => (),
             x => panic!("expected NotActive, got: {:?}", x),
         }
 
-        ctx.predecessor_account_id = acc(5);
-        testing_env!(ctx.clone());
-        match ctr.vote(id, Vote::Approve) {
-            Err(VoteError::NotAuthorized) => (),
-            x => panic!("expected NotAuthorized, got: {:?}", x),
-        }
+        // TODO: add a test case for checking not authorized (but firstly we need to implement that)
+        // ctx.predecessor_account_id = acc(5);
+        // testing_env!(ctx.clone());
+        // match ctr.vote(id, Vote::Approve) {
+        //     Err(VoteError::NotAuthorized) => (),
+        //     x => panic!("expected NotAuthorized, got: {:?}", x),
+        // }
 
-        ctx.predecessor_account_id = acc(2);
-        testing_env!(ctx.clone());
-        // set cooldown=0 and test for immediate execution
-        ctr.cooldown = 0;
-        let id = ctr
-            .create_proposal(PropKind::Text, "Proposal unit test 2".to_string())
-            .unwrap();
-        ctr = vote(ctx, ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
-        let prop = ctr.get_proposal(id).unwrap();
-        assert_eq!(prop.proposal.status, ProposalStatus::Executed);
+        // TODO: test case checking automatic execution
+        // ctx.predecessor_account_id = acc(2);
+        // testing_env!(ctx.clone());
+        // let id = ctr
+        //     .create_proposal(PropKind::Text, "Proposal unit test 2".to_string())
+        //     .unwrap();
+        // vote(ctx, &mut ctr, vec![acc(1), acc(2), acc(3)], id);
+        // let prop = ctr.get_proposal(id).unwrap();
+        // assert_eq!(prop.proposal.status, ProposalStatus::Executed);
     }
 
     #[test]
@@ -424,64 +366,6 @@ mod unit_tests {
     }
 
     #[test]
-    fn proposal_create_prop_permissions() {
-        let (mut ctx, mut ctr, _) = setup_ctr(100);
-        let (members, _) = ctr.members.get().unwrap();
-        ctr.members.set(&(members, vec![PropPerm::FundingRequest]));
-
-        ctr.create_proposal(PropKind::FundingRequest(10), "".to_string())
-            .unwrap();
-
-        // creating other proposal kinds should fail
-        assert_create_prop_not_allowed(
-            ctr.create_proposal(PropKind::RecurrentFundingRequest(10), "".to_string()),
-        );
-        assert_create_prop_not_allowed(ctr.create_proposal(PropKind::Text, "".to_string()));
-        assert_create_prop_not_allowed(ctr.create_proposal(
-            PropKind::FunctionCall {
-                receiver_id: acc(10),
-                actions: vec![],
-            },
-            "".to_string(),
-        ));
-
-        ctx.attached_deposit = 1;
-        testing_env!(ctx.clone());
-
-        match ctr.create_proposal(PropKind::FundingRequest(1), "".to_string()) {
-            Err(CreatePropError::Storage(_)) => (),
-            Ok(_) => panic!("expected Storage, got: OK"),
-            Err(err) => panic!("expected Storage got: {:?}", err),
-        }
-
-        ctx.predecessor_account_id = acc(6);
-        ctx.attached_deposit = 10 * MILI_NEAR;
-        testing_env!(ctx.clone());
-        match ctr.create_proposal(PropKind::Text, "".to_string()) {
-            Err(CreatePropError::NotAuthorized) => (),
-            Ok(_) => panic!("expected NotAuthorized, got: OK"),
-            Err(err) => panic!("expected NotAuthorized got: {:?}", err),
-        }
-
-        // set remaining months to 2
-        let (members, _) = ctr.members.get().unwrap();
-        ctr.members
-            .set(&(members, vec![PropPerm::RecurrentFundingRequest]));
-        ctr.end_time = ctr.start_time + START * 12 * 24 * 61;
-        ctx.predecessor_account_id = acc(2);
-        testing_env!(ctx);
-
-        match ctr.create_proposal(
-            PropKind::RecurrentFundingRequest((ctr.budget_cap / 2) + 1),
-            "".to_string(),
-        ) {
-            Err(CreatePropError::BudgetOverflow) => (),
-            Ok(_) => panic!("expected BudgetOverflow, got: OK"),
-            Err(err) => panic!("expected BudgetOverflow got: {:?}", err),
-        }
-    }
-
-    #[test]
     fn proposal_execution_text() {
         let (mut ctx, mut ctr, id) = setup_ctr(100);
         match ctr.execute(id) {
@@ -489,7 +373,7 @@ mod unit_tests {
             Ok(_) => panic!("expected NotApproved, got: OK"),
             Err(err) => panic!("expected NotApproved got: {:?}", err),
         }
-        ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
+        vote(ctx.clone(), &mut ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
 
         let mut prop = ctr.get_proposal(id).unwrap();
         assert_eq!(prop.proposal.status, ProposalStatus::Approved);
@@ -500,7 +384,7 @@ mod unit_tests {
             Err(err) => panic!("expected ExecTime got: {:?}", err),
         }
 
-        ctx.block_timestamp = (ctr.start_time + ctr.cooldown + ctr.voting_duration + 1) * MSECOND;
+        ctx.block_timestamp = (START + ctr.voting_duration + 1) * MSECOND;
         testing_env!(ctx);
 
         ctr.execute(id).unwrap();
@@ -509,17 +393,7 @@ mod unit_tests {
         assert_eq!(prop.proposal.status, ProposalStatus::Executed);
     }
 
-    #[test]
-    #[should_panic(expected = "dao term is over, call dissolve_hook!")]
-    fn dao_dissolve_time() {
-        let (mut ctx, mut ctr, id) = setup_ctr(100);
-        ctx.block_timestamp = (ctr.end_time + 1) * MSECOND;
-        testing_env!(ctx);
-
-        ctr.vote(id, Vote::Approve).unwrap();
-    }
-
-    fn create_all_props(ctr: &mut Contract) -> (u32, u32, u32, u32, u32) {
+    fn create_all_props(ctr: &mut Contract) -> (u32, u32) {
         let prop_text = ctr
             .create_proposal(PropKind::Text, "text proposal".to_string())
             .unwrap();
@@ -533,25 +407,6 @@ mod unit_tests {
             )
             .unwrap();
 
-        let prop_big = ctr
-            .create_proposal(
-                PropKind::FundingRequest(1100),
-                "big funding request".to_string(),
-            )
-            .unwrap();
-        let prop_small = ctr
-            .create_proposal(
-                PropKind::FundingRequest(200),
-                "small funding request".to_string(),
-            )
-            .unwrap();
-        let prop_rec = ctr
-            .create_proposal(
-                PropKind::RecurrentFundingRequest(200),
-                "recurrent funding request".to_string(),
-            )
-            .unwrap();
-
-        (prop_text, prop_fc, prop_big, prop_small, prop_rec)
+        (prop_text, prop_fc)
     }
 }

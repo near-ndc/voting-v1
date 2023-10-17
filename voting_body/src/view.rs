@@ -6,7 +6,8 @@ use crate::*;
 
 /// This is format of output via JSON for the proposal.
 #[derive(Serialize)]
-#[cfg_attr(test, derive(Debug, PartialEq))]
+#[cfg_attr(test, derive(PartialEq))]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Clone))]
 #[serde(crate = "near_sdk::serde")]
 pub struct ProposalOutput {
     /// Id of the proposal.
