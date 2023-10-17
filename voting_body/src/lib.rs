@@ -52,7 +52,7 @@ impl Contract {
         end_time: u64,
         voting_duration: u64,
         iah_registry: AccountId,
-        // TODO: make sure the threshold is calculate properly
+        // TODO: make sure the threshold is calculated properly
         threshold: u32,
         bond: U128,
     ) -> Self {
@@ -75,14 +75,14 @@ impl Contract {
      * TRANSACTIONS
      **********/
 
-    /// Creates a new proposal. `start` and `end` is Unix Time in milliseconds.
+    /// Creates a new proposal.
     /// Returns the new proposal ID.
     /// Caller is required to attach enough deposit to cover the proposal storage as well as all
     /// possible votes (2*self.threshold - 1).
-    /// NOTE: storage is paid from the account state
+    /// NOTE: storage is paid from the bond.
     #[payable]
     #[handle_result]
-    // TODO: bond
+    // TODO: bond, and deduce storage cost from the bond.
     // TODO: must be called via iah_call
     pub fn create_proposal(
         &mut self,
