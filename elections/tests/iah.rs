@@ -1,7 +1,8 @@
 use integrations::setup_registry;
 use near_units::parse_near;
+use near_workspaces::{Account, AccountId, Contract, DevNetwork, Worker};
+use sbt::ClassMetadata;
 use serde_json::json;
-use workspaces::{Account, AccountId, Contract, DevNetwork, Worker};
 
 /// 1ms in nano seconds
 //extern crate elections;
@@ -53,6 +54,7 @@ async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<InitStruct> {
             "sbt_registry": registry_contract.id(),
             "policy": policy1(),
             "finish_time": 1,
+            "class_metadata": ClassMetadata { name: "I Voted SBT".to_string(), symbol: None, icon: None, reference: None, reference_hash: None},
         }))
         .max_gas()
         .transact();
@@ -160,7 +162,7 @@ async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<InitStruct> {
 
 #[tokio::test]
 async fn vote_by_human() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let setup = init(&worker).await?;
 
     // fast forward to the voting period
@@ -180,7 +182,7 @@ async fn vote_by_human() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn vote_by_non_human() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let setup = init(&worker).await?;
 
     let non_human = worker.dev_create_account().await?;
@@ -206,7 +208,7 @@ async fn vote_by_non_human() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn vote_expired_iah_token() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let setup = init(&worker).await?;
 
     // fast forward to the voting period
@@ -232,7 +234,7 @@ async fn vote_expired_iah_token() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn vote_without_accepting_policy() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let setup = init(&worker).await?;
     let zen_acc = worker.dev_create_account().await?;
     // fast forward to the voting period
@@ -257,7 +259,7 @@ async fn vote_without_accepting_policy() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn vote_without_deposit_bond() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let setup = init(&worker).await?;
 
     let res = setup
@@ -295,7 +297,7 @@ async fn vote_without_deposit_bond() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn unbond_amount_before_election_end() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let setup = init(&worker).await?;
 
     // fast forward to the voting period
@@ -330,7 +332,7 @@ async fn unbond_amount_before_election_end() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn unbond_amount() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let setup = init(&worker).await?;
 
     // fast forward to the voting period
@@ -380,7 +382,7 @@ async fn unbond_amount() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn sbt_mint_no_vote() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let setup = init(&worker).await?;
 
     let block = worker.view_block().await?;
@@ -447,8 +449,33 @@ async fn sbt_mint_no_vote() -> anyhow::Result<()> {
 }
 
 #[tokio::test]
+async fn admin_mint_voted_sbt() -> anyhow::Result<()> {
+    let worker = near_workspaces::sandbox().await?;
+    let setup = init(&worker).await?;
+
+    let res = setup
+        .admin
+        .call(setup.ndc_elections_contract.id(), "admin_mint_sbt")
+        .args_json(json!({"recipient": setup.alice.id()}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success(), "{:?}", res);
+
+    let sbt = verify_i_voted_sbt_tokens_by_owner(
+        setup.registry_contract.id(),
+        setup.ndc_elections_contract.id(),
+        setup.alice,
+    )
+    .await?;
+    assert!(sbt);
+
+    Ok(())
+}
+
+#[tokio::test]
 async fn state_change() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let setup = init(&worker).await?;
 
     // fast forward to the voting period
@@ -488,7 +515,7 @@ async fn state_change() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn revoke_vote() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let setup = init(&worker).await?;
 
     // fast forward to the voting period
@@ -533,6 +560,73 @@ async fn revoke_vote() -> anyhow::Result<()> {
         .transact()
         .await?;
     assert!(res.is_success(), "{:?}", res.receipt_failures());
+
+    Ok(())
+}
+
+#[tokio::test]
+async fn migration_mainnet() -> anyhow::Result<()> {
+    let worker_sandbox = near_workspaces::sandbox().await?;
+    let worker_mainnet = near_workspaces::mainnet().await?;
+    let elections_id: AccountId = "elections.ndc-gwg.near".parse()?;
+    let elections = worker_sandbox
+        .import_contract(&elections_id, &worker_mainnet)
+        .initial_balance(parse_near!("10000000 N"))
+        .transact()
+        .await?;
+
+    let admin = worker_sandbox.dev_create_account().await?;
+    let registry = worker_sandbox.dev_create_account().await?;
+
+    // init the contract
+    let res = elections
+        .call("new")
+        .args_json(json!({
+            "authority": admin.id(),
+            "sbt_registry": registry.id(),
+            "policy": policy1(),
+            "finish_time": 1,
+        }))
+        .max_gas()
+        .transact()
+        .await?;
+
+    assert!(res.is_success(), "{:?}", res.receipt_failures());
+
+    // deploy the new contract
+    let res = elections
+        .as_account()
+        .deploy(include_bytes!("../../res/elections.wasm"))
+        .await?;
+    assert!(res.is_success());
+
+    let new_elections = res.into_result()?;
+    let class_metadata = ClassMetadata {
+        name: "I Voted SBT".to_string(),
+        symbol: None,
+        icon: None,
+        reference: None,
+        reference_hash: None,
+    };
+
+    // call the migrate method
+    let res = new_elections
+        .call("migrate")
+        .args_json(json!({ "class_metadata": class_metadata }))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success(), "{:?}", res.receipt_failures());
+
+    let res: ClassMetadata = new_elections
+        .call("class_metadata")
+        .args_json(json!({}))
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+
+    assert_eq!(res, class_metadata);
 
     Ok(())
 }

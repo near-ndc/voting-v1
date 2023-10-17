@@ -1,11 +1,11 @@
 use std::cmp::min;
 
-use near_sdk::serde::Serialize;
+use near_sdk::serde::{Deserialize, Serialize};
 
 use crate::*;
 
 /// This is format of output via JSON for the proposal.
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 #[cfg_attr(test, derive(Debug, PartialEq))]
 #[serde(crate = "near_sdk::serde")]
 pub struct ProposalOutput {
@@ -15,7 +15,21 @@ pub struct ProposalOutput {
     pub proposal: Proposal,
 }
 
+/// This is format of output via JSON for the config.
 #[derive(Serialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct ConfigOutput {
+    pub threshold: u8,
+    pub start_time: u64,
+    pub end_time: u64,
+    pub cooldown: u64,
+    pub voting_duration: u64,
+    pub budget_spent: U128,
+    pub budget_cap: U128,
+    pub big_funding_threshold: U128,
+}
+
+#[derive(Serialize, Deserialize)]
 #[cfg_attr(test, derive(Debug, PartialEq))]
 #[serde(crate = "near_sdk::serde")]
 pub struct MembersOutput {
@@ -32,21 +46,46 @@ impl Contract {
 
     /// Returns all proposals
     /// Get proposals in paginated view.
-    pub fn get_proposals(&self, from_index: u32, limit: u32) -> Vec<ProposalOutput> {
+    pub fn get_proposals(
+        &self,
+        from_index: u32,
+        limit: u32,
+        reverse: Option<bool>,
+    ) -> Vec<ProposalOutput> {
+        if reverse.unwrap_or(false) {
+            let mut start = 1;
+            let end_index = min(from_index, self.prop_counter);
+            if end_index > limit {
+                start = end_index - limit + 1;
+            }
+
+            return (start..=end_index)
+                .rev()
+                .filter_map(|id| {
+                    self.proposals.get(&id).map(|mut proposal| {
+                        proposal.recompute_status(self.voting_duration);
+                        ProposalOutput { id, proposal }
+                    })
+                })
+                .collect();
+        }
+
         (from_index..=min(self.prop_counter, from_index + limit))
             .filter_map(|id| {
-                self.proposals
-                    .get(&id)
-                    .map(|proposal| ProposalOutput { id, proposal })
+                self.proposals.get(&id).map(|mut proposal| {
+                    proposal.recompute_status(self.voting_duration);
+                    ProposalOutput { id, proposal }
+                })
             })
             .collect()
     }
 
     /// Get specific proposal.
     pub fn get_proposal(&self, id: u32) -> Option<ProposalOutput> {
-        self.proposals
-            .get(&id)
-            .map(|proposal| ProposalOutput { id, proposal })
+        self.proposals.get(&id).map(|mut proposal| {
+            proposal.recompute_status(self.voting_duration);
+            ProposalOutput { id, proposal }
+        })
     }
 
     pub fn number_of_proposals(&self) -> u32 {
@@ -85,5 +124,18 @@ impl Contract {
             return vec![];
         }
         res.unwrap()
+    }
+
+    pub fn config(&self) -> ConfigOutput {
+        ConfigOutput {
+            threshold: self.threshold,
+            start_time: self.start_time,
+            end_time: self.end_time,
+            cooldown: self.cooldown,
+            voting_duration: self.voting_duration,
+            budget_spent: U128(self.budget_spent),
+            budget_cap: U128(self.budget_cap),
+            big_funding_threshold: U128(self.big_funding_threshold),
+        }
     }
 }

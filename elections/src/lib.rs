@@ -1,24 +1,29 @@
 use std::cmp::max;
+use std::collections::HashSet;
 
 use events::{emit_bond, emit_revoke_vote, emit_vote};
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::LookupMap;
+use near_sdk::collections::{LazyOption, LookupMap};
 use near_sdk::json_types::U128;
-use near_sdk::{env, near_bindgen, require, AccountId, PanicOnDefault, Promise, PromiseOrValue};
+use near_sdk::{
+    env, near_bindgen, require, AccountId, Gas, PanicOnDefault, Promise, PromiseOrValue,
+};
+use sbt::{ClassId, ClassMetadata};
 
 mod constants;
 mod errors;
 mod events;
 mod ext;
+mod migrate;
 pub mod proposal;
-mod storage;
+pub mod storage;
 mod view;
 
 pub use crate::constants::*;
 pub use crate::errors::*;
 pub use crate::ext::*;
 pub use crate::proposal::*;
-use crate::storage::*;
+pub use crate::storage::*;
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -41,6 +46,12 @@ pub struct Contract {
     /// address which can pause the contract and make a new proposal. Should be a multisig / DAO;
     pub authority: AccountId,
     pub sbt_registry: AccountId,
+
+    /// list of disqualified candidates
+    pub disqualified_candidates: LazyOption<HashSet<AccountId>>,
+
+    /// class metadata for I-Voted SBT
+    pub class_metadata: ClassMetadata,
 }
 
 #[near_bindgen]
@@ -52,6 +63,7 @@ impl Contract {
         sbt_registry: AccountId,
         policy: String,
         finish_time: u64,
+        class_metadata: ClassMetadata,
     ) -> Self {
         let policy = assert_hash_hex_string(&policy);
 
@@ -66,6 +78,8 @@ impl Contract {
             prop_counter: 0,
             policy,
             finish_time,
+            disqualified_candidates: LazyOption::new(StorageKey::DisqualifiedCandidates, None),
+            class_metadata,
         }
     }
 
@@ -279,13 +293,14 @@ impl Contract {
                     caller,
                     vec![TokenMetadata {
                         class: I_VOTED_SBT_CLASS,
-                        issued_at: None,
+                        issued_at: Some(env::block_timestamp_ms()),
                         expires_at: None,
                         reference: None,
                         reference_hash: None,
                     }],
                 )])
         } else {
+            env::log_str("Didn't vote for all proposals. Skipping I Voted SBT mint.");
             Promise::new(caller.clone()).transfer(unbond_amount)
         }
     }
@@ -296,13 +311,21 @@ impl Contract {
     pub fn admin_revoke_vote(
         &mut self,
         prop_id: u32,
-        token_id: TokenId,
+        token_ids: Vec<TokenId>,
     ) -> Result<(), RevokeVoteError> {
         // check if the caller is the authority allowed to revoke votes
         self.assert_admin();
-        self.slash_bond(token_id);
+        // EIC decided that votes won't be slashed.
+        // self.slash_bond(token_id);
+
+        if env::block_timestamp_ms() > self.finish_time {
+            return Err(RevokeVoteError::NotActive);
+        }
+
         let mut p = self._proposal(prop_id);
-        p.revoke_votes(token_id)?;
+        for t in token_ids {
+            p.revoke_votes(t)?;
+        }
         self.proposals.insert(&prop_id, &p);
         emit_revoke_vote(prop_id);
         Ok(())
@@ -334,6 +357,48 @@ impl Contract {
             "new finish time must be after the existing one"
         );
         self.finish_time = finish_time;
+    }
+
+    /// Allows admin to disqualify candidates.
+    pub fn admin_disqualify_candidates(&mut self, candidates: Vec<AccountId>) {
+        self.assert_admin();
+        let mut to_disqualify: HashSet<AccountId> = HashSet::new();
+        for c in candidates.iter() {
+            to_disqualify.insert(c.clone());
+        }
+        self.disqualified_candidates.set(&to_disqualify);
+    }
+
+    /// Allows admin to mint SBT to the given list of accounts.
+    pub fn admin_mint_sbt(&mut self, recipients: Vec<AccountId>, class: ClassId) {
+        self.assert_admin();
+        let now = env::block_timestamp_ms();
+        let len = recipients.len();
+        let token_spec = recipients
+            .into_iter()
+            .map(|r| {
+                (
+                    r,
+                    vec![TokenMetadata {
+                        class,
+                        issued_at: Some(now),
+                        expires_at: None,
+                        reference: None,
+                        reference_hash: None,
+                    }],
+                )
+            })
+            .collect();
+
+        ext_sbtreg::ext(self.sbt_registry.clone())
+            .with_static_gas(Gas(10 * len as u64 * Gas::ONE_TERA.0))
+            .with_attached_deposit(9 * len as u128 * MILI_NEAR)
+            .sbt_mint(token_spec);
+    }
+
+    pub fn admin_set_class_metadata(&mut self, class_metadata: ClassMetadata) {
+        self.assert_admin();
+        self.class_metadata = class_metadata;
     }
 
     /*****************
@@ -405,12 +470,12 @@ impl Contract {
      * INTERNAL
      ****************/
 
-    fn slash_bond(&mut self, token_id: TokenId) {
-        let bond_amount = self.bonded_amounts.remove(&token_id);
-        if let Some(value) = bond_amount {
-            self.total_slashed += value;
-        }
-    }
+    // fn slash_bond(&mut self, token_id: TokenId) {
+    //     let bond_amount = self.bonded_amounts.remove(&token_id);
+    //     if let Some(value) = bond_amount {
+    //         self.total_slashed += value;
+    //     }
+    // }
 
     fn fail(reason: &str) -> Promise {
         Self::ext(env::current_account_id())
@@ -452,6 +517,8 @@ fn validate_setup_package(seats: u16, cs: &Vec<AccountId>) {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod unit_tests {
+    use std::ops::Mul;
+
     use near_sdk::{
         test_utils::{self, VMContextBuilder},
         testing_env, Gas, VMContext,
@@ -630,6 +697,16 @@ mod unit_tests {
         vec![(human_issuer(), vec![sbt]), (admin(), vec![sbt])]
     }
 
+    fn class_metadata(name: String) -> ClassMetadata {
+        ClassMetadata {
+            name,
+            symbol: None,
+            icon: None,
+            reference: None,
+            reference_hash: None,
+        }
+    }
+
     fn alice_voting_context(ctx: &mut VMContext, ctr: &mut Contract) {
         ctx.predecessor_account_id = alice();
         ctx.attached_deposit = ACCEPT_POLICY_COST;
@@ -651,7 +728,13 @@ mod unit_tests {
             .is_view(false)
             .build();
         testing_env!(ctx.clone());
-        let ctr = Contract::new(admin(), sbt_registry(), policy1(), 1);
+        let ctr = Contract::new(
+            admin(),
+            sbt_registry(),
+            policy1(),
+            START + 100,
+            class_metadata("test1".to_string()),
+        );
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
         (ctx, ctr)
@@ -1285,7 +1368,7 @@ mod unit_tests {
     fn admin_revoke_vote_not_admin() {
         let (_, mut ctr) = setup(&alice());
         let prop_id = mk_proposal(&mut ctr);
-        let res = ctr.admin_revoke_vote(prop_id, 1);
+        let res = ctr.admin_revoke_vote(prop_id, vec![1]);
         // this will never be checked since the method is panicing not returning an error
         assert!(res.is_err());
     }
@@ -1296,7 +1379,7 @@ mod unit_tests {
         let prop_id = mk_proposal(&mut ctr);
         ctx.block_timestamp = (START + 100) * MSECOND;
         testing_env!(ctx);
-        match ctr.admin_revoke_vote(prop_id, 1) {
+        match ctr.admin_revoke_vote(prop_id, vec![1]) {
             Err(RevokeVoteError::NotVoted) => (),
             x => panic!("expected NotVoted, got: {:?}", x),
         }
@@ -1308,7 +1391,7 @@ mod unit_tests {
     fn admin_revoke_vote_no_proposal() {
         let (_, mut ctr) = setup(&admin());
         let prop_id = 2;
-        match ctr.admin_revoke_vote(prop_id, 1) {
+        match ctr.admin_revoke_vote(prop_id, vec![1]) {
             x => panic!("{:?}", x),
         }
     }
@@ -1413,14 +1496,14 @@ mod unit_tests {
         assert_eq!(ctr.bonded_amounts.get(&1), Some(BOND_AMOUNT));
 
         // revoke vote
-        match ctr.admin_revoke_vote(prop_id, 1) {
+        match ctr.admin_revoke_vote(prop_id, vec![1]) {
             Ok(_) => (),
             x => panic!("expected OK, got: {:?}", x),
         }
 
-        // Bond amount should be slashed
-        assert_eq!(ctr.bonded_amounts.get(&1), None);
-        assert_eq!(ctr.total_slashed, BOND_AMOUNT);
+        // Bond amount should not be slashed
+        assert_eq!(ctr.bonded_amounts.get(&1), Some(BOND_AMOUNT));
+        assert_eq!(ctr.total_slashed, 0);
 
         let p = ctr._proposal(1);
         assert_eq!(p.voters_num, 0, "vote should be revoked");
@@ -1652,25 +1735,25 @@ mod unit_tests {
         let prop_id = mock_proposal_and_votes(&mut ctx, &mut ctr, 8, 6);
 
         // elections not over yet
-        assert_eq!(ctr.winners_by_proposal(prop_id), vec![]);
+        assert_eq!(ctr.winners_by_proposal(prop_id, None), vec![]);
 
         // voting over but cooldown not yet
         ctx.block_timestamp = (START + 11) * MSECOND;
         testing_env!(ctx.clone());
-        assert_eq!(ctr.winners_by_proposal(prop_id), vec![]);
+        assert_eq!(ctr.winners_by_proposal(prop_id, None), vec![]);
 
         // cooldown over but not past `finish_time`
         ctr.admin_set_finish_time(START + 200);
         ctx.block_timestamp = (START + 150) * MSECOND;
         testing_env!(ctx.clone());
-        assert_eq!(ctr.winners_by_proposal(prop_id), vec![]);
+        assert_eq!(ctr.winners_by_proposal(prop_id, None), vec![]);
 
         // the method should return only the candiadtes that reach min_candidate support
         // thats why we have only 4 winners rather than 5
         ctx.block_timestamp = (START + 201) * MSECOND; // past cooldown
         testing_env!(ctx.clone());
         assert_eq!(
-            ctr.winners_by_proposal(prop_id),
+            ctr.winners_by_proposal(prop_id, None),
             vec![candidate(3), candidate(6), candidate(2), candidate(4)]
         );
     }
@@ -1697,10 +1780,10 @@ mod unit_tests {
             candidate(1),
             candidate(5),
         ];
-        assert_eq!(ctr.winners_by_proposal(prop_id1), all);
-        assert_eq!(ctr.winners_by_proposal(prop_id2), all[0..2]);
-        assert_eq!(ctr.winners_by_proposal(prop_id3), all[0..4]);
-        assert_eq!(ctr.winners_by_proposal(prop_id4), all[0..4]);
+        assert_eq!(ctr.winners_by_proposal(prop_id1, None), all);
+        assert_eq!(ctr.winners_by_proposal(prop_id2, None), all[0..2]);
+        assert_eq!(ctr.winners_by_proposal(prop_id3, None), all[0..4]);
+        assert_eq!(ctr.winners_by_proposal(prop_id4, None), all[0..4]);
     }
 
     #[test]
@@ -1715,5 +1798,68 @@ mod unit_tests {
         ctr.bond(alice(), mk_human_sbt(2), Value::String("".to_string()));
 
         assert_eq!(ctr.bonded_amounts.get(&2).unwrap(), 2 * BOND_AMOUNT);
+    }
+
+    #[test]
+    #[should_panic(expected = "not an admin")]
+    fn admin_disqualify_candidates_not_admin() {
+        let (_, mut ctr) = setup(&alice());
+        ctr.admin_disqualify_candidates(vec![candidate(1), candidate(2)])
+    }
+
+    #[test]
+    fn admin_disqualify_candidates() {
+        let (_, mut ctr) = setup(&admin());
+        let disqualified_candidates = vec![candidate(1), candidate(2)];
+        ctr.admin_disqualify_candidates(disqualified_candidates.clone());
+        let res = ctr.disqualified_candidates();
+        assert_eq!(res.len(), 2);
+        assert!(res.contains(&disqualified_candidates[0]));
+        assert!(res.contains(&disqualified_candidates[1]));
+    }
+
+    #[test]
+    fn winners_by_proposal_disqualified_candidates() {
+        let (mut ctx, mut ctr) = setup(&admin());
+
+        // more seats than candidates
+        let prop_id = mock_proposal_and_votes(&mut ctx, &mut ctr, 5, 0);
+
+        // disqualify candidate(3)
+        ctr.admin_disqualify_candidates(vec![candidate(3), candidate(2)]);
+
+        // the method should return only the candiadtes that reach min_candidate support
+        // and are not disqualifed
+        ctx.block_timestamp = (START + 201) * MSECOND; // past cooldown
+        ctx.prepaid_gas = Gas::ONE_TERA.mul(10);
+        testing_env!(ctx.clone());
+        assert_eq!(
+            ctr.winners_by_proposal(prop_id, None),
+            vec![candidate(6), candidate(4), candidate(1), candidate(5)]
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "not an admin")]
+    fn admin_mint_sbt_not_admin() {
+        let (_, mut ctr) = setup(&alice());
+        ctr.admin_mint_sbt(vec![candidate(1), candidate(2)], I_VOTED_SBT_CLASS);
+    }
+
+    #[test]
+    fn admin_set_class_metadata() {
+        let (_, mut ctr) = setup(&admin());
+        let res = ctr.class_metadata();
+        assert_eq!(*res, class_metadata("test1".to_string()));
+        ctr.admin_set_class_metadata(class_metadata("test2".to_string()));
+        let res = ctr.class_metadata();
+        assert_eq!(*res, class_metadata("test2".to_string()));
+    }
+
+    #[test]
+    #[should_panic(expected = "not an admin")]
+    fn admin_set_class_metadata_not_admin() {
+        let (_, mut ctr) = setup(&alice());
+        ctr.admin_set_class_metadata(class_metadata("test2".to_string()));
     }
 }

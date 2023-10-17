@@ -20,13 +20,43 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ## Unreleased
 
+
+### Features
+
+- new field in the smart contract `class_metadata`
+- new method `admin_set_class_metadata`
+- new view `class_metadata`
+
+## v1.0.6 (2023-10-16)
+
+- increase gas set to I Voted SBT mint call in the `unbond` method.
+
+
+## v1.0.5 (2023-10-06)
+
+- `winners_by_proposal`: added optional boolean argument: `ongoing`. When set to true, it will return ongoing results, rather than an empty list.
+
+## v1.0.4 (2023-10-06)
+
+### Breaking changes
+
+- Updated `admin_revoke_vote` to accept list of SBTs rather a single SBT.
+
+## v1.0.3 (2023-10-05)
+
+- Updated `revoke_vote` and `admin_revoke_vote` to not slash bonds.
+- Added `disqualify_candidates`.
+
 ## v1.0.2 (2023-10-02)
+
+- `winners_by_proposal(prop_id)` should return empty list if the elections didn't finish.
 
 ## v1.0.1 (2023-09-28)
 
-### Bug Fixes
+- Added `admin_set_finish_time` method.
+- Added `finish_time` query.
 
-- `winners_by_proposal(prop_id)` should return empty list if the elections didn't finish.
+### Bug Fixes
 
 ### Features
 

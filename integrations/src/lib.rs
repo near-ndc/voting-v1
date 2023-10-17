@@ -1,5 +1,5 @@
+use near_workspaces::{Account, AccountId, Contract, DevNetwork, Worker};
 use serde_json::json;
-use workspaces::{Account, AccountId, Contract, DevNetwork, Worker};
 
 pub async fn setup_registry(
     worker: &Worker<impl DevNetwork>,

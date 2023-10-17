@@ -1,6 +1,6 @@
 [package]
 name = "elections"
-version = "1.0.2"
+version = "1.0.6"
 authors = { workspace = true }
 edition = { workspace = true }
 repository = { workspace = true }
@@ -16,11 +16,12 @@ near-sdk.workspace = true
 serde_json.workspace = true
 
 common = { path = "../common" }
+sbt = { git = "https://github.com/near-ndc/i-am-human.git" }
 
 [dev-dependencies]
 anyhow.workspace = true
 tokio.workspace = true
-workspaces.workspace = true
+near-workspaces.workspace = true
 near-primitives.workspace = true
 near-units.workspace = true
 integrations = { path = "../integrations" }

@@ -1,8 +1,8 @@
 use integrations::setup_registry;
 use ndc_nominations::{storage::HouseType, TokenMetadata, MSECOND};
 use near_units::parse_near;
+use near_workspaces::{Account, Contract, DevNetwork, Worker};
 use serde_json::json;
-use workspaces::{Account, Contract, DevNetwork, Worker};
 
 // multiplayer from sec to millisecond
 const SEC_TO_MS: u64 = 1_000;
@@ -121,7 +121,7 @@ async fn init(
 
 #[tokio::test]
 async fn self_nominate() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let (ndc_elections_contract, alice, _, _, _) = init(&worker).await?;
 
     // self nominate
@@ -140,7 +140,7 @@ async fn self_nominate() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn self_nominate_only_og() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let (ndc_elections_contract, _, _, john, _) = init(&worker).await?;
 
     // self nominate
@@ -158,7 +158,7 @@ async fn self_nominate_only_og() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn self_nominate_only_iah_fail() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let (ndc_elections_contract, _, bob, _, _) = init(&worker).await?;
 
     // self nominate
@@ -177,7 +177,7 @@ async fn self_nominate_only_iah_fail() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn self_nominate_expired_token_fail() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let (ndc_elections_contract, _, _, _, elon) = init(&worker).await?;
 
     // self nominate
@@ -196,7 +196,7 @@ async fn self_nominate_expired_token_fail() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn upvote() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let (ndc_elections_contract, alice, bob, john, _) = init(&worker).await?;
 
     // self nominate
@@ -249,7 +249,7 @@ async fn upvote() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn double_upvote_fail() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let (ndc_elections_contract, _, bob, john, _) = init(&worker).await?;
 
     // self nominate
@@ -288,7 +288,7 @@ async fn double_upvote_fail() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn upvote_by_non_human_fail() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let (ndc_elections_contract, alice, _, john, _) = init(&worker).await?;
 
     // self nominate
@@ -317,7 +317,7 @@ async fn upvote_by_non_human_fail() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn upvote_expired_iah_fail() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let (ndc_elections_contract, alice, _, _, elon) = init(&worker).await?;
 
     // self nominate
@@ -346,7 +346,7 @@ async fn upvote_expired_iah_fail() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn comment() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let (ndc_elections_contract, _, bob, john, _) = init(&worker).await?;
 
     // self nominate
@@ -374,7 +374,7 @@ async fn comment() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn comment_by_non_human_fail() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let (ndc_elections_contract, alice, _, john, _) = init(&worker).await?;
 
     // self nominate
@@ -402,7 +402,7 @@ async fn comment_by_non_human_fail() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn comment_expired_iah_fail() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let (ndc_elections_contract, alice, _, _, elon) = init(&worker).await?;
 
     // self nominate
@@ -430,7 +430,7 @@ async fn comment_expired_iah_fail() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn flow1() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let (ndc_elections_contract, _, bob, john, _) = init(&worker).await?;
 
     // self nominate
@@ -488,7 +488,7 @@ async fn flow1() -> anyhow::Result<()> {
 
 #[tokio::test]
 async fn remove_upvote_upvote_again() -> anyhow::Result<()> {
-    let worker = workspaces::sandbox().await?;
+    let worker = near_workspaces::sandbox().await?;
     let (ndc_elections_contract, _, bob, john, _) = init(&worker).await?;
 
     // self nominate

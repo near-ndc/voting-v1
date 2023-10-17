@@ -152,9 +152,9 @@ impl Proposal {
     }
 
     pub fn revoke_votes(&mut self, token_id: TokenId) -> Result<(), RevokeVoteError> {
-        if !self.is_active_or_cooldown() {
-            return Err(RevokeVoteError::NotActive);
-        }
+        // if !self.is_active_or_cooldown() {
+        //     return Err(RevokeVoteError::NotActive);
+        // }
         let vote = self
             .voters
             .get(&token_id)

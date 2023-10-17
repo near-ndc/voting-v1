@@ -1,16 +1,16 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::json_types::{Base64VecU8, U128, U64};
 use near_sdk::serde::{Deserialize, Serialize};
-use near_sdk::{env, AccountId, Balance};
+use near_sdk::{env, AccountId};
 
 use std::collections::HashMap;
 
 use crate::VoteError;
 
 /// Proposal that are sent to this DAO.
-#[derive(BorshSerialize, BorshDeserialize, Serialize)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Deserialize, Debug, PartialEq))]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq))]
 pub struct Proposal {
     /// Original proposer.
     pub proposer: AccountId,
@@ -60,6 +60,14 @@ impl Proposal {
         self.votes.insert(user, vote);
         Ok(())
     }
+
+    pub fn recompute_status(&mut self, voting_duration: u64) {
+        if &self.status == &ProposalStatus::InProgress
+            && env::block_timestamp_ms() > self.submission_time + voting_duration
+        {
+            self.status = ProposalStatus::Rejected;
+        }
+    }
 }
 
 /// Kinds of proposals, doing different action.
@@ -77,10 +85,10 @@ pub enum PropKind {
     // NOTE: In Sputnik, this variant kind is called `Vote`
     Text,
     /// Single funding request.
-    FundingRequest(Balance),
+    FundingRequest(U128),
     /// Funding request that will renew every month until the end of the terms. The balance
     /// parameter is the size of the single month spending for this funding request.
-    RecurrentFundingRequest(Balance),
+    RecurrentFundingRequest(U128),
     // TODO: support self upgrade.
     // /// Upgrade this contract with given hash from blob store.
     // UpgradeSelf { hash: Base58CryptoHash },
@@ -139,7 +147,7 @@ pub enum Vote {
 }
 
 /// Function call arguments.
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug, PartialEq, Clone)]
 #[serde(crate = "near_sdk::serde")]
 pub struct ActionCall {
     pub method_name: String,

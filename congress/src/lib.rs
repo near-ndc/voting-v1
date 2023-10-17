@@ -5,7 +5,7 @@ use common::finalize_storage_check;
 use events::*;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap};
-use near_sdk::json_types::U128;
+use near_sdk::json_types::{Base64VecU8, U128};
 use near_sdk::{
     env, near_bindgen, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseError,
     PromiseOrValue, PromiseResult,
@@ -18,7 +18,7 @@ mod events;
 mod ext;
 pub mod proposal;
 mod storage;
-mod view;
+pub mod view;
 
 pub use crate::constants::*;
 pub use crate::errors::*;
@@ -31,6 +31,7 @@ use crate::storage::*;
 pub struct Contract {
     /// address of the community fund, where the excess of NEAR will be sent on dissolve and cleanup.
     pub community_fund: AccountId,
+    /// I Am Human registry
     pub registry: AccountId,
 
     pub dissolved: bool,
@@ -135,10 +136,10 @@ impl Contract {
         let mut new_budget = 0;
         match kind {
             PropKind::FundingRequest(b) => {
-                new_budget = self.budget_spent + b;
+                new_budget = self.budget_spent + b.0;
             }
             PropKind::RecurrentFundingRequest(b) => {
-                new_budget = self.budget_spent + b * (self.remaining_months(now) as u128);
+                new_budget = self.budget_spent + b.0 * (self.remaining_months(now) as u128);
             }
             _ => (),
         };
@@ -181,6 +182,8 @@ impl Contract {
             return Err(VoteError::NotAuthorized);
         }
         let mut prop = self.assert_proposal(id);
+
+        self.assert_member_not_involved(&prop, &user)?;
 
         if !matches!(prop.status, ProposalStatus::InProgress) {
             return Err(VoteError::NotInProgress);
@@ -242,9 +245,9 @@ impl Contract {
                 }
                 result = promise.into();
             }
-            PropKind::FundingRequest(b) => budget = *b,
+            PropKind::FundingRequest(b) => budget = b.0,
             PropKind::RecurrentFundingRequest(b) => {
-                budget = *b * self.remaining_months(now) as u128
+                budget = b.0 * self.remaining_months(now) as u128
             }
             PropKind::Text => (),
             PropKind::DismissAndBan { member, house } => {
@@ -269,6 +272,7 @@ impl Contract {
                     0,
                     EXECUTE_GAS,
                 );
+
                 return Ok(PromiseOrValue::Promise(
                     ban_promise.and(dismiss_promise).then(
                         ext_self::ext(env::current_account_id())
@@ -309,7 +313,7 @@ impl Contract {
         self.assert_active();
         let mut proposal = self.assert_proposal(id);
         let is_big_or_recurrent = match proposal.kind {
-            PropKind::FundingRequest(b) => b >= self.big_funding_threshold,
+            PropKind::FundingRequest(b) => b.0 >= self.big_funding_threshold,
             PropKind::RecurrentFundingRequest(_) => true,
             _ => false,
         };
@@ -365,7 +369,8 @@ impl Contract {
         let (mut members, perms) = self.members.get().unwrap();
         let idx = members.binary_search(&member);
         if idx.is_err() {
-            return Err(HookError::NoMember);
+            // We need to return OK to allow to call this function multiple times to execute proposal which may compose other actions
+            return Ok(());
         }
         members.remove(idx.unwrap());
 
@@ -408,6 +413,36 @@ impl Contract {
         self.proposals.get(&id).expect("proposal does not exist")
     }
 
+    fn assert_member_not_involved(
+        &self,
+        prop: &Proposal,
+        user: &AccountId,
+    ) -> Result<(), VoteError> {
+        match &prop.kind {
+            PropKind::DismissAndBan { member, house: _ } => {
+                if member == user {
+                    return Err(VoteError::NoSelfVote);
+                }
+            }
+            PropKind::FunctionCall {
+                receiver_id: _,
+                actions,
+            } => {
+                for action in actions {
+                    if &action.method_name == "dismiss_hook" {
+                        let encoded =
+                            Base64VecU8(json!({ "member": user }).to_string().as_bytes().to_vec());
+                        if encoded == action.args {
+                            return Err(VoteError::NoSelfVote);
+                        }
+                    }
+                }
+            }
+            _ => (),
+        }
+        Ok(())
+    }
+
     fn assert_active(&self) {
         near_sdk::require!(!self.dissolved, "dao is dissolved");
         near_sdk::require!(
@@ -445,7 +480,7 @@ impl Contract {
         );
         match env::promise_result(0) {
             PromiseResult::NotReady => unreachable!(),
-            PromiseResult::Successful(_) => (),
+            PromiseResult::Successful(_) => {}
             PromiseResult::Failed => {
                 let mut prop = self.assert_proposal(prop_id);
                 self.budget_spent -= budget.0;
@@ -480,6 +515,7 @@ mod unit_tests {
     };
 
     use crate::{view::MembersOutput, *};
+    use near_sdk::json_types::{U128, U64};
 
     /// 1ms in nano seconds
     const MSECOND: u64 = 1_000_000;
@@ -590,8 +626,31 @@ mod unit_tests {
         assert_eq!(ctr.number_of_proposals(), 1);
 
         // check `get_proposals` query
-        let res = ctr.get_proposals(0, 10);
+        let res = ctr.get_proposals(0, 10, Some(false));
         assert_eq!(res, vec![ctr.get_proposal(id).unwrap()]);
+
+        let id2 = ctr
+            .create_proposal(PropKind::Text, "Proposal unit test 2".to_string())
+            .unwrap();
+
+        let id3 = ctr
+            .create_proposal(PropKind::Text, "Proposal unit test 3".to_string())
+            .unwrap();
+
+        // reverse query
+        let res = ctr.get_proposals(10, 10, Some(true));
+        assert_eq!(
+            res,
+            vec![
+                ctr.get_proposal(id3).unwrap(),
+                ctr.get_proposal(id2).unwrap(),
+                ctr.get_proposal(id).unwrap()
+            ]
+        );
+
+        let res = ctr.get_proposals(3, 1, Some(true));
+        assert_eq!(res, vec![ctr.get_proposal(id3).unwrap(),]);
+
         ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
 
         prop = ctr.get_proposal(id);
@@ -638,9 +697,20 @@ mod unit_tests {
         let id = ctr
             .create_proposal(PropKind::Text, "Proposal unit test 2".to_string())
             .unwrap();
-        ctr = vote(ctx, ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
+        ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
         let prop = ctr.get_proposal(id).unwrap();
         assert_eq!(prop.proposal.status, ProposalStatus::Executed);
+
+        // create proposal, set timestamp past voting period, status should be rejected
+        let id = ctr
+            .create_proposal(PropKind::Text, "Proposal unit test query 3".to_string())
+            .unwrap();
+
+        ctx.block_timestamp = (prop.proposal.submission_time + ctr.voting_duration + 1) * MSECOND;
+        testing_env!(ctx);
+
+        let prop = ctr.get_proposal(id).unwrap();
+        assert_eq!(prop.proposal.status, ProposalStatus::Rejected);
     }
 
     #[test]
@@ -656,12 +726,12 @@ mod unit_tests {
         let (members, _) = ctr.members.get().unwrap();
         ctr.members.set(&(members, vec![PropPerm::FundingRequest]));
 
-        ctr.create_proposal(PropKind::FundingRequest(10), "".to_string())
+        ctr.create_proposal(PropKind::FundingRequest(U128(10)), "".to_string())
             .unwrap();
 
         // creating other proposal kinds should fail
         assert_create_prop_not_allowed(
-            ctr.create_proposal(PropKind::RecurrentFundingRequest(10), "".to_string()),
+            ctr.create_proposal(PropKind::RecurrentFundingRequest(U128(10)), "".to_string()),
         );
         assert_create_prop_not_allowed(ctr.create_proposal(PropKind::Text, "".to_string()));
         assert_create_prop_not_allowed(ctr.create_proposal(
@@ -675,7 +745,7 @@ mod unit_tests {
         ctx.attached_deposit = 1;
         testing_env!(ctx.clone());
 
-        match ctr.create_proposal(PropKind::FundingRequest(1), "".to_string()) {
+        match ctr.create_proposal(PropKind::FundingRequest(U128(1)), "".to_string()) {
             Err(CreatePropError::Storage(_)) => (),
             Ok(_) => panic!("expected Storage, got: OK"),
             Err(err) => panic!("expected Storage got: {:?}", err),
@@ -699,7 +769,7 @@ mod unit_tests {
         testing_env!(ctx);
 
         match ctr.create_proposal(
-            PropKind::RecurrentFundingRequest((ctr.budget_cap / 2) + 1),
+            PropKind::RecurrentFundingRequest(U128((ctr.budget_cap / 2) + 1)),
             "".to_string(),
         ) {
             Err(CreatePropError::BudgetOverflow) => (),
@@ -741,7 +811,10 @@ mod unit_tests {
         let (mut ctx, mut ctr, _) = setup_ctr(100);
 
         let id = ctr
-            .create_proposal(PropKind::FundingRequest(1000u128), "Funding req".to_owned())
+            .create_proposal(
+                PropKind::FundingRequest(U128(1000u128)),
+                "Funding req".to_owned(),
+            )
             .unwrap();
         ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
 
@@ -753,7 +826,7 @@ mod unit_tests {
         assert_eq!(ctr.budget_spent, 1000);
 
         let res = ctr.create_proposal(
-            PropKind::FundingRequest(10000u128),
+            PropKind::FundingRequest(U128(10000u128)),
             "Funding req".to_owned(),
         );
         match res {
@@ -768,7 +841,7 @@ mod unit_tests {
 
         let id = ctr
             .create_proposal(
-                PropKind::RecurrentFundingRequest(10u128),
+                PropKind::RecurrentFundingRequest(U128(10u128)),
                 "Rec Funding req".to_owned(),
             )
             .unwrap();
@@ -903,19 +976,19 @@ mod unit_tests {
 
         let prop_big = ctr
             .create_proposal(
-                PropKind::FundingRequest(1100),
+                PropKind::FundingRequest(U128(1100)),
                 "big funding request".to_string(),
             )
             .unwrap();
         let prop_small = ctr
             .create_proposal(
-                PropKind::FundingRequest(200),
+                PropKind::FundingRequest(U128(200)),
                 "small funding request".to_string(),
             )
             .unwrap();
         let prop_rec = ctr
             .create_proposal(
-                PropKind::RecurrentFundingRequest(200),
+                PropKind::RecurrentFundingRequest(U128(200)),
                 "recurrent funding request".to_string(),
             )
             .unwrap();
@@ -970,7 +1043,7 @@ mod unit_tests {
         assert!(ctr.dissolved);
 
         ctr.create_proposal(
-            PropKind::FundingRequest(10000u128),
+            PropKind::FundingRequest(U128(10000u128)),
             "Funding req".to_owned(),
         )
         .unwrap();
@@ -988,12 +1061,10 @@ mod unit_tests {
         ctx.predecessor_account_id = voting_body();
         testing_env!(ctx.clone());
 
-        match ctr.dismiss_hook(acc(10)) {
-            Err(HookError::NoMember) => (),
-            x => panic!("expected NoMember, got: {:?}", x),
-        }
+        assert_eq!(ctr.dismiss_hook(acc(10)), Ok(()));
 
         ctr.dismiss_hook(acc(2)).unwrap();
+
         let expected = r#"EVENT_JSON:{"standard":"ndc-congress","version":"1.0.0","event":"dismiss","data":{"member":"user-2.near"}}"#;
         assert_eq!(vec![expected], get_logs());
 
@@ -1066,7 +1137,7 @@ mod unit_tests {
         ctr = vote(
             ctx.clone(),
             ctr,
-            [acc(1), acc(2), acc(3)].to_vec(),
+            [acc(4), acc(2), acc(3)].to_vec(),
             motion_rem_ban,
         );
         let mut prop = ctr.get_proposal(motion_rem_ban).unwrap();
@@ -1094,5 +1165,55 @@ mod unit_tests {
         ctr.on_ban_dismiss(Ok(()), Result::Err(PromiseError::Failed), motion_rem_ban);
         prop = ctr.get_proposal(motion_rem_ban).unwrap();
         assert_eq!(prop.proposal.status, ProposalStatus::Failed);
+    }
+
+    #[test]
+    fn dismiss_ban_vote_against() {
+        let (mut ctx, mut ctr, _) = setup_ctr(100);
+        let prop = ctr
+            .create_proposal(
+                PropKind::DismissAndBan {
+                    member: acc(1),
+                    house: coa(),
+                },
+                "Motion to remove member and ban".to_string(),
+            )
+            .unwrap();
+
+        ctx.predecessor_account_id = acc(1);
+        testing_env!(ctx.clone());
+        match ctr.vote(prop, Vote::Approve) {
+            Err(VoteError::NoSelfVote) => (),
+            x => panic!("expected NotAllowedAgainst, got: {:?}", x),
+        }
+    }
+
+    #[test]
+    fn dismiss_vote_against() {
+        let (mut ctx, mut ctr, _) = setup_ctr(100);
+        let prop = ctr
+            .create_proposal(
+                PropKind::FunctionCall {
+                    receiver_id: coa(),
+                    actions: [ActionCall {
+                        method_name: "dismiss_hook".to_string(),
+                        args: Base64VecU8(
+                            json!({ "member": acc(2) }).to_string().as_bytes().to_vec(),
+                        ),
+                        deposit: U128(0),
+                        gas: U64(0),
+                    }]
+                    .to_vec(),
+                },
+                "Proposal to remove member".to_string(),
+            )
+            .unwrap();
+
+        ctx.predecessor_account_id = acc(2);
+        testing_env!(ctx.clone());
+        match ctr.vote(prop, Vote::Approve) {
+            Err(VoteError::NoSelfVote) => (),
+            x => panic!("expected NotAllowedAgainst, got: {:?}", x),
+        }
     }
 }
