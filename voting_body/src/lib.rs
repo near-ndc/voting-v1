@@ -67,6 +67,7 @@ impl Contract {
             iah_registry,
             bond: bond.0,
             threshold, // TODO, need to add dynamic quorum and threshold
+            community_treasury,
         }
     }
 
@@ -127,8 +128,14 @@ impl Contract {
 
     #[handle_result]
     // TODO: must be called via iah_call
-    pub fn vote(&mut self, id: u32, vote: Vote) -> Result<(), VoteError> {
+    pub fn vote(
+        &mut self,
+        id: u32,
+        vote: Vote,
+        skip_execution: Option<bool>,
+    ) -> Result<(), VoteError> {
         let user = env::predecessor_account_id();
+        let execute = !skip_execution.unwrap_or(true);
         let mut prop = self.assert_proposal(id);
 
         if !matches!(prop.status, ProposalStatus::InProgress) {
@@ -303,7 +310,7 @@ mod unit_tests {
         for account in accounts {
             ctx.predecessor_account_id = account;
             testing_env!(ctx.clone());
-            let res = ctr.vote(id, Vote::Approve);
+            let res = ctr.vote(id, Vote::Approve, None);
             assert_eq!(res, Ok(()));
         }
     }
@@ -328,7 +335,7 @@ mod unit_tests {
 
         ctx.predecessor_account_id = acc(4);
         testing_env!(ctx.clone());
-        match ctr.vote(id, Vote::Approve) {
+        match ctr.vote(id, Vote::Approve, None) {
             Err(VoteError::NotInProgress) => (),
             x => panic!("expected NotInProgress, got: {:?}", x),
         }
@@ -339,16 +346,16 @@ mod unit_tests {
             .create_proposal(PropKind::Text, "proposal".to_owned())
             .unwrap();
 
-        assert_eq!(ctr.vote(id, Vote::Approve), Ok(()));
+        assert_eq!(ctr.vote(id, Vote::Approve, None), Ok(()));
 
-        match ctr.vote(id, Vote::Approve) {
+        match ctr.vote(id, Vote::Approve, None) {
             Err(VoteError::DoubleVote) => (),
             x => panic!("expected DoubleVoted, got: {:?}", x),
         }
 
         ctx.block_timestamp = (START + ctr.voting_duration + 1) * MSECOND;
         testing_env!(ctx.clone());
-        match ctr.vote(id, Vote::Approve) {
+        match ctr.vote(id, Vote::Approve, None) {
             Err(VoteError::NotActive) => (),
             x => panic!("expected NotActive, got: {:?}", x),
         }
@@ -376,7 +383,7 @@ mod unit_tests {
     #[should_panic(expected = "proposal does not exist")]
     fn proposal_does_not_exist() {
         let (_, mut ctr, _) = setup_ctr(100);
-        ctr.vote(10, Vote::Approve).unwrap();
+        ctr.vote(10, Vote::Approve, None).unwrap();
     }
 
     #[test]
