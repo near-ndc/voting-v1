@@ -56,6 +56,15 @@ impl Proposal {
         if self.votes.contains_key(&user) {
             return Err(VoteError::DoubleVote);
         }
+
+        // TODO: this have to be fixed:
+        // + threshold must not change the status. If threshold is smaller than 50% of eligible voters,
+        //   then it may happen that we reach threshold, even though the rest of the voters are able to
+        //   change the voting direction!
+        // + need to integrate quorum
+
+        // TODO: support vote overwrite
+
         match vote {
             Vote::Approve => {
                 self.approve += 1;
