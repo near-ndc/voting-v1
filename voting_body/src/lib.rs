@@ -67,6 +67,7 @@ impl Contract {
             iah_registry,
             bond: bond.0,
             threshold, // TODO, need to add dynamic quorum and threshold
+            community_treasury,
         }
     }
 
