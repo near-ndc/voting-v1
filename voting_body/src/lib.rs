@@ -303,32 +303,9 @@ mod unit_tests {
         assert_eq!(ctr.number_of_proposals(), 1);
 
         // check `get_proposals` query
-        assert_eq!(ctr.get_proposals(1, 10, None), vec![prop.clone()]);
-        assert_eq!(ctr.get_proposals(0, 10, None), vec![prop.clone()]);
-        assert_eq!(ctr.get_proposals(2, 10, None), vec![]);
-
-        // check `get_proposals` query
-        let res = ctr.get_proposals(0, 10, Some(false));
-        assert_eq!(res, vec![ctr.get_proposal(id).unwrap()]);
-
-        let id2 = ctr
-            .create_proposal(PropKind::Text, "Proposal unit test 2".to_string())
-            .unwrap();
-
-        let id3 = ctr
-            .create_proposal(PropKind::Text, "Proposal unit test 3".to_string())
-            .unwrap();
-
-        // reverse query
-        let res = ctr.get_proposals(10, 10, Some(true));
-        assert_eq!(
-            res,
-            vec![
-                ctr.get_proposal(id3).unwrap(),
-                ctr.get_proposal(id2).unwrap(),
-                ctr.get_proposal(id).unwrap()
-            ]
-        );
+        assert_eq!(ctr.get_proposals(1, 10), vec![prop.clone()]);
+        assert_eq!(ctr.get_proposals(0, 10), vec![prop.clone()]);
+        assert_eq!(ctr.get_proposals(2, 10), vec![]);
 
         vote(ctx.clone(), &mut ctr, vec![acc(1), acc(2), acc(3)], id);
 
