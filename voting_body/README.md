@@ -76,7 +76,7 @@ Spam proposals are removed, and the bond is slashed (sent to the community treas
 
 A proposal is **rejected** if voting time is over (proposal is not in progress any more), and it was not approved nor marked as spam.
 
-### Quorums and Thresholds:
+### Quorums and Thresholds
 
 **Quorum** assures that enough of the VB members voted.
 **Threshold** assures that enough VB members approved a proposal. It is defined as a minimum ratio of #approve votes over all votes to approve a proposal: `#approve > threshold * (#approve + #reject + #spam)`. It is either a simple majority or a super majority.
