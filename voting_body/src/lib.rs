@@ -135,7 +135,7 @@ impl Contract {
         skip_execution: Option<bool>,
     ) -> Result<(), VoteError> {
         let user = env::predecessor_account_id();
-        let execute = !skip_execution.unwrap_or(true);
+        let execute = !skip_execution.unwrap_or(false);
         let mut prop = self.assert_proposal(id);
 
         if !matches!(prop.status, ProposalStatus::InProgress) {
@@ -158,7 +158,7 @@ impl Contract {
 
         emit_vote(id);
 
-        if prop.status == ProposalStatus::Approved {
+        if prop.status == ProposalStatus::Approved && execute {
             // We ignore a failure of self.execute here to assure that the vote is counted.
             let res = self.execute(id);
             if res.is_err() {
@@ -179,10 +179,6 @@ impl Contract {
             ProposalStatus::Approved | ProposalStatus::Failed
         ) {
             return Err(ExecError::NotApproved);
-        }
-        let now = env::block_timestamp_ms();
-        if now <= prop.submission_time + self.voting_duration {
-            return Err(ExecError::ExecTime);
         }
 
         prop.status = ProposalStatus::Executed;
@@ -331,7 +327,7 @@ mod unit_tests {
         vote(ctx.clone(), &mut ctr, vec![acc(1), acc(2), acc(3)], id);
 
         prop = ctr.get_proposal(id).unwrap();
-        assert_eq!(prop.proposal.status, ProposalStatus::Approved);
+        assert_eq!(prop.proposal.status, ProposalStatus::Executed);
 
         ctx.predecessor_account_id = acc(4);
         testing_env!(ctx.clone());
@@ -368,15 +364,27 @@ mod unit_tests {
         //     x => panic!("expected NotAuthorized, got: {:?}", x),
         // }
 
-        // TODO: test case checking automatic execution
-        // ctx.predecessor_account_id = acc(2);
-        // testing_env!(ctx.clone());
-        // let id = ctr
-        //     .create_proposal(PropKind::Text, "Proposal unit test 2".to_string())
-        //     .unwrap();
-        // vote(ctx, &mut ctr, vec![acc(1), acc(2), acc(3)], id);
-        // let prop = ctr.get_proposal(id).unwrap();
-        // assert_eq!(prop.proposal.status, ProposalStatus::Executed);
+        ctx.predecessor_account_id = acc(2);
+        testing_env!(ctx.clone());
+        let id = ctr
+            .create_proposal(PropKind::Text, "Proposal unit test 2".to_string())
+            .unwrap();
+        vote(ctx.clone(), &mut ctr, vec![acc(1), acc(2), acc(3)], id);
+        let prop = ctr.get_proposal(id).unwrap();
+        assert_eq!(prop.proposal.status, ProposalStatus::Executed);
+
+        // Should not execute automatically
+        let id = ctr
+            .create_proposal(PropKind::Text, "Proposal unit test 3".to_string())
+            .unwrap();
+        vote(ctx.clone(), &mut ctr, vec![acc(1), acc(2)], id);
+
+        ctx.predecessor_account_id = acc(3);
+        testing_env!(ctx.clone());
+
+        ctr.vote(id, Vote::Approve, Some(true)).unwrap();
+        let prop = ctr.get_proposal(id).unwrap();
+        assert_eq!(prop.proposal.status, ProposalStatus::Approved);
     }
 
     #[test]
