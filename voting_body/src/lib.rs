@@ -67,7 +67,7 @@ impl Contract {
             iah_registry,
             bond: bond.0,
             threshold, // TODO, need to add dynamic quorum and threshold
-            community_treasury
+            community_treasury,
         }
     }
 
@@ -249,7 +249,7 @@ impl Contract {
 mod unit_tests {
     use near_sdk::{test_utils::VMContextBuilder, testing_env, VMContext, ONE_NEAR};
 
-    use crate::*;
+    use crate::{view::ConfigOutput, *};
 
     /// 1ms in nano seconds
     const MSECOND: u64 = 1_000_000;
@@ -406,6 +406,22 @@ mod unit_tests {
 
         prop = ctr.get_proposal(id).unwrap();
         assert_eq!(prop.proposal.status, ProposalStatus::Executed);
+    }
+
+    #[test]
+    fn config_query() {
+        let (_, ctr, _) = setup_ctr(100);
+        let config = ctr.config();
+        let expected = ConfigOutput {
+            prop_counter: 1,
+            bond: U128(10000000000000000000000000),
+            threshold: 3,
+            end_time: 1200000,
+            voting_duration: 300000,
+            iah_registry: iah_registry(),
+            community_treasury: treasury(),
+        };
+        assert_eq!(config, expected);
     }
 
     fn create_all_props(ctr: &mut Contract) -> (u32, u32) {

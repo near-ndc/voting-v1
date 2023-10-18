@@ -18,6 +18,7 @@ pub struct ProposalOutput {
 
 /// This is format of output via JSON for the config.
 #[derive(Serialize)]
+#[cfg_attr(test, derive(PartialEq, Debug))]
 #[serde(crate = "near_sdk::serde")]
 pub struct ConfigOutput {
     pub prop_counter: u32,
@@ -66,7 +67,7 @@ impl Contract {
             end_time: self.end_time,
             voting_duration: self.voting_duration,
             iah_registry: self.iah_registry.to_owned(),
-            community_treasury: self.community_treasury.to_owned()
+            community_treasury: self.community_treasury.to_owned(),
         }
     }
 }
