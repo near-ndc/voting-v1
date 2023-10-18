@@ -67,6 +67,7 @@ impl Contract {
             iah_registry,
             bond: bond.0,
             threshold, // TODO, need to add dynamic quorum and threshold
+            community_treasury,
         }
     }
 
@@ -370,6 +371,18 @@ mod unit_tests {
         // vote(ctx, &mut ctr, vec![acc(1), acc(2), acc(3)], id);
         // let prop = ctr.get_proposal(id).unwrap();
         // assert_eq!(prop.proposal.status, ProposalStatus::Executed);
+
+        // create proposal, set timestamp past voting period, status should be rejected
+        let id = ctr
+            .create_proposal(PropKind::Text, "Proposal unit test query 3".to_string())
+            .unwrap();
+
+        let prop = ctr.get_proposal(id).unwrap();
+        ctx.block_timestamp = (prop.proposal.submission_time + ctr.voting_duration + 1) * MSECOND;
+        testing_env!(ctx);
+
+        let prop = ctr.get_proposal(id).unwrap();
+        assert_eq!(prop.proposal.status, ProposalStatus::Rejected);
     }
 
     #[test]
