@@ -28,18 +28,21 @@ use crate::storage::*;
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
     pub prop_counter: u32,
+    pub pre_vote_proposals: LookupMap<u32, Proposal>,
     pub proposals: LookupMap<u32, Proposal>,
 
     /// Near amount required to create a proposal. Will be slashed if the proposal is marked as
     /// spam.
-    pub bond: Balance,
+    pub pre_vote_bond: Balance,
+    pub active_queue_bond: Balance,
+
     /// minimum amount of members to approve the proposal
     /// u32 can hold a number up to 4.2 B. That is enough for many future iterations.
     pub threshold: u32,
 
     /// all times below are in miliseconds
-    pub end_time: u64,
     pub voting_duration: u64,
+    pub pre_vote_duration: u64,
 
     pub iah_registry: AccountId,
     /// Slashed bonds are send to the community treasury.
@@ -51,21 +54,24 @@ impl Contract {
     #[init]
     /// * hook_auth : map of accounts authorized to call hooks
     pub fn new(
-        end_time: u64,
+        pre_vote_duration: u64,
         voting_duration: u64,
         iah_registry: AccountId,
         community_treasury: AccountId,
         // TODO: make sure the threshold is calculated properly
         threshold: u32,
-        bond: U128,
+        pre_vote_bond: U128,
+        active_queue_bond: U128,
     ) -> Self {
         Self {
             prop_counter: 0,
+            pre_vote_proposals: LookupMap::new(StorageKey::PreVoteProposals),
             proposals: LookupMap::new(StorageKey::Proposals),
-            end_time,
+            pre_vote_duration,
             voting_duration,
             iah_registry,
-            bond: bond.0,
+            pre_vote_bond: pre_vote_bond.0,
+            active_queue_bond: active_queue_bond.0,
             threshold, // TODO, need to add dynamic quorum and threshold
             community_treasury,
         }
@@ -281,14 +287,8 @@ mod unit_tests {
         let mut context = VMContextBuilder::new().build();
         let end_time = START + TERM;
 
-        let mut contract = Contract::new(
-            end_time,
-            VOTING_DURATION,
-            iah_registry(),
-            treasury(),
-            3,
-            U128(BOND),
-        );
+        let mut contract =
+            Contract::new(VOTING_DURATION, iah_registry(), treasury(), 3, U128(BOND));
         context.block_timestamp = START * MSECOND;
         context.predecessor_account_id = acc(1);
         context.attached_deposit = attach_deposit * MILI_NEAR;
