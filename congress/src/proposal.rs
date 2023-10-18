@@ -24,6 +24,10 @@ pub struct Proposal {
     pub approve: u8,
     /// Sum of rejection votes. Note: contract assumes that max amount of members is 255
     pub reject: u8,
+    /// Sum of abstain votes. Note: contract assumes that max amount of members is 255.
+    /// Abstain votes express that someone participates in the voting, but doesn't approve nor reject the proposal.
+    /// Abstain votes don't count into the final tally.
+    pub abstain: u8,
     /// Map of who voted and how.
     pub votes: HashMap<AccountId, Vote>,
     /// Submission time (for voting period).
@@ -55,6 +59,9 @@ impl Proposal {
                 if self.reject >= threshold {
                     self.status = ProposalStatus::Rejected;
                 }
+            }
+            Vote::Abstain => {
+                self.abstain += 1;
             }
         }
         self.votes.insert(user, vote);
@@ -143,6 +150,7 @@ pub enum ProposalStatus {
 pub enum Vote {
     Approve = 0x0,
     Reject = 0x1,
+    Abstain = 0x2,
     // note: we don't have Remove
 }
 
