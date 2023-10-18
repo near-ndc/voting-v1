@@ -92,6 +92,7 @@ impl Proposal {
                 } else {
                     self.status = ProposalStatus::Rejected;
                 }
+                // TODO: remove proposal and slash bond
             }
         }
         self.votes.insert(user, vote);
