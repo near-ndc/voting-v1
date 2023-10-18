@@ -42,6 +42,8 @@ pub struct Contract {
     pub voting_duration: u64,
 
     pub iah_registry: AccountId,
+    /// Slashed bonds are send to the community treasury.
+    pub community_treasury: AccountId,
 }
 
 #[near_bindgen]
@@ -52,6 +54,7 @@ impl Contract {
         end_time: u64,
         voting_duration: u64,
         iah_registry: AccountId,
+        community_treasury: AccountId,
         // TODO: make sure the threshold is calculated properly
         threshold: u32,
         bond: U128,
@@ -268,12 +271,23 @@ mod unit_tests {
         AccountId::new_unchecked("registry.near".to_string())
     }
 
+    fn treasury() -> AccountId {
+        AccountId::new_unchecked("treasury.near".to_string())
+    }
+
     /// creates a test contract with proposal threshold=3
     fn setup_ctr(attach_deposit: u128) -> (VMContext, Contract, u32) {
         let mut context = VMContextBuilder::new().build();
         let end_time = START + TERM;
 
-        let mut contract = Contract::new(end_time, VOTING_DURATION, iah_registry(), 3, U128(BOND));
+        let mut contract = Contract::new(
+            end_time,
+            VOTING_DURATION,
+            iah_registry(),
+            treasury(),
+            3,
+            U128(BOND),
+        );
         context.block_timestamp = START * MSECOND;
         context.predecessor_account_id = acc(1);
         context.attached_deposit = attach_deposit * MILI_NEAR;
