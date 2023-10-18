@@ -101,8 +101,8 @@ impl Contract {
     ) -> Result<u32, CreatePropError> {
         let storage_start = env::storage_usage();
         let user = env::predecessor_account_id();
-
         let now = env::block_timestamp_ms();
+        let bond = env::attached_deposit();
 
         self.prop_counter += 1;
         emit_prop_created(self.prop_counter, &kind);
@@ -120,6 +120,7 @@ impl Contract {
                 votes: HashMap::new(),
                 submission_time: now,
                 approved_at: None,
+                bond,
             },
         );
 
@@ -264,7 +265,9 @@ mod unit_tests {
     const START: u64 = 60 * 5 * 1000;
     const TERM: u64 = 60 * 15 * 1000;
     const VOTING_DURATION: u64 = 60 * 5 * 1000;
-    const BOND: u128 = ONE_NEAR * 10;
+    const PRE_VOTE_DURATION: u64 = 60 * 10 * 1000;
+    const PRE_BOND: u128 = ONE_NEAR * 3;
+    const BOND: u128 = ONE_NEAR * 300;
 
     fn acc(idx: u8) -> AccountId {
         AccountId::new_unchecked(format!("user-{}.near", idx))
@@ -285,10 +288,15 @@ mod unit_tests {
     /// creates a test contract with proposal threshold=3
     fn setup_ctr(attach_deposit: u128) -> (VMContext, Contract, u32) {
         let mut context = VMContextBuilder::new().build();
-        let end_time = START + TERM;
-
-        let mut contract =
-            Contract::new(VOTING_DURATION, iah_registry(), treasury(), 3, U128(BOND));
+        let mut contract = Contract::new(
+            PRE_VOTE_DURATION,
+            VOTING_DURATION,
+            iah_registry(),
+            treasury(),
+            3,
+            U128(PRE_BOND),
+            U128(BOND),
+        );
         context.block_timestamp = START * MSECOND;
         context.predecessor_account_id = acc(1);
         context.attached_deposit = attach_deposit * MILI_NEAR;
