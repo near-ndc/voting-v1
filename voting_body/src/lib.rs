@@ -303,9 +303,9 @@ mod unit_tests {
         assert_eq!(ctr.number_of_proposals(), 1);
 
         // check `get_proposals` query
-        assert_eq!(ctr.get_proposals(1, 10), vec![prop.clone()]);
-        assert_eq!(ctr.get_proposals(0, 10), vec![prop.clone()]);
-        assert_eq!(ctr.get_proposals(2, 10), vec![]);
+        assert_eq!(ctr.get_proposals(1, 10, None), vec![prop.clone()]);
+        assert_eq!(ctr.get_proposals(0, 10, None), vec![prop.clone()]);
+        assert_eq!(ctr.get_proposals(2, 10, None), vec![]);
 
         vote(ctx.clone(), &mut ctr, vec![acc(1), acc(2), acc(3)], id);
 
@@ -408,5 +408,24 @@ mod unit_tests {
             .unwrap();
 
         (prop_text, prop_fc)
+    }
+
+    #[test]
+    fn get_proposals() {
+        let (_, mut ctr, id1) = setup_ctr(100);
+        let (id2, id3) = create_all_props(&mut ctr);
+        let prop1 = ctr.get_proposal(id1).unwrap();
+        let prop2 = ctr.get_proposal(id2).unwrap();
+        let prop3 = ctr.get_proposal(id3).unwrap();
+        assert_eq!(ctr.number_of_proposals(), 3);
+        assert_eq!(
+            ctr.get_proposals(0, 10, None),
+            vec![prop1.clone(), prop2.clone(), prop3.clone()]
+        );
+        // reveresed
+        assert_eq!(
+            ctr.get_proposals(3, 10, Some(true)),
+            vec![prop3.clone(), prop2.clone(), prop1.clone()]
+        );
     }
 }

@@ -24,7 +24,29 @@ impl Contract {
 
     /// Returns all proposals
     /// Get proposals in paginated view.
-    pub fn get_proposals(&self, from_index: u32, limit: u32) -> Vec<ProposalOutput> {
+    pub fn get_proposals(
+        &self,
+        from_index: u32,
+        limit: u32,
+        reverse: Option<bool>,
+    ) -> Vec<ProposalOutput> {
+        if reverse.unwrap_or(false) {
+            let mut start = 1;
+            let end_index = min(from_index, self.prop_counter);
+            if end_index > limit {
+                start = end_index - limit;
+            }
+
+            return (start..=end_index)
+                .rev()
+                .filter_map(|id| {
+                    self.proposals
+                        .get(&id)
+                        .map(|proposal| ProposalOutput { id, proposal })
+                })
+                .collect();
+        }
+
         (from_index..=min(self.prop_counter, from_index + limit))
             .filter_map(|id| {
                 self.proposals
