@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use common::finalize_storage_check;
 use events::*;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::LookupMap;
+use near_sdk::collections::{LazyOption, LookupMap};
 use near_sdk::json_types::U128;
 use near_sdk::{
     env, near_bindgen, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseOrValue,
@@ -24,6 +24,9 @@ pub use crate::ext::*;
 pub use crate::proposal::*;
 use crate::storage::*;
 
+// TODO temp value
+const THRESHOLD: u32 = 3;
+
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
@@ -40,15 +43,13 @@ pub struct Contract {
 
     /// minimum amount of members to approve the proposal
     /// u32 can hold a number up to 4.2 B. That is enough for many future iterations.
-    pub threshold: u32,
+    pub simple_consent: Consent,
+    pub super_consent: Consent,
 
     /// all times below are in miliseconds
     pub voting_duration: u64,
     pub pre_vote_duration: u64,
-
-    pub iah_registry: AccountId,
-    /// Slashed bonds are send to the community treasury.
-    pub community_treasury: AccountId,
+    pub accounts: LazyOption<Accounts>,
 }
 
 #[near_bindgen]
@@ -58,12 +59,11 @@ impl Contract {
     pub fn new(
         pre_vote_duration: u64,
         voting_duration: u64,
-        iah_registry: AccountId,
-        community_treasury: AccountId,
-        // TODO: make sure the threshold is calculated properly
-        threshold: u32,
         pre_vote_bond: U128,
         active_queue_bond: U128,
+        accounts: Accounts,
+        simple_consent: Consent,
+        super_consent: Consent,
     ) -> Self {
         Self {
             prop_counter: 0,
@@ -71,11 +71,11 @@ impl Contract {
             proposals: LookupMap::new(StorageKey::Proposals),
             pre_vote_duration,
             voting_duration,
-            iah_registry,
             pre_vote_bond: pre_vote_bond.0,
             active_queue_bond: active_queue_bond.0,
-            threshold, // TODO, need to add dynamic quorum and threshold
-            community_treasury,
+            accounts: LazyOption::new(StorageKey::Accounts, Some(&accounts)),
+            simple_consent,
+            super_consent,
         }
     }
 
@@ -90,7 +90,7 @@ impl Contract {
     /// Creates a new proposal.
     /// Returns the new proposal ID.
     /// Caller is required to attach enough deposit to cover the proposal storage as well as all
-    /// possible votes (2*self.threshold - 1).
+    /// possible votes.
     /// NOTE: storage is paid from the bond.
     #[payable]
     #[handle_result]
@@ -141,7 +141,7 @@ impl Contract {
 
         // TODO: this has to change, because we can have more votes
         // max amount of votes is threshold + threshold-1.
-        let extra_storage = VOTE_STORAGE * (2 * self.threshold - 1) as u64;
+        let extra_storage = VOTE_STORAGE * (2 * THRESHOLD - 1) as u64;
         if let Err(reason) = finalize_storage_check(storage_start, extra_storage, user) {
             return Err(CreatePropError::Storage(reason));
         }
@@ -169,7 +169,8 @@ impl Contract {
         if now - p.start > self.pre_vote_duration {
             // transfer attached N, slash bond & keep the proposal removed.
             Promise::new(user.clone()).transfer(bond);
-            Promise::new(self.community_treasury.clone()).transfer(p.bond);
+            let treasury = self.accounts.get().unwrap().community_treasury;
+            Promise::new(treasury).transfer(p.bond);
             emit_prevote_prop_slashed(id, p.bond);
             return Ok(false);
         }
@@ -205,7 +206,7 @@ impl Contract {
             return Err(VoteError::NotActive);
         }
 
-        prop.add_vote(user, vote, self.threshold)?;
+        prop.add_vote(user, vote, THRESHOLD)?;
 
         if prop.status == ProposalStatus::Spam {
             self.proposals.remove(&id);
@@ -338,8 +339,16 @@ mod unit_tests {
         AccountId::new_unchecked(format!("user-{}.near", idx))
     }
 
+    fn hom() -> AccountId {
+        AccountId::new_unchecked("hom.near".to_string())
+    }
+
     fn coa() -> AccountId {
         AccountId::new_unchecked("coa.near".to_string())
+    }
+
+    fn tc() -> AccountId {
+        AccountId::new_unchecked("tc.near".to_string())
     }
 
     fn iah_registry() -> AccountId {
@@ -350,17 +359,29 @@ mod unit_tests {
         AccountId::new_unchecked("treasury.near".to_string())
     }
 
-    /// creates a test contract with proposal threshold=3
+    /// creates a test contract with proposal
     fn setup_ctr(attach_deposit: u128) -> (VMContext, Contract, u32) {
         let mut context = VMContextBuilder::new().build();
         let mut contract = Contract::new(
             PRE_VOTE_DURATION,
             VOTING_DURATION,
-            iah_registry(),
-            treasury(),
-            3,
             U128(PRE_BOND),
             U128(BOND),
+            Accounts {
+                iah_registry: iah_registry(),
+                community_treasury: treasury(),
+                congress_hom: hom(),
+                congress_coa: coa(),
+                congress_tc: tc(),
+            },
+            Consent {
+                quorum: 3,
+                threshold: 50,
+            },
+            Consent {
+                quorum: 5,
+                threshold: 60,
+            },
         );
         context.block_timestamp = START;
         context.predecessor_account_id = acc(1);
