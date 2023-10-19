@@ -49,6 +49,8 @@ pub struct Contract {
     pub iah_registry: AccountId,
     /// Slashed bonds are send to the community treasury.
     pub community_treasury: AccountId,
+
+    pub proposal_bond: LookupMap<u32, AccountId>,
 }
 
 #[near_bindgen]
@@ -76,6 +78,7 @@ impl Contract {
             active_queue_bond: active_queue_bond.0,
             threshold, // TODO, need to add dynamic quorum and threshold
             community_treasury,
+            proposal_bond: LookupMap::new(StorageKey::ProposalBond),
         }
     }
 
@@ -224,6 +227,31 @@ impl Contract {
             }
         };
         Ok(result)
+    }
+
+    /// Save the user who is topping up in the proposal and send back the remainder.
+    /// panics if proposal is not in an pre_vote queue or payment is not enough
+    #[payable]
+    #[handle_result]
+    pub fn proposal_top_up_bond(&mut self, id: u32) -> Result<(), BondError> {
+        let bond = env::attached_deposit();
+        let user = env::predecessor_account_id();
+
+        if !self.pre_vote_proposals.contains_key(&id) {
+            return Err(BondError::NotInPreVote);
+        }
+
+        let req_bond = self.active_queue_bond - self.pre_vote_bond;
+        if bond < req_bond {
+            return Err(BondError::NotEnough);
+        }
+
+        self.proposal_bond.insert(&id, &user);
+        let rem = bond - req_bond;
+        if rem > 0 {
+            Promise::new(user.clone()).transfer(rem);
+        }
+        Ok(())
     }
 
     /*****************

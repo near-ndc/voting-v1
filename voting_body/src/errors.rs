@@ -54,3 +54,20 @@ impl FunctionError for CreatePropError {
         }
     }
 }
+
+#[derive(Serialize)]
+#[serde(crate = "near_sdk::serde")]
+#[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq, Debug))]
+pub enum BondError {
+    NotInPreVote,
+    NotEnough,
+}
+
+impl FunctionError for BondError {
+    fn panic(&self) -> ! {
+        match self {
+            BondError::NotInPreVote => panic_str("proposal is not in pre-vote queue"),
+            BondError::NotEnough => panic_str("bond amount is not enough"),
+        }
+    }
+}
