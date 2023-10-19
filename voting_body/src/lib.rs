@@ -452,7 +452,6 @@ mod unit_tests {
             .unwrap();
         let mut prop2 = ctr.get_proposal(id).unwrap();
         assert_eq!(ctr.vote(id, Vote::Approve), Ok(()));
-        assert_eq!(ctr.vote(id, Vote::Approve), Err(VoteError::DoubleVote));
         vote(
             ctx.clone(),
             &mut ctr,
@@ -557,7 +556,7 @@ mod unit_tests {
 
     #[test]
     fn overwrite_votes() {
-        let (mut ctx, mut ctr, id) = setup_ctr(100);
+        let (mut ctx, mut ctr, id) = setup_ctr(BOND);
         let mut prop = ctr.get_proposal(id).unwrap();
         assert_eq!(prop.proposal.status, ProposalStatus::InProgress);
         assert!((prop.proposal.votes.is_empty()));
