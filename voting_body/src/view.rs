@@ -24,6 +24,7 @@ impl Contract {
 
     /// Returns all proposals from the active queue, which were not marked as a spam. This
     /// includes proposals that are in progress, rejected, approved or failed.
+    /// TODO: simplify this https://github.com/near-ndc/voting-v1/pull/102#discussion_r1365810686
     pub fn get_proposals(
         &self,
         from_index: u32,
