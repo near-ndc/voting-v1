@@ -227,14 +227,6 @@ impl Contract {
         Ok(true)
     }
 
-    fn move_prop_to_active(&mut self, prop_id: u32, p: &mut Proposal) {
-        p.supported.clear();
-        p.status = ProposalStatus::InProgress;
-        p.start = env::block_timestamp_ms();
-        self.proposals.insert(&prop_id, &p);
-        emit_prop_active(prop_id);
-    }
-
     #[handle_result]
     // TODO: must be called via iah_call
     pub fn vote(&mut self, id: u32, vote: Vote) -> Result<(), VoteError> {
@@ -346,6 +338,14 @@ impl Contract {
             Some(p) => Ok(p),
             None => Err(PrevotePropError::NotFound),
         }
+    }
+
+    fn move_prop_to_active(&mut self, prop_id: u32, p: &mut Proposal) {
+        p.supported.clear();
+        p.status = ProposalStatus::InProgress;
+        p.start = env::block_timestamp_ms();
+        self.proposals.insert(&prop_id, &p);
+        emit_prop_active(prop_id);
     }
 
     fn slash_prop(&mut self, prop_id: u32, amount: Balance) {
@@ -723,5 +723,49 @@ mod unit_tests {
             ctr.get_proposals(3, 2, Some(true)),
             vec![prop3.clone(), prop2.clone()]
         );
+    }
+
+    #[test]
+    fn support_proposal() {
+        let (mut ctx, mut ctr, id) = setup_ctr(PRE_BOND);
+
+        // make one less support then what is necessary to test that the proposal is still in prevote
+        for i in 1..PRE_VOTE_SUPPORT {
+            ctx.predecessor_account_id = acc(i as u8);
+            testing_env!(ctx.clone());
+            assert_eq!(ctr.support_proposal(id), Ok(true));
+        }
+
+        assert_eq!(
+            ctr.support_proposal(id),
+            Err(PrevotePropError::DoubleSupport)
+        );
+
+        let p = ctr.assert_pre_vote_prop(id).unwrap();
+        assert_eq!(p.status, ProposalStatus::PreVote);
+        assert_eq!(p.support, PRE_VOTE_SUPPORT - 1);
+        for i in 1..PRE_VOTE_SUPPORT {
+            assert!(p.supported.contains(&acc(i as u8)))
+        }
+
+        // add the missing support and assert that the proposal was moved to active
+        ctx.predecessor_account_id = acc(PRE_VOTE_SUPPORT as u8);
+        testing_env!(ctx.clone());
+        assert_eq!(ctr.support_proposal(id), Ok(true));
+
+        // should be removed from prevote queue
+        assert_eq!(
+            ctr.assert_pre_vote_prop(id),
+            Err(PrevotePropError::NotFound)
+        );
+        let p = ctr.assert_proposal(id);
+        assert_eq!(p.status, ProposalStatus::InProgress);
+        assert_eq!(p.support, PRE_VOTE_SUPPORT);
+        assert!(p.supported.is_empty());
+
+        // can't support proposal which was already moved
+        assert_eq!(ctr.support_proposal(id), Err(PrevotePropError::NotFound));
+
+        // TODO: add test with overdue
     }
 }
