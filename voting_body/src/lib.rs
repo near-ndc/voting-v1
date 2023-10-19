@@ -256,6 +256,8 @@ impl Contract {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod unit_tests {
+    use std::ptr::eq;
+
     use near_sdk::{test_utils::VMContextBuilder, testing_env, VMContext, ONE_NEAR};
 
     use crate::*;
@@ -351,11 +353,8 @@ mod unit_tests {
             .unwrap();
 
         assert_eq!(ctr.vote(id, Vote::Approve), Ok(()));
-
-        match ctr.vote(id, Vote::Approve) {
-            Err(VoteError::DoubleVote) => (),
-            x => panic!("expected DoubleVoted, got: {:?}", x),
-        }
+        // verify second vote overwrites the existing one
+        assert_eq!(ctr.vote(id, Vote::Approve), Ok(()));
 
         ctx.block_timestamp = (START + ctr.voting_duration + 1) * MSECOND;
         testing_env!(ctx.clone());
@@ -428,6 +427,38 @@ mod unit_tests {
 
         prop = ctr.get_proposal(id).unwrap();
         assert_eq!(prop.proposal.status, ProposalStatus::Executed);
+    }
+
+    #[test]
+    fn overwrite_votes() {
+        let (mut ctx, mut ctr, id) = setup_ctr(100);
+        let mut prop = ctr.get_proposal(id).unwrap();
+        assert_eq!(prop.proposal.status, ProposalStatus::InProgress);
+        assert!((prop.proposal.votes.is_empty()));
+
+        ctx.predecessor_account_id = acc(1);
+        testing_env!(ctx.clone());
+
+        assert_eq!(ctr.vote(id, Vote::Approve), Ok(()));
+        prop = ctr.get_proposal(id).unwrap();
+        assert_eq!(prop.proposal.approve, 1);
+        assert_eq!(prop.proposal.abstain, 0);
+        assert_eq!(prop.proposal.reject, 0);
+        assert_eq!(prop.proposal.spam, 0);
+
+        assert_eq!(ctr.vote(id, Vote::Abstain), Ok(()));
+        prop = ctr.get_proposal(id).unwrap();
+        assert_eq!(prop.proposal.approve, 0);
+        assert_eq!(prop.proposal.abstain, 1);
+        assert_eq!(prop.proposal.reject, 0);
+        assert_eq!(prop.proposal.spam, 0);
+
+        assert_eq!(ctr.vote(id, Vote::Reject), Ok(()));
+        prop = ctr.get_proposal(id).unwrap();
+        assert_eq!(prop.proposal.approve, 0);
+        assert_eq!(prop.proposal.abstain, 0);
+        assert_eq!(prop.proposal.reject, 1);
+        assert_eq!(prop.proposal.spam, 0);
     }
 
     fn create_all_props(ctr: &mut Contract) -> (u32, u32) {
