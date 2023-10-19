@@ -573,6 +573,7 @@ mod unit_tests {
         assert_eq!(config, expected);
     }
 
+    #[test]
     fn overwrite_votes() {
         let (mut ctx, mut ctr, id) = setup_ctr(BOND);
         let mut p = ctr.get_proposal(id).unwrap();
