@@ -24,7 +24,31 @@ impl Contract {
 
     /// Returns all proposals from the active queue, which were not marked as a spam. This
     /// includes proposals that are in progress, rejected, approved or failed.
-    pub fn get_proposals(&self, from_index: u32, limit: u32) -> Vec<ProposalOutput> {
+    /// TODO: simplify this https://github.com/near-ndc/voting-v1/pull/102#discussion_r1365810686
+    pub fn get_proposals(
+        &self,
+        from_index: u32,
+        limit: u32,
+        reverse: Option<bool>,
+    ) -> Vec<ProposalOutput> {
+        if reverse.unwrap_or(false) {
+            let mut start = 1;
+            let end_index = min(from_index, self.prop_counter);
+            if end_index > limit {
+                start = end_index - limit + 1;
+            }
+
+            return (start..=end_index)
+                .rev()
+                .filter_map(|id| {
+                    self.proposals.get(&id).map(|mut proposal| {
+                        proposal.recompute_status(self.voting_duration);
+                        ProposalOutput { id, proposal }
+                    })
+                })
+                .collect();
+        }
+
         (from_index..=min(self.prop_counter, from_index + limit))
             .filter_map(|id| {
                 self.proposals.get(&id).map(|mut proposal| {
