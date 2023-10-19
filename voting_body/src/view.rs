@@ -30,31 +30,31 @@ impl Contract {
         limit: u32,
         reverse: Option<bool>,
     ) -> Vec<ProposalOutput> {
-        if reverse.unwrap_or(false) {
-            let mut start = 1;
-            let end_index = min(from_index, self.prop_counter);
-            if end_index > limit {
-                start = end_index - limit;
-            }
+        let (start, end_index) = if from_index == 0 && (reverse.is_none() || reverse == Some(false))
+        {
+            (1, limit.min(self.prop_counter))
+        } else {
+            let start = if let Some(true) = reverse {
+                from_index.saturating_sub(limit - 1)
+            } else {
+                from_index
+            };
+            (start, from_index.min(self.prop_counter))
+        };
 
-            return (start..=end_index)
-                .rev()
-                .filter_map(|id| {
-                    self.proposals
-                        .get(&id)
-                        .map(|proposal| ProposalOutput { id, proposal })
-                })
-                .collect();
+        let proposals: Vec<ProposalOutput> = (start..=end_index)
+            .filter_map(|id| {
+                self.proposals
+                    .get(&id)
+                    .map(|proposal| ProposalOutput { id, proposal })
+            })
+            .collect();
+
+        if let Some(true) = reverse {
+            return proposals.into_iter().rev().collect();
         }
 
-        (from_index..=min(self.prop_counter, from_index + limit))
-            .filter_map(|id| {
-                self.proposals.get(&id).map(|mut proposal| {
-                    proposal.recompute_status(self.voting_duration);
-                    ProposalOutput { id, proposal }
-                })
-            })
-            .collect()
+        proposals
     }
 
     /// Get specific proposal.

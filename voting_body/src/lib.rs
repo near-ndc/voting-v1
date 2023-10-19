@@ -455,14 +455,25 @@ mod unit_tests {
         let prop2 = ctr.get_proposal(id2).unwrap();
         let prop3 = ctr.get_proposal(id3).unwrap();
         assert_eq!(ctr.number_of_proposals(), 3);
+        // non reversed
         assert_eq!(
             ctr.get_proposals(0, 10, None),
             vec![prop1.clone(), prop2.clone(), prop3.clone()]
+        );
+        // non reversed with litmit
+        assert_eq!(
+            ctr.get_proposals(0, 2, None),
+            vec![prop1.clone(), prop2.clone()]
         );
         // reversed
         assert_eq!(
             ctr.get_proposals(3, 10, Some(true)),
             vec![prop3.clone(), prop2.clone(), prop1.clone()]
+        );
+        // reversed with limit
+        assert_eq!(
+            ctr.get_proposals(3, 2, Some(true)),
+            vec![prop3.clone(), prop2.clone()]
         );
     }
 }
