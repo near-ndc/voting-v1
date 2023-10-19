@@ -28,18 +28,23 @@ use crate::storage::*;
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
     pub prop_counter: u32,
+    /// Set of proposals in the pre-vote queue.
+    pub pre_vote_proposals: LookupMap<u32, Proposal>,
+    /// Set of active proposals.
     pub proposals: LookupMap<u32, Proposal>,
 
     /// Near amount required to create a proposal. Will be slashed if the proposal is marked as
     /// spam.
-    pub bond: Balance,
+    pub pre_vote_bond: Balance,
+    pub active_queue_bond: Balance,
+
     /// minimum amount of members to approve the proposal
     /// u32 can hold a number up to 4.2 B. That is enough for many future iterations.
     pub threshold: u32,
 
     /// all times below are in miliseconds
-    pub end_time: u64,
     pub voting_duration: u64,
+    pub pre_vote_duration: u64,
 
     pub iah_registry: AccountId,
     /// Slashed bonds are send to the community treasury.
@@ -51,21 +56,24 @@ impl Contract {
     #[init]
     /// * hook_auth : map of accounts authorized to call hooks
     pub fn new(
-        end_time: u64,
+        pre_vote_duration: u64,
         voting_duration: u64,
         iah_registry: AccountId,
         community_treasury: AccountId,
         // TODO: make sure the threshold is calculated properly
         threshold: u32,
-        bond: U128,
+        pre_vote_bond: U128,
+        active_queue_bond: U128,
     ) -> Self {
         Self {
             prop_counter: 0,
+            pre_vote_proposals: LookupMap::new(StorageKey::PreVoteProposals),
             proposals: LookupMap::new(StorageKey::Proposals),
-            end_time,
+            pre_vote_duration,
             voting_duration,
             iah_registry,
-            bond: bond.0,
+            pre_vote_bond: pre_vote_bond.0,
+            active_queue_bond: active_queue_bond.0,
             threshold, // TODO, need to add dynamic quorum and threshold
             community_treasury,
         }
@@ -95,8 +103,8 @@ impl Contract {
     ) -> Result<u32, CreatePropError> {
         let storage_start = env::storage_usage();
         let user = env::predecessor_account_id();
-
         let now = env::block_timestamp_ms();
+        let bond = env::attached_deposit();
 
         self.prop_counter += 1;
         emit_prop_created(self.prop_counter, &kind);
@@ -114,6 +122,7 @@ impl Contract {
                 votes: HashMap::new(),
                 submission_time: now,
                 approved_at: None,
+                bond,
             },
         );
 
@@ -258,7 +267,9 @@ mod unit_tests {
     const START: u64 = 60 * 5 * 1000;
     const TERM: u64 = 60 * 15 * 1000;
     const VOTING_DURATION: u64 = 60 * 5 * 1000;
-    const BOND: u128 = ONE_NEAR * 10;
+    const PRE_VOTE_DURATION: u64 = 60 * 10 * 1000;
+    const PRE_BOND: u128 = ONE_NEAR * 3;
+    const BOND: u128 = ONE_NEAR * 300;
 
     fn acc(idx: u8) -> AccountId {
         AccountId::new_unchecked(format!("user-{}.near", idx))
@@ -279,14 +290,13 @@ mod unit_tests {
     /// creates a test contract with proposal threshold=3
     fn setup_ctr(attach_deposit: u128) -> (VMContext, Contract, u32) {
         let mut context = VMContextBuilder::new().build();
-        let end_time = START + TERM;
-
         let mut contract = Contract::new(
-            end_time,
+            PRE_VOTE_DURATION,
             VOTING_DURATION,
             iah_registry(),
             treasury(),
             3,
+            U128(PRE_BOND),
             U128(BOND),
         );
         context.block_timestamp = START * MSECOND;

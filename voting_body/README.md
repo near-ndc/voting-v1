@@ -7,13 +7,12 @@ Voting Body is governance structure of all non-blacklisted human participants in
 
 Parameters:
 
-- quorum: a minimum amount of members that need to vote to approve a proposal.
-- threshold: a ratio of #approve votes over (#approve + #reject) votes to approve a proposal.
-- pre-vote support: minimum amount of support, a proposal has to receive in order to move it to the active queue, where users can vote to approve a proposal.
-- pre-vote duration: max amount of time, users can express
-- pre-vote bond: amount of N required to add a proposal to the pre-vote queue.
-- active queue bond: amount of N required to move a proposal directly to the active queue.
-- voting duration: max amount of time a proposal can be active in the active queue. If a proposal didn't get enough approvals by that time, it will be removed and bond returned.
+- `quorum`: a minimum amount of members that need to vote to approve a proposal.
+- `pre_vote_support`: minimum amount of support, a proposal has to receive in order to move it to the active queue, where users can vote to approve a proposal.
+- `pre_vote_duration`: max amount of time, users can express support to move a proposal to the active queue, before it will be removed.
+- `pre_vote_bond`: amount of N required to add a proposal to the pre-vote queue.
+- `active_queue_bond`: amount of N required to move a proposal directly to the active queue.
+- `voting_duration`: max amount of time a proposal can be active in the active queue. If a proposal didn't get enough approvals by that time, it will be removed and bond returned.
 
 ## Creating proposals
 
@@ -63,24 +62,24 @@ A proposal voting is in progress when `now <= proposal.start_time + voting_durat
 
 Syntax: #vote_type denotes number of votes of the specified type, eg: #approve means number of approve votes.
 
-A proposal is approved when:
+A proposal is **approved** when:
 
 - voting time is over
 - AND consent is reached (quorum + threshold).
 
-A proposal is marked as spam when:
+A proposal is marked as **spam** when:
 
 - `#spam > #reject`
 - AND `#reject + #spam >= (1-threshold) * (#approve + #reject + #spam)`
 
 Spam proposals are removed, and the bond is slashed (sent to the community treasury).
 
-If voting time is over (proposal is not in progress any more), and it was not approved not marked as spam, then the proposal is _rejected_.
+A proposal is **rejected** if voting time is over (proposal is not in progress anymore), and it was not approved nor marked as spam.
 
-### Quorums and Thresholds:
+### Quorums and Thresholds
 
-Quorum assures that enough of the VB members voted.
-Threshold assures that enough VB members approved a proposal.
+**Quorum** assures that enough of the VB members voted.
+**Threshold** assures that enough VB members approved a proposal. It is defined as a minimum ratio of #approve votes over all votes to approve a proposal: `#approve > threshold * (#approve + #reject + #spam)`. It is either a simple majority or a super majority.
 
-- **Near Consent:** quorum=(7% of the voting body) + **simple majority**= `#approve > 50% * (#approve + #reject + #spam)` .
-- **Near Supermajority Consent**: quorum=(12% of the voting body) + **super majority**= `#approve > 60% * (#approve + #reject + #spam)`
+- **Near Consent:** quorum=(7% of the voting body) + **simple majority**=50% .
+- **Near Supermajority Consent**: quorum=(12% of the voting body) + **super majority**=60%.
