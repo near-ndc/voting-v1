@@ -395,7 +395,7 @@ mod unit_tests {
         assert_eq!(prop1.proposal.status, ProposalStatus::PreVote);
         assert_eq!(ctr.number_of_proposals(), 1);
         assert_eq!(
-            ctr.get_proposals(0, 10),
+            ctr.get_proposals(0, 10, None),
             vec![],
             "should only return active proposals"
         );
@@ -411,7 +411,7 @@ mod unit_tests {
         prop1.proposal.status = ProposalStatus::InProgress;
         prop1.proposal.start = (START + MSECOND) / MSECOND;
         prop1.proposal.additional_bond = Some((acc(2), BOND - PRE_BOND));
-        assert_eq!(ctr.get_proposals(0, 10), vec![prop1.clone()]);
+        assert_eq!(ctr.get_proposals(0, 10, None), vec![prop1.clone()]);
 
         ctx.attached_deposit = 0;
         testing_env!(ctx.clone());
@@ -463,11 +463,17 @@ mod unit_tests {
         prop2.proposal.votes.insert(acc(1), Vote::Reject);
         prop2.proposal.votes.insert(acc(2), Vote::Reject);
 
-        assert_eq!(ctr.get_proposals(0, 1), vec![prop1.clone()]);
-        assert_eq!(ctr.get_proposals(0, 10), vec![prop1.clone(), prop2.clone()]);
-        assert_eq!(ctr.get_proposals(1, 10), vec![prop1.clone(), prop2.clone()]);
-        assert_eq!(ctr.get_proposals(2, 10), vec![prop2.clone()]);
-        assert_eq!(ctr.get_proposals(3, 10), vec![]);
+        assert_eq!(ctr.get_proposals(0, 1, None), vec![prop1.clone()]);
+        assert_eq!(
+            ctr.get_proposals(0, 10, None),
+            vec![prop1.clone(), prop2.clone()]
+        );
+        assert_eq!(
+            ctr.get_proposals(1, 10, None),
+            vec![prop1.clone(), prop2.clone()]
+        );
+        assert_eq!(ctr.get_proposals(2, 10, None), vec![prop2.clone()]);
+        assert_eq!(ctr.get_proposals(3, 10, None), vec![]);
 
         // TODO: add a test case for checking not authorized (but firstly we need to implement that)
         // ctx.predecessor_account_id = acc(5);

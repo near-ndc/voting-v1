@@ -22,8 +22,8 @@ impl Contract {
      * QUERIES
      **********/
 
-    /// Returns all proposals
-    /// Get proposals in paginated view.
+    /// Returns all proposals from the active queue, which were not marked as a spam. This
+    /// includes proposals that are in progress, rejected, approved or failed.
     pub fn get_proposals(
         &self,
         from_index: u32,
