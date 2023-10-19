@@ -158,6 +158,7 @@ impl Contract {
                 status: ProposalStatus::InProgress,
                 approve: 0,
                 reject: 0,
+                abstain: 0,
                 votes: HashMap::new(),
                 submission_time: now,
                 approved_at: None,
@@ -1215,5 +1216,13 @@ mod unit_tests {
             Err(VoteError::NoSelfVote) => (),
             x => panic!("expected NotAllowedAgainst, got: {:?}", x),
         }
+    }
+
+    #[test]
+    fn abstain_vote() {
+        let (_, mut ctr, id) = setup_ctr(100);
+        ctr.vote(id, Vote::Abstain).unwrap();
+        let prop = ctr.get_proposal(id).unwrap();
+        assert_eq!(prop.proposal.abstain, 1);
     }
 }
