@@ -422,7 +422,7 @@ mod unit_tests {
             ctr.get_proposals(0, 10, None),
             vec![prop1.clone(), prop2.clone(), prop3.clone()]
         );
-        // reveresed
+        // reversed
         assert_eq!(
             ctr.get_proposals(3, 10, Some(true)),
             vec![prop3.clone(), prop2.clone(), prop1.clone()]
