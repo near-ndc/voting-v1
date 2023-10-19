@@ -20,4 +20,5 @@ pub struct Accounts {
     pub congress_hom: AccountId,
     pub congress_coa: AccountId,
     pub congress_tc: AccountId,
+    pub admin: AccountId,
 }
