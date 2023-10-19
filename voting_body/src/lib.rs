@@ -261,9 +261,7 @@ impl Contract {
                     .veto_hook(prop_id.clone())
                     .into();
             }
-            PropKind::ApproveBudget { prop_id } => {
-                //TODO: implemenation
-            }
+            PropKind::ApproveBudget { prop_id: _ } => (),
             PropKind::Text => (),
         };
         self.proposals.insert(&id, &prop);
