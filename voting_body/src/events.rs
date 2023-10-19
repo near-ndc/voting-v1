@@ -38,6 +38,13 @@ pub(crate) fn emit_prevote_prop_slashed(prop_id: u32, bond: Balance) {
     });
 }
 
+pub(crate) fn emit_spam_slashed(prop_id: u32, bond: Balance) {
+    emit_event(EventPayload {
+        event: "spam-proposal-slash",
+        data: json!({ "prop_id": prop_id, "bond": U128(bond)}),
+    });
+}
+
 pub(crate) fn emit_vote(prop_id: u32) {
     emit_event(EventPayload {
         event: "vote",

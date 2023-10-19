@@ -210,7 +210,8 @@ impl Contract {
         if prop.status == ProposalStatus::Spam {
             self.proposals.remove(&id);
             emit_spam(id);
-            // TODO: slash bonds
+            Promise::new(self.community_treasury.clone()).transfer(prop.bond);
+            emit_spam_slashed(id, prop.bond);
             return Ok(());
         } else {
             self.proposals.insert(&id, &prop);
