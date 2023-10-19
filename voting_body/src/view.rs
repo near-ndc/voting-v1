@@ -36,23 +36,53 @@ impl Contract {
      * QUERIES
      **********/
 
-    /// Returns all proposals
-    /// Get proposals in paginated view.
-    pub fn get_proposals(&self, from_index: u32, limit: u32) -> Vec<ProposalOutput> {
+    /// Returns all proposals from the active queue, which were not marked as a spam. This
+    /// includes proposals that are in progress, rejected, approved or failed.
+    /// TODO: simplify this https://github.com/near-ndc/voting-v1/pull/102#discussion_r1365810686
+    pub fn get_proposals(
+        &self,
+        from_index: u32,
+        limit: u32,
+        reverse: Option<bool>,
+    ) -> Vec<ProposalOutput> {
+        if reverse.unwrap_or(false) {
+            let mut start = 1;
+            let end_index = min(from_index, self.prop_counter);
+            if end_index > limit {
+                start = end_index - limit + 1;
+            }
+
+            return (start..=end_index)
+                .rev()
+                .filter_map(|id| {
+                    self.proposals.get(&id).map(|mut proposal| {
+                        proposal.recompute_status(self.voting_duration);
+                        ProposalOutput { id, proposal }
+                    })
+                })
+                .collect();
+        }
+
         (from_index..=min(self.prop_counter, from_index + limit))
             .filter_map(|id| {
-                self.proposals
-                    .get(&id)
-                    .map(|proposal| ProposalOutput { id, proposal })
+                self.proposals.get(&id).map(|mut proposal| {
+                    proposal.recompute_status(self.voting_duration);
+                    ProposalOutput { id, proposal }
+                })
             })
             .collect()
     }
 
     /// Get specific proposal.
     pub fn get_proposal(&self, id: u32) -> Option<ProposalOutput> {
-        self.proposals
-            .get(&id)
-            .map(|proposal| ProposalOutput { id, proposal })
+        let mut p = self.proposals.get(&id);
+        if p.is_none() {
+            p = self.pre_vote_proposals.get(&id);
+        }
+        p.map(|mut proposal| {
+            proposal.recompute_status(self.voting_duration);
+            ProposalOutput { id, proposal }
+        })
     }
 
     pub fn number_of_proposals(&self) -> u32 {

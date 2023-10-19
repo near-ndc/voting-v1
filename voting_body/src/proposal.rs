@@ -1,7 +1,7 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::json_types::{Base64VecU8, U128, U64};
 use near_sdk::serde::{Deserialize, Serialize};
-use near_sdk::{env, AccountId};
+use near_sdk::{env, AccountId, Balance};
 
 use std::collections::HashMap;
 
@@ -26,6 +26,9 @@ pub enum Consent {
 pub struct Proposal {
     /// Original proposer.
     pub proposer: AccountId,
+    /// original bond, used to cover the storage for all votes
+    pub bond: Balance,
+    pub(crate) additional_bond: Option<(AccountId, Balance)>,
     /// Description of this proposal.
     pub description: String,
     /// Kind of proposal with relevant information.
@@ -39,8 +42,8 @@ pub struct Proposal {
     /// Map of who voted and how.
     // TODO: must not be a hashmap
     pub votes: HashMap<AccountId, Vote>,
-    /// Submission time (for voting period).
-    pub submission_time: u64,
+    /// start time (for voting period).
+    pub start: u64,
     /// Unix time in miliseconds when the proposal reached approval threshold. `None` if it is not approved.
     pub approved_at: Option<u64>,
 }
@@ -53,17 +56,20 @@ impl Proposal {
         threshold: u32,
         //TODO: quorum
     ) -> Result<(), VoteError> {
-        if self.votes.contains_key(&user) {
-            return Err(VoteError::DoubleVote);
+        // allow to overwrite existing votes
+        if let Some(old_vote) = self.votes.get(&user) {
+            match old_vote {
+                Vote::Approve => self.approve -= 1,
+                Vote::Reject => self.reject -= 1,
+                Vote::Abstain => self.abstain -= 1,
+                Vote::Spam => self.spam -= 1,
+            }
         }
-
         // TODO: this have to be fixed:
         // + threshold must not change the status. If threshold is smaller than 50% of eligible voters,
         //   then it may happen that we reach threshold, even though the rest of the voters are able to
         //   change the voting direction!
         // + need to integrate quorum
-
-        // TODO: support vote overwrite
 
         match vote {
             Vote::Approve => {
@@ -76,9 +82,11 @@ impl Proposal {
             Vote::Reject => {
                 self.reject += 1;
                 if self.reject + self.spam >= threshold {
-                    self.status = ProposalStatus::Spam;
-                } else {
-                    self.status = ProposalStatus::Rejected;
+                    if self.reject > self.spam {
+                        self.status = ProposalStatus::Rejected;
+                    } else {
+                        self.status = ProposalStatus::Spam;
+                    }
                 }
             }
             Vote::Abstain => {
@@ -87,16 +95,26 @@ impl Proposal {
             }
             Vote::Spam => {
                 self.spam += 1;
-                if self.reject + self.spam >= threshold && self.spam > self.reject {
-                    self.status = ProposalStatus::Spam;
-                } else {
-                    self.status = ProposalStatus::Rejected;
+                if self.reject + self.spam >= threshold {
+                    if self.spam > self.reject {
+                        self.status = ProposalStatus::Spam;
+                    } else {
+                        self.status = ProposalStatus::Rejected;
+                    }
                 }
                 // TODO: remove proposal and slash bond
             }
         }
         self.votes.insert(user, vote);
         Ok(())
+    }
+
+    pub fn recompute_status(&mut self, voting_duration: u64) {
+        if &self.status == &ProposalStatus::InProgress
+            && env::block_timestamp_ms() > self.start + voting_duration
+        {
+            self.status = ProposalStatus::Rejected;
+        }
     }
 }
 
@@ -139,6 +157,7 @@ impl PropKind {
 #[serde(crate = "near_sdk::serde")]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Clone))]
 pub enum ProposalStatus {
+    PreVote,
     InProgress,
     Approved,
     Rejected,
