@@ -178,7 +178,7 @@ impl Contract {
         if bond < required_bond {
             return Err(MovePropError::MinBond);
         }
-        let diff = required_bond - bond;
+        let diff = bond - required_bond;
         if diff > 0 {
             Promise::new(user.clone()).transfer(diff);
             bond -= diff;
@@ -327,8 +327,8 @@ mod unit_tests {
     /// 1ms in nano seconds
     const MSECOND: u64 = 1_000_000;
 
+    const START: u64 = 60 * 5 * 1000 * MSECOND;
     // In milliseconds
-    const START: u64 = 60 * 5 * 1000;
     const VOTING_DURATION: u64 = 60 * 5 * 1000;
     const PRE_VOTE_DURATION: u64 = 60 * 10 * 1000;
     const PRE_BOND: u128 = ONE_NEAR * 3;
@@ -362,7 +362,7 @@ mod unit_tests {
             U128(PRE_BOND),
             U128(BOND),
         );
-        context.block_timestamp = START * MSECOND;
+        context.block_timestamp = START;
         context.predecessor_account_id = acc(1);
         context.attached_deposit = attach_deposit;
         testing_env!(context.clone());
@@ -385,27 +385,35 @@ mod unit_tests {
     #[test]
     fn basic_flow() {
         let (mut ctx, mut ctr, id) = setup_ctr(PRE_BOND);
-        let mut prop = ctr.get_proposal(id).unwrap();
-        assert_eq!(prop.proposal.status, ProposalStatus::PreVote);
+        let mut prop1 = ctr.get_proposal(id).unwrap();
+        assert_eq!(prop1.proposal.status, ProposalStatus::PreVote);
         assert_eq!(ctr.number_of_proposals(), 1);
-
-        assert_eq!(ctr.get_proposals(0, 10), vec![prop.clone()]);
-        assert_eq!(ctr.get_proposals(1, 10), vec![prop.clone()]);
-        assert_eq!(ctr.get_proposals(2, 10), vec![]);
+        assert_eq!(
+            ctr.get_proposals(0, 10),
+            vec![],
+            "should only return active proposals"
+        );
 
         //
         // move proposal to an active queue and vote
         //
         ctx.attached_deposit = BOND;
+        ctx.block_timestamp += MSECOND;
+        ctx.predecessor_account_id = acc(2);
         testing_env!(ctx.clone());
         assert_eq!(Ok(true), ctr.top_up_proposal(id));
+        // update the prop1 to the expected vaules
+        prop1.proposal.status = ProposalStatus::InProgress;
+        prop1.proposal.start = START + MSECOND;
+        prop1.proposal.additional_bond = Some((acc(2), BOND - PRE_BOND));
+        assert_eq!(ctr.get_proposals(0, 10), vec![prop1.clone()]);
 
         ctx.attached_deposit = 0;
         testing_env!(ctx.clone());
         vote(ctx.clone(), &mut ctr, vec![acc(1), acc(2), acc(3)], id);
 
-        prop = ctr.get_proposal(id).unwrap();
-        assert_eq!(prop.proposal.status, ProposalStatus::Approved);
+        prop1 = ctr.get_proposal(id).unwrap();
+        assert_eq!(prop1.proposal.status, ProposalStatus::Approved);
 
         ctx.predecessor_account_id = acc(4);
         testing_env!(ctx.clone());
@@ -415,24 +423,36 @@ mod unit_tests {
         }
 
         //
-        // Create a new proposal
+        // Create a new proposal, not enough bond
+        //
+        let resp = ctr.create_proposal(PropKind::Text, "proposal".to_owned());
+        assert_eq!(resp, Err(CreatePropError::MinBond));
+
+        //
+        // Create a new proposal with bond to active queue and check double vote and expire
+        //
+        ctx.attached_deposit = BOND;
+        testing_env!(ctx.clone());
         let id = ctr
             .create_proposal(PropKind::Text, "proposal".to_owned())
             .unwrap();
-
+        let prop2 = ctr.get_proposal(id).unwrap();
         assert_eq!(ctr.vote(id, Vote::Approve), Ok(()));
-
         match ctr.vote(id, Vote::Approve) {
             Err(VoteError::DoubleVote) => (),
             x => panic!("expected DoubleVoted, got: {:?}", x),
         }
 
-        ctx.block_timestamp = (START + ctr.voting_duration + 1) * MSECOND;
+        ctx.block_timestamp = START + (ctr.voting_duration + 1) * MSECOND;
         testing_env!(ctx.clone());
         match ctr.vote(id, Vote::Approve) {
             Err(VoteError::NotActive) => (),
             x => panic!("expected NotActive, got: {:?}", x),
         }
+
+        assert_eq!(ctr.get_proposals(0, 10), vec![prop1.clone(), prop2.clone()]);
+        assert_eq!(ctr.get_proposals(1, 10), vec![prop1.clone(), prop2.clone()]);
+        assert_eq!(ctr.get_proposals(2, 10), vec![prop2.clone()]);
 
         // TODO: add a test case for checking not authorized (but firstly we need to implement that)
         // ctx.predecessor_account_id = acc(5);
@@ -491,7 +511,7 @@ mod unit_tests {
             Err(err) => panic!("expected ExecTime got: {:?}", err),
         }
 
-        ctx.block_timestamp = (START + ctr.voting_duration + 1) * MSECOND;
+        ctx.block_timestamp = START + (ctr.voting_duration + 1) * MSECOND;
         testing_env!(ctx);
 
         ctr.execute(id).unwrap();
