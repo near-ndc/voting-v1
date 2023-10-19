@@ -404,7 +404,7 @@ mod unit_tests {
         assert_eq!(Ok(true), ctr.top_up_proposal(id));
         // update the prop1 to the expected vaules
         prop1.proposal.status = ProposalStatus::InProgress;
-        prop1.proposal.start = START + MSECOND;
+        prop1.proposal.start = (START + MSECOND) / MSECOND;
         prop1.proposal.additional_bond = Some((acc(2), BOND - PRE_BOND));
         assert_eq!(ctr.get_proposals(0, 10), vec![prop1.clone()]);
 

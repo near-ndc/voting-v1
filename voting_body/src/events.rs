@@ -17,7 +17,7 @@ fn emit_event<T: Serialize>(event: EventPayload<T>) {
 /// * `active`: set to true if the prosal was added to an active queue directly.
 pub(crate) fn emit_prop_created(prop_id: u32, kind: &PropKind, active: bool) {
     emit_event(EventPayload {
-        event: "new-proposal",
+        event: "proposal-create",
         data: json!({ "prop_id": prop_id, "kind": kind.to_name(),  "active": active}),
     });
 }
@@ -25,7 +25,7 @@ pub(crate) fn emit_prop_created(prop_id: u32, kind: &PropKind, active: bool) {
 /// Emitted when moveing proposal from pre-vote to active queue.
 pub(crate) fn emit_prop_active(prop_id: u32) {
     emit_event(EventPayload {
-        event: "proposal-active",
+        event: "proposal-activate",
         data: json!({ "prop_id": prop_id}),
     });
 }
@@ -33,7 +33,7 @@ pub(crate) fn emit_prop_active(prop_id: u32) {
 /// Emitted when removing prevote prop and slashing it for not getting enough support.
 pub(crate) fn emit_prevote_prop_slashed(prop_id: u32, bond: Balance) {
     emit_event(EventPayload {
-        event: "proposal-prevote-slashed",
+        event: "proposal-prevote-slash",
         data: json!({ "prop_id": prop_id, "bond": U128(bond)}),
     });
 }
