@@ -6,7 +6,7 @@ use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap};
 use near_sdk::json_types::U128;
 use near_sdk::{
-    env, near_bindgen, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseOrValue,
+    env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseOrValue,
     PromiseResult,
 };
 
@@ -301,8 +301,25 @@ impl Contract {
     }
 
     /*****************
+     * ADMIN
+     ****************/
+
+    pub fn admin_update_consent(&mut self, simple_consent: Consent, super_consent: Consent) {
+        self.assert_admin();
+        self.simple_consent = simple_consent;
+        self.super_consent = super_consent;
+    }
+
+    /*****************
      * INTERNAL
      ****************/
+
+    fn assert_admin(&self) {
+        require!(
+            env::predecessor_account_id() == self.accounts.get().unwrap().admin,
+            "not authorized"
+        );
+    }
 
     fn assert_proposal(&self, id: u32) -> Proposal {
         self.proposals.get(&id).expect("proposal does not exist")
@@ -381,6 +398,10 @@ mod unit_tests {
         AccountId::new_unchecked("treasury.near".to_string())
     }
 
+    fn admin() -> AccountId {
+        AccountId::new_unchecked("admin.near".to_string())
+    }
+
     /// creates a test contract with proposal
     fn setup_ctr(attach_deposit: u128) -> (VMContext, Contract, u32) {
         let mut context = VMContextBuilder::new().build();
@@ -395,6 +416,7 @@ mod unit_tests {
                 congress_hom: hom(),
                 congress_coa: coa(),
                 congress_tc: tc(),
+                admin: admin(),
             },
             Consent {
                 quorum: 3,
@@ -653,7 +675,7 @@ mod unit_tests {
 
     #[test]
     fn get_proposals() {
-        let (mut ctx, mut ctr, id1) = setup_ctr(5 * BOND);
+        let (mut ctx, mut ctr, id1) = setup_ctr(BOND);
         ctx.attached_deposit = BOND;
         testing_env!(ctx.clone());
         let id2 = ctr
@@ -688,5 +710,24 @@ mod unit_tests {
             ctr.get_proposals(3, 2, Some(true)),
             vec![prop3.clone(), prop2.clone()]
         );
+    }
+
+    #[test]
+    fn update_consent() {
+        let (mut ctx, mut ctr, _) = setup_ctr(BOND);
+        ctx.predecessor_account_id = admin();
+        testing_env!(ctx.clone());
+
+        let c1 = Consent {
+            quorum: 11,
+            threshold: 1,
+        };
+        let c2 = Consent {
+            quorum: 12,
+            threshold: 2,
+        };
+        ctr.admin_update_consent(c1.clone(), c2.clone());
+        assert_eq!(c1, ctr.simple_consent);
+        assert_eq!(c2, ctr.super_consent);
     }
 }
