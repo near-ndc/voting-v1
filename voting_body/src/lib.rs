@@ -106,26 +106,40 @@ impl Contract {
         let now = env::block_timestamp_ms();
         let bond = env::attached_deposit();
 
+        if bond < self.pre_vote_bond {
+            return Err(CreatePropError::MinBond);
+        }
+        // TODO: check if proposal is created by a congress member. If yes, move it to active
+        // immediately.
+        let active = bond >= self.active_queue_bond;
         self.prop_counter += 1;
-        emit_prop_created(self.prop_counter, &kind);
-        self.proposals.insert(
-            &self.prop_counter,
-            &Proposal {
-                proposer: user.clone(),
-                description,
-                kind,
-                status: ProposalStatus::InProgress,
-                approve: 0,
-                reject: 0,
-                abstain: 0,
-                spam: 0,
-                votes: HashMap::new(),
-                submission_time: now,
-                approved_at: None,
-                bond,
+        emit_prop_created(self.prop_counter, &kind, active);
+        let prop = Proposal {
+            proposer: user.clone(),
+            bond,
+            additional_bond: None,
+            description,
+            kind,
+            status: if active {
+                ProposalStatus::InProgress
+            } else {
+                ProposalStatus::PreVote
             },
-        );
+            approve: 0,
+            reject: 0,
+            abstain: 0,
+            spam: 0,
+            votes: HashMap::new(),
+            start: now,
+            approved_at: None,
+        };
+        if active {
+            self.proposals.insert(&self.prop_counter, &prop);
+        } else {
+            self.pre_vote_proposals.insert(&self.prop_counter, &prop);
+        }
 
+        // TODO: this has to change, because we can have more votes
         // max amount of votes is threshold + threshold-1.
         let extra_storage = VOTE_STORAGE * (2 * self.threshold - 1) as u64;
         if let Err(reason) = finalize_storage_check(storage_start, extra_storage, user) {
@@ -133,6 +147,49 @@ impl Contract {
         }
 
         Ok(self.prop_counter)
+    }
+
+    #[payable]
+    #[handle_result]
+    /// Allows to add more bond to a proposal to move it to the active queue. Anyone can top up.
+    /// Returns true if the transaction succeeded, or false if the proposal is outdated and
+    /// can't be top up any more.
+    /// Emits:
+    /// * proposal-prevote-slashed: when the prevote proposal is overdue and didn't get enough
+    ///   support on time.
+    /// * proposal-active: when a proposal was successfully updated.
+    /// Excess of attached bond is sent back to the caller.
+    /// Returns error when proposal is not in the pre-vote queue or not enough bond was attached.
+    pub fn top_up_proposal(&mut self, id: u32) -> Result<bool, MovePropError> {
+        let user = env::predecessor_account_id();
+        let now = env::block_timestamp_ms();
+        let mut bond = env::attached_deposit();
+        let mut p = self.remove_pre_vote_prop(id)?;
+
+        if now - p.start > self.pre_vote_duration {
+            // transfer attached N, slash bond & keep the proposal removed.
+            Promise::new(user.clone()).transfer(bond);
+            Promise::new(self.community_treasury.clone()).transfer(p.bond);
+            emit_prevote_prop_slashed(id, p.bond);
+            return Ok(false);
+        }
+
+        let required_bond = self.active_queue_bond - p.bond;
+        if bond < required_bond {
+            return Err(MovePropError::MinBond);
+        }
+        let diff = bond - required_bond;
+        if diff > 0 {
+            Promise::new(user.clone()).transfer(diff);
+            bond -= diff;
+        }
+        p.status = ProposalStatus::InProgress;
+        p.additional_bond = Some((user, bond));
+        p.start = now;
+        self.proposals.insert(&id, &p);
+        emit_prop_active(id);
+
+        Ok(true)
     }
 
     #[handle_result]
@@ -144,7 +201,7 @@ impl Contract {
         if !matches!(prop.status, ProposalStatus::InProgress) {
             return Err(VoteError::NotInProgress);
         }
-        if env::block_timestamp_ms() > prop.submission_time + self.voting_duration {
+        if env::block_timestamp_ms() > prop.start + self.voting_duration {
             return Err(VoteError::NotActive);
         }
 
@@ -184,7 +241,7 @@ impl Contract {
             return Err(ExecError::NotApproved);
         }
         let now = env::block_timestamp_ms();
-        if now <= prop.submission_time + self.voting_duration {
+        if now <= prop.start + self.voting_duration {
             return Err(ExecError::ExecTime);
         }
 
@@ -234,6 +291,13 @@ impl Contract {
         self.proposals.get(&id).expect("proposal does not exist")
     }
 
+    fn remove_pre_vote_prop(&mut self, id: u32) -> Result<Proposal, MovePropError> {
+        match self.pre_vote_proposals.remove(&id) {
+            Some(p) => Ok(p),
+            None => Err(MovePropError::NotFound),
+        }
+    }
+
     #[private]
     pub fn on_execute(&mut self, prop_id: u32) {
         assert_eq!(
@@ -256,8 +320,6 @@ impl Contract {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod unit_tests {
-    use std::ptr::eq;
-
     use near_sdk::{test_utils::VMContextBuilder, testing_env, VMContext, ONE_NEAR};
 
     use crate::*;
@@ -265,13 +327,12 @@ mod unit_tests {
     /// 1ms in nano seconds
     const MSECOND: u64 = 1_000_000;
 
+    const START: u64 = 60 * 5 * 1000 * MSECOND;
     // In milliseconds
-    const START: u64 = 60 * 5 * 1000;
-    const TERM: u64 = 60 * 15 * 1000;
     const VOTING_DURATION: u64 = 60 * 5 * 1000;
     const PRE_VOTE_DURATION: u64 = 60 * 10 * 1000;
     const PRE_BOND: u128 = ONE_NEAR * 3;
-    const BOND: u128 = ONE_NEAR * 300;
+    const BOND: u128 = ONE_NEAR * 500;
 
     fn acc(idx: u8) -> AccountId {
         AccountId::new_unchecked(format!("user-{}.near", idx))
@@ -301,9 +362,9 @@ mod unit_tests {
             U128(PRE_BOND),
             U128(BOND),
         );
-        context.block_timestamp = START * MSECOND;
+        context.block_timestamp = START;
         context.predecessor_account_id = acc(1);
-        context.attached_deposit = attach_deposit * MILI_NEAR;
+        context.attached_deposit = attach_deposit;
         testing_env!(context.clone());
 
         let id = contract
@@ -312,56 +373,101 @@ mod unit_tests {
         (context, contract, id)
     }
 
-    fn vote(mut ctx: VMContext, ctr: &mut Contract, accounts: Vec<AccountId>, id: u32) {
-        for account in accounts {
-            ctx.predecessor_account_id = account;
+    fn vote(mut ctx: VMContext, ctr: &mut Contract, accs: Vec<AccountId>, id: u32, vote: Vote) {
+        for a in accs {
+            ctx.predecessor_account_id = a.clone();
             testing_env!(ctx.clone());
-            let res = ctr.vote(id, Vote::Approve);
-            assert_eq!(res, Ok(()));
+            let res = ctr.vote(id, vote.clone());
+            assert_eq!(
+                res,
+                Ok(()),
+                "\nacc {} _____ prop: {:?}",
+                a,
+                ctr.proposals.get(&id).unwrap(),
+            );
         }
     }
 
     #[test]
     fn basic_flow() {
-        let (mut ctx, mut ctr, id) = setup_ctr(100);
-        let mut prop = ctr.get_proposal(id).unwrap();
-        assert_eq!(prop.proposal.status, ProposalStatus::InProgress);
-
+        let (mut ctx, mut ctr, id) = setup_ctr(PRE_BOND);
+        let mut prop1 = ctr.get_proposal(id).unwrap();
+        assert_eq!(prop1.proposal.status, ProposalStatus::PreVote);
         assert_eq!(ctr.number_of_proposals(), 1);
-
-        // check `get_proposals` query
-        assert_eq!(ctr.get_proposals(1, 10, None), vec![prop.clone()]);
-        assert_eq!(ctr.get_proposals(0, 10, None), vec![prop.clone()]);
-        assert_eq!(ctr.get_proposals(2, 10, None), vec![]);
-
-        vote(ctx.clone(), &mut ctr, vec![acc(1), acc(2), acc(3)], id);
-
-        prop = ctr.get_proposal(id).unwrap();
-        assert_eq!(prop.proposal.status, ProposalStatus::Approved);
-
-        ctx.predecessor_account_id = acc(4);
+        assert_eq!(
+            ctr.get_proposals(0, 10),
+            vec![],
+            "should only return active proposals"
+        );
+        //
+        // move proposal to an active queue and vote
+        //
+        ctx.attached_deposit = BOND;
+        ctx.block_timestamp += MSECOND;
+        ctx.predecessor_account_id = acc(2);
         testing_env!(ctx.clone());
-        match ctr.vote(id, Vote::Approve) {
-            Err(VoteError::NotInProgress) => (),
-            x => panic!("expected NotInProgress, got: {:?}", x),
-        }
+        assert_eq!(Ok(true), ctr.top_up_proposal(id));
+        // update the prop1 to the expected vaules
+        prop1.proposal.status = ProposalStatus::InProgress;
+        prop1.proposal.start = (START + MSECOND) / MSECOND;
+        prop1.proposal.additional_bond = Some((acc(2), BOND - PRE_BOND));
+        assert_eq!(ctr.get_proposals(0, 10), vec![prop1.clone()]);
+
+        ctx.attached_deposit = 0;
+        testing_env!(ctx.clone());
+        vote(
+            ctx.clone(),
+            &mut ctr,
+            vec![acc(1), acc(2), acc(3)],
+            id,
+            Vote::Approve,
+        );
+
+        prop1 = ctr.get_proposal(id).unwrap();
+        assert_eq!(prop1.proposal.status, ProposalStatus::Approved);
+
+        // Proposal already got enough votes - it's approved
+        ctx.predecessor_account_id = acc(5);
+        testing_env!(ctx.clone());
+        assert_eq!(ctr.vote(id, Vote::Approve), Err(VoteError::NotInProgress));
 
         //
-        // Create a new proposal
+        // Create a new proposal, not enough bond
+        //
+        let resp = ctr.create_proposal(PropKind::Text, "proposal".to_owned());
+        assert_eq!(resp, Err(CreatePropError::MinBond));
+
+        //
+        // Create a new proposal with bond to active queue and check double vote and expire
+        // Check all votes
+        //
+        ctx.attached_deposit = BOND;
+        ctx.predecessor_account_id = acc(3);
+        testing_env!(ctx.clone());
         let id = ctr
             .create_proposal(PropKind::Text, "proposal".to_owned())
             .unwrap();
-
+        let mut prop2 = ctr.get_proposal(id).unwrap();
         assert_eq!(ctr.vote(id, Vote::Approve), Ok(()));
-        // verify second vote overwrites the existing one
-        assert_eq!(ctr.vote(id, Vote::Approve), Ok(()));
+        vote(
+            ctx.clone(),
+            &mut ctr,
+            vec![acc(1), acc(2)],
+            id,
+            Vote::Reject,
+        );
 
-        ctx.block_timestamp = (START + ctr.voting_duration + 1) * MSECOND;
-        testing_env!(ctx.clone());
-        match ctr.vote(id, Vote::Approve) {
-            Err(VoteError::NotActive) => (),
-            x => panic!("expected NotActive, got: {:?}", x),
-        }
+        prop2.proposal.approve = 1;
+        prop2.proposal.reject = 2;
+        prop2.proposal.votes.insert(acc(3), Vote::Approve);
+        prop2.proposal.votes.insert(acc(1), Vote::Reject);
+        prop2.proposal.votes.insert(acc(2), Vote::Reject);
+
+        assert_eq!(ctr.get_proposals(0, 1), vec![prop1.clone()]);
+        assert_eq!(ctr.get_proposals(0, 10), vec![prop1.clone(), prop2.clone()]);
+        assert_eq!(ctr.get_proposals(1, 10), vec![prop1.clone(), prop2.clone()]);
+        assert_eq!(ctr.get_proposals(2, 10), vec![prop2.clone()]);
+        assert_eq!(ctr.get_proposals(3, 10), vec![]);
 
         // TODO: add a test case for checking not authorized (but firstly we need to implement that)
         // ctx.predecessor_account_id = acc(5);
@@ -381,13 +487,15 @@ mod unit_tests {
         // let prop = ctr.get_proposal(id).unwrap();
         // assert_eq!(prop.proposal.status, ProposalStatus::Executed);
 
+        //
         // create proposal, set timestamp past voting period, status should be rejected
+        //
         let id = ctr
             .create_proposal(PropKind::Text, "Proposal unit test query 3".to_string())
             .unwrap();
 
         let prop = ctr.get_proposal(id).unwrap();
-        ctx.block_timestamp = (prop.proposal.submission_time + ctr.voting_duration + 1) * MSECOND;
+        ctx.block_timestamp = (prop.proposal.start + ctr.voting_duration + 1) * MSECOND;
         testing_env!(ctx);
 
         let prop = ctr.get_proposal(id).unwrap();
@@ -395,21 +503,35 @@ mod unit_tests {
     }
 
     #[test]
+    fn proposal_overdue() {
+        let (mut ctx, mut ctr, id) = setup_ctr(BOND);
+        ctx.block_timestamp = START + (ctr.voting_duration + 1) * MSECOND;
+        testing_env!(ctx.clone());
+        assert_eq!(ctr.vote(id, Vote::Approve), Err(VoteError::NotActive));
+    }
+
+    #[test]
     #[should_panic(expected = "proposal does not exist")]
     fn proposal_does_not_exist() {
-        let (_, mut ctr, _) = setup_ctr(100);
+        let (_, mut ctr, _) = setup_ctr(BOND);
         ctr.vote(10, Vote::Approve).unwrap();
     }
 
     #[test]
     fn proposal_execution_text() {
-        let (mut ctx, mut ctr, id) = setup_ctr(100);
+        let (mut ctx, mut ctr, id) = setup_ctr(BOND);
         match ctr.execute(id) {
             Err(ExecError::NotApproved) => (),
             Ok(_) => panic!("expected NotApproved, got: OK"),
             Err(err) => panic!("expected NotApproved got: {:?}", err),
         }
-        vote(ctx.clone(), &mut ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
+        vote(
+            ctx.clone(),
+            &mut ctr,
+            vec![acc(1), acc(2), acc(3)],
+            id,
+            Vote::Approve,
+        );
 
         let mut prop = ctr.get_proposal(id).unwrap();
         assert_eq!(prop.proposal.status, ProposalStatus::Approved);
@@ -420,7 +542,7 @@ mod unit_tests {
             Err(err) => panic!("expected ExecTime got: {:?}", err),
         }
 
-        ctx.block_timestamp = (START + ctr.voting_duration + 1) * MSECOND;
+        ctx.block_timestamp = START + (ctr.voting_duration + 1) * MSECOND;
         testing_env!(ctx);
 
         ctr.execute(id).unwrap();
@@ -431,34 +553,36 @@ mod unit_tests {
 
     #[test]
     fn overwrite_votes() {
-        let (mut ctx, mut ctr, id) = setup_ctr(100);
-        let mut prop = ctr.get_proposal(id).unwrap();
-        assert_eq!(prop.proposal.status, ProposalStatus::InProgress);
-        assert!((prop.proposal.votes.is_empty()));
+        let (mut ctx, mut ctr, id) = setup_ctr(BOND);
+        let mut p = ctr.get_proposal(id).unwrap();
+        assert_eq!(p.proposal.status, ProposalStatus::InProgress);
+        assert!((p.proposal.votes.is_empty()));
 
         ctx.predecessor_account_id = acc(1);
         testing_env!(ctx.clone());
 
         assert_eq!(ctr.vote(id, Vote::Approve), Ok(()));
-        prop = ctr.get_proposal(id).unwrap();
-        assert_eq!(prop.proposal.approve, 1);
-        assert_eq!(prop.proposal.abstain, 0);
-        assert_eq!(prop.proposal.reject, 0);
-        assert_eq!(prop.proposal.spam, 0);
+        p.proposal.approve = 1;
+        p.proposal.votes.insert(acc(1), Vote::Approve);
+        assert_eq!(ctr.get_proposal(id).unwrap(), p);
 
         assert_eq!(ctr.vote(id, Vote::Abstain), Ok(()));
-        prop = ctr.get_proposal(id).unwrap();
-        assert_eq!(prop.proposal.approve, 0);
-        assert_eq!(prop.proposal.abstain, 1);
-        assert_eq!(prop.proposal.reject, 0);
-        assert_eq!(prop.proposal.spam, 0);
+        p.proposal.approve = 0;
+        p.proposal.abstain = 1;
+        p.proposal.votes.insert(acc(1), Vote::Abstain);
+        assert_eq!(ctr.get_proposal(id).unwrap(), p);
 
         assert_eq!(ctr.vote(id, Vote::Reject), Ok(()));
-        prop = ctr.get_proposal(id).unwrap();
-        assert_eq!(prop.proposal.approve, 0);
-        assert_eq!(prop.proposal.abstain, 0);
-        assert_eq!(prop.proposal.reject, 1);
-        assert_eq!(prop.proposal.spam, 0);
+        p.proposal.abstain = 0;
+        p.proposal.reject = 1;
+        p.proposal.votes.insert(acc(1), Vote::Reject);
+        assert_eq!(ctr.get_proposal(id).unwrap(), p);
+
+        assert_eq!(ctr.vote(id, Vote::Spam), Ok(()));
+        p.proposal.reject = 0;
+        p.proposal.spam = 1;
+        p.proposal.votes.insert(acc(1), Vote::Spam);
+        assert_eq!(ctr.get_proposal(id).unwrap(), p);
     }
 
     fn create_all_props(ctr: &mut Contract) -> (u32, u32) {

@@ -1,4 +1,4 @@
-use near_sdk::serde::Serialize;
+use near_sdk::{json_types::U128, serde::Serialize, Balance};
 use serde_json::json;
 
 use crate::{proposal::PropKind, ExecError};
@@ -14,10 +14,27 @@ fn emit_event<T: Serialize>(event: EventPayload<T>) {
     .emit();
 }
 
-pub(crate) fn emit_prop_created(prop_id: u32, kind: &PropKind) {
+/// * `active`: set to true if the prosal was added to an active queue directly.
+pub(crate) fn emit_prop_created(prop_id: u32, kind: &PropKind, active: bool) {
     emit_event(EventPayload {
-        event: "new-proposal",
-        data: json!({ "prop_id": prop_id, "kind": kind.to_name() }),
+        event: "proposal-create",
+        data: json!({ "prop_id": prop_id, "kind": kind.to_name(),  "active": active}),
+    });
+}
+
+/// Emitted when moving proposal from pre-vote to active queue.
+pub(crate) fn emit_prop_active(prop_id: u32) {
+    emit_event(EventPayload {
+        event: "proposal-activate",
+        data: json!({ "prop_id": prop_id}),
+    });
+}
+
+/// Emitted when removing prevote prop and slashing it for not getting enough support.
+pub(crate) fn emit_prevote_prop_slashed(prop_id: u32, bond: Balance) {
+    emit_event(EventPayload {
+        event: "proposal-prevote-slash",
+        data: json!({ "prop_id": prop_id, "bond": U128(bond)}),
     });
 }
 

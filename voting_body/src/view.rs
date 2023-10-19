@@ -59,7 +59,11 @@ impl Contract {
 
     /// Get specific proposal.
     pub fn get_proposal(&self, id: u32) -> Option<ProposalOutput> {
-        self.proposals.get(&id).map(|mut proposal| {
+        let mut p = self.proposals.get(&id);
+        if p.is_none() {
+            p = self.pre_vote_proposals.get(&id);
+        }
+        p.map(|mut proposal| {
             proposal.recompute_status(self.voting_duration);
             ProposalOutput { id, proposal }
         })
