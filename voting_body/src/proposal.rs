@@ -79,9 +79,11 @@ impl Proposal {
             Vote::Reject => {
                 self.reject += 1;
                 if self.reject + self.spam >= threshold {
-                    self.status = ProposalStatus::Spam;
-                } else {
-                    self.status = ProposalStatus::Rejected;
+                    if self.reject > self.spam {
+                        self.status = ProposalStatus::Rejected;
+                    } else {
+                        self.status = ProposalStatus::Spam;
+                    }
                 }
             }
             Vote::Abstain => {
@@ -90,10 +92,12 @@ impl Proposal {
             }
             Vote::Spam => {
                 self.spam += 1;
-                if self.reject + self.spam >= threshold && self.spam > self.reject {
-                    self.status = ProposalStatus::Spam;
-                } else {
-                    self.status = ProposalStatus::Rejected;
+                if self.reject + self.spam >= threshold {
+                    if self.spam > self.reject {
+                        self.status = ProposalStatus::Spam;
+                    } else {
+                        self.status = ProposalStatus::Rejected;
+                    }
                 }
                 // TODO: remove proposal and slash bond
             }

@@ -332,7 +332,7 @@ mod unit_tests {
     const VOTING_DURATION: u64 = 60 * 5 * 1000;
     const PRE_VOTE_DURATION: u64 = 60 * 10 * 1000;
     const PRE_BOND: u128 = ONE_NEAR * 3;
-    const BOND: u128 = ONE_NEAR * 300;
+    const BOND: u128 = ONE_NEAR * 500;
 
     fn acc(idx: u8) -> AccountId {
         AccountId::new_unchecked(format!("user-{}.near", idx))
@@ -373,12 +373,18 @@ mod unit_tests {
         (context, contract, id)
     }
 
-    fn vote(mut ctx: VMContext, ctr: &mut Contract, accounts: Vec<AccountId>, id: u32) {
-        for account in accounts {
-            ctx.predecessor_account_id = account;
+    fn vote(mut ctx: VMContext, ctr: &mut Contract, accs: Vec<AccountId>, id: u32, vote: Vote) {
+        for a in accs {
+            ctx.predecessor_account_id = a.clone();
             testing_env!(ctx.clone());
-            let res = ctr.vote(id, Vote::Approve);
-            assert_eq!(res, Ok(()));
+            let res = ctr.vote(id, vote.clone());
+            assert_eq!(
+                res,
+                Ok(()),
+                "\nacc {} _____ prop: {:?}",
+                a,
+                ctr.proposals.get(&id).unwrap(),
+            );
         }
     }
 
@@ -410,17 +416,21 @@ mod unit_tests {
 
         ctx.attached_deposit = 0;
         testing_env!(ctx.clone());
-        vote(ctx.clone(), &mut ctr, vec![acc(1), acc(2), acc(3)], id);
+        vote(
+            ctx.clone(),
+            &mut ctr,
+            vec![acc(1), acc(2), acc(3)],
+            id,
+            Vote::Approve,
+        );
 
         prop1 = ctr.get_proposal(id).unwrap();
         assert_eq!(prop1.proposal.status, ProposalStatus::Approved);
 
-        ctx.predecessor_account_id = acc(4);
+        // Proposal already got enough votes - it's approved
+        ctx.predecessor_account_id = acc(5);
         testing_env!(ctx.clone());
-        match ctr.vote(id, Vote::Approve) {
-            Err(VoteError::NotInProgress) => (),
-            x => panic!("expected NotInProgress, got: {:?}", x),
-        }
+        assert_eq!(ctr.vote(id, Vote::Approve), Err(VoteError::NotInProgress));
 
         //
         // Create a new proposal, not enough bond
@@ -430,29 +440,36 @@ mod unit_tests {
 
         //
         // Create a new proposal with bond to active queue and check double vote and expire
+        // Check all votes
         //
         ctx.attached_deposit = BOND;
+        ctx.predecessor_account_id = acc(3);
         testing_env!(ctx.clone());
         let id = ctr
             .create_proposal(PropKind::Text, "proposal".to_owned())
             .unwrap();
-        let prop2 = ctr.get_proposal(id).unwrap();
+        let mut prop2 = ctr.get_proposal(id).unwrap();
         assert_eq!(ctr.vote(id, Vote::Approve), Ok(()));
-        match ctr.vote(id, Vote::Approve) {
-            Err(VoteError::DoubleVote) => (),
-            x => panic!("expected DoubleVoted, got: {:?}", x),
-        }
+        assert_eq!(ctr.vote(id, Vote::Approve), Err(VoteError::DoubleVote));
+        vote(
+            ctx.clone(),
+            &mut ctr,
+            vec![acc(1), acc(2)],
+            id,
+            Vote::Reject,
+        );
 
-        ctx.block_timestamp = START + (ctr.voting_duration + 1) * MSECOND;
-        testing_env!(ctx.clone());
-        match ctr.vote(id, Vote::Approve) {
-            Err(VoteError::NotActive) => (),
-            x => panic!("expected NotActive, got: {:?}", x),
-        }
+        prop2.proposal.approve = 1;
+        prop2.proposal.reject = 2;
+        prop2.proposal.votes.insert(acc(3), Vote::Approve);
+        prop2.proposal.votes.insert(acc(1), Vote::Reject);
+        prop2.proposal.votes.insert(acc(2), Vote::Reject);
 
+        assert_eq!(ctr.get_proposals(0, 1), vec![prop1.clone()]);
         assert_eq!(ctr.get_proposals(0, 10), vec![prop1.clone(), prop2.clone()]);
         assert_eq!(ctr.get_proposals(1, 10), vec![prop1.clone(), prop2.clone()]);
         assert_eq!(ctr.get_proposals(2, 10), vec![prop2.clone()]);
+        assert_eq!(ctr.get_proposals(3, 10), vec![]);
 
         // TODO: add a test case for checking not authorized (but firstly we need to implement that)
         // ctx.predecessor_account_id = acc(5);
@@ -472,7 +489,9 @@ mod unit_tests {
         // let prop = ctr.get_proposal(id).unwrap();
         // assert_eq!(prop.proposal.status, ProposalStatus::Executed);
 
+        //
         // create proposal, set timestamp past voting period, status should be rejected
+        //
         let id = ctr
             .create_proposal(PropKind::Text, "Proposal unit test query 3".to_string())
             .unwrap();
@@ -486,21 +505,35 @@ mod unit_tests {
     }
 
     #[test]
+    fn proposal_overdue() {
+        let (mut ctx, mut ctr, id) = setup_ctr(BOND);
+        ctx.block_timestamp = START + (ctr.voting_duration + 1) * MSECOND;
+        testing_env!(ctx.clone());
+        assert_eq!(ctr.vote(id, Vote::Approve), Err(VoteError::NotActive));
+    }
+
+    #[test]
     #[should_panic(expected = "proposal does not exist")]
     fn proposal_does_not_exist() {
-        let (_, mut ctr, _) = setup_ctr(100);
+        let (_, mut ctr, _) = setup_ctr(BOND);
         ctr.vote(10, Vote::Approve).unwrap();
     }
 
     #[test]
     fn proposal_execution_text() {
-        let (mut ctx, mut ctr, id) = setup_ctr(100);
+        let (mut ctx, mut ctr, id) = setup_ctr(BOND);
         match ctr.execute(id) {
             Err(ExecError::NotApproved) => (),
             Ok(_) => panic!("expected NotApproved, got: OK"),
             Err(err) => panic!("expected NotApproved got: {:?}", err),
         }
-        vote(ctx.clone(), &mut ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
+        vote(
+            ctx.clone(),
+            &mut ctr,
+            vec![acc(1), acc(2), acc(3)],
+            id,
+            Vote::Approve,
+        );
 
         let mut prop = ctr.get_proposal(id).unwrap();
         assert_eq!(prop.proposal.status, ProposalStatus::Approved);
