@@ -8,12 +8,14 @@ use std::collections::HashMap;
 use crate::VoteError;
 
 /// Consent sets the conditions for vote to pass. It specifies a quorum (minimum amount of
-/// accounts that have to vote) and the approval threshold for a proposal to pass.
-pub enum Consent {
-    // quorum=(7% of the voting body) AND #approve > 50% * (#approve + #reject + #spam)
-    Simple,
-    // quorum=(12% of the voting body) AND #approve > 60% * (#approve + #reject + #spam)
-    Super,
+/// accounts that have to vote and the approval threshold (% of #approve votes) for a proposal
+/// to pass.
+#[derive(BorshSerialize, BorshDeserialize, Deserialize, Serialize)]
+#[serde(crate = "near_sdk::serde")]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Clone))]
+pub struct Consent {
+    pub quorum: u32,
+    pub threshold: u16,
 }
 
 /// Proposals that are sent to this DAO.
@@ -143,18 +145,7 @@ pub enum PropKind {
     Text,
 }
 
-// TODO: we need to finalize how Consent should be assigned
 impl PropKind {
-    pub fn consent(&self) -> Consent {
-        match self {
-            PropKind::Dismiss { .. } => Consent::Simple,
-            PropKind::Dissolve { .. } => Consent::Simple,
-            PropKind::Veto { .. } => Consent::Simple,
-            PropKind::ApproveBudget { .. } => Consent::Simple,
-            PropKind::Text { .. } => Consent::Super,
-        }
-    }
-
     /// name of the kind
     pub fn to_name(&self) -> String {
         match self {

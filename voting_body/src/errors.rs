@@ -59,6 +59,7 @@ impl FunctionError for CreatePropError {
 pub enum MovePropError {
     NotFound,
     MinBond,
+    NotOverdue,
 }
 
 impl FunctionError for MovePropError {
@@ -66,6 +67,7 @@ impl FunctionError for MovePropError {
         match self {
             MovePropError::NotFound => panic_str("proposal not found"),
             MovePropError::MinBond => panic_str("min active_queue_bond is required"),
+            MovePropError::NotOverdue => panic_str("proposal is not overdue"),
         }
     }
 }
