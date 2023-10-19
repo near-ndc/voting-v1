@@ -559,13 +559,13 @@ mod unit_tests {
 
     #[test]
     fn config_query() {
-        let (_, ctr, _) = setup_ctr(100);
+        let (_, ctr, _) = setup_ctr(PRE_BOND);
         let config = ctr.config();
         let expected = ConfigOutput {
             prop_counter: 1,
-            bond: U128(10000000000000000000000000),
+            pre_vote_bond: U128(3000000000000000000000000),
+            active_queue_bond: U128(500000000000000000000000000),
             threshold: 3,
-            end_time: 1200000,
             voting_duration: 300000,
             iah_registry: iah_registry(),
             community_treasury: treasury(),

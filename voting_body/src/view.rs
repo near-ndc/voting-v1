@@ -22,9 +22,9 @@ pub struct ProposalOutput {
 #[serde(crate = "near_sdk::serde")]
 pub struct ConfigOutput {
     pub prop_counter: u32,
-    pub bond: U128,
+    pub pre_vote_bond: U128,
+    pub active_queue_bond: U128,
     pub threshold: u32,
-    pub end_time: u64,
     pub voting_duration: u64,
     pub iah_registry: AccountId,
     pub community_treasury: AccountId,
@@ -92,9 +92,9 @@ impl Contract {
     pub fn config(&self) -> ConfigOutput {
         ConfigOutput {
             prop_counter: self.prop_counter,
-            bond: U128(self.bond),
+            pre_vote_bond: U128(self.pre_vote_bond),
+            active_queue_bond: U128(self.active_queue_bond),
             threshold: self.threshold,
-            end_time: self.end_time,
             voting_duration: self.voting_duration,
             iah_registry: self.iah_registry.to_owned(),
             community_treasury: self.community_treasury.to_owned(),
