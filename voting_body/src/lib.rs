@@ -610,8 +610,17 @@ mod unit_tests {
 
     #[test]
     fn get_proposals() {
-        let (_, mut ctr, id1) = setup_ctr(100);
-        let (id2, id3) = create_all_props(&mut ctr);
+        let (mut ctx, mut ctr, id1) = setup_ctr(5 * BOND);
+        ctx.attached_deposit = BOND;
+        testing_env!(ctx.clone());
+        let id2 = ctr
+            .create_proposal(PropKind::Text, "Proposal unit test 2".to_string())
+            .unwrap();
+        ctx.attached_deposit = BOND;
+        testing_env!(ctx);
+        let id3 = ctr
+            .create_proposal(PropKind::Text, "Proposal unit test 3".to_string())
+            .unwrap();
         let prop1 = ctr.get_proposal(id1).unwrap();
         let prop2 = ctr.get_proposal(id2).unwrap();
         let prop3 = ctr.get_proposal(id3).unwrap();
