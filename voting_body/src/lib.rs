@@ -28,7 +28,9 @@ use crate::storage::*;
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
     pub prop_counter: u32,
+    /// Set of proposals in the pre-vote queue.
     pub pre_vote_proposals: LookupMap<u32, Proposal>,
+    /// Set of active proposals.
     pub proposals: LookupMap<u32, Proposal>,
 
     /// Near amount required to create a proposal. Will be slashed if the proposal is marked as
