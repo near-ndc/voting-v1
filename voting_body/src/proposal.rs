@@ -123,11 +123,19 @@ impl Proposal {
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Clone))]
 #[serde(crate = "near_sdk::serde")]
 pub enum PropKind {
-    /// Calls `receiver_id` with list of method names in a single promise.
-    /// Allows this contract to execute any arbitrary set of actions in other contracts.
-    FunctionCall {
-        receiver_id: AccountId,
-        actions: Vec<ActionCall>,
+    Dismiss {
+        dao: AccountId,
+        member: AccountId,
+    },
+    Dissolve {
+        dao: AccountId,
+    },
+    Veto {
+        dao: AccountId,
+        prop_id: u32,
+    },
+    ApproveBudget {
+        prop_id: u32,
     },
     /// A default, text based proposal.
     /// NewBudget, UpdateBudget are modelled using Text.
@@ -139,7 +147,10 @@ pub enum PropKind {
 impl PropKind {
     pub fn consent(&self) -> Consent {
         match self {
-            PropKind::FunctionCall { .. } => Consent::Simple,
+            PropKind::Dismiss { .. } => Consent::Simple,
+            PropKind::Dissolve { .. } => Consent::Simple,
+            PropKind::Veto { .. } => Consent::Simple,
+            PropKind::ApproveBudget { .. } => Consent::Simple,
             PropKind::Text { .. } => Consent::Super,
         }
     }
@@ -147,7 +158,10 @@ impl PropKind {
     /// name of the kind
     pub fn to_name(&self) -> String {
         match self {
-            PropKind::FunctionCall { .. } => "function-call".to_string(),
+            PropKind::Dismiss { .. } => "dismiss".to_string(),
+            PropKind::Dissolve { .. } => "dissolve".to_string(),
+            PropKind::Veto { .. } => "veto".to_string(),
+            PropKind::ApproveBudget { .. } => "approve-budget".to_string(),
             PropKind::Text { .. } => "text".to_string(),
         }
     }
