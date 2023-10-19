@@ -44,6 +44,7 @@ impl FunctionError for ExecError {
 pub enum CreatePropError {
     NotAuthorized,
     Storage(String),
+    MinBond,
 }
 
 impl FunctionError for CreatePropError {
@@ -51,6 +52,22 @@ impl FunctionError for CreatePropError {
         match self {
             CreatePropError::NotAuthorized => panic_str("not authorized"),
             CreatePropError::Storage(reason) => panic_str(reason),
+            CreatePropError::MinBond => panic_str("min pre_vote_bond is required"),
+        }
+    }
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq, Debug))]
+pub enum MovePropError {
+    NotFound,
+    MinBond,
+}
+
+impl FunctionError for MovePropError {
+    fn panic(&self) -> ! {
+        match self {
+            MovePropError::NotFound => panic_str("proposal not found"),
+            MovePropError::MinBond => panic_str("min active_queue_bond is required"),
         }
     }
 }
