@@ -329,7 +329,6 @@ mod unit_tests {
 
     // In milliseconds
     const START: u64 = 60 * 5 * 1000;
-    const TERM: u64 = 60 * 15 * 1000;
     const VOTING_DURATION: u64 = 60 * 5 * 1000;
     const PRE_VOTE_DURATION: u64 = 60 * 10 * 1000;
     const PRE_BOND: u128 = ONE_NEAR * 3;
@@ -365,7 +364,7 @@ mod unit_tests {
         );
         context.block_timestamp = START * MSECOND;
         context.predecessor_account_id = acc(1);
-        context.attached_deposit = PRE_BOND;
+        context.attached_deposit = attach_deposit;
         testing_env!(context.clone());
 
         let id = contract
@@ -390,11 +389,19 @@ mod unit_tests {
         assert_eq!(prop.proposal.status, ProposalStatus::PreVote);
         assert_eq!(ctr.number_of_proposals(), 1);
 
-        // check `get_proposals` query
-        assert_eq!(ctr.get_proposals(1, 10), vec![prop.clone()]);
         assert_eq!(ctr.get_proposals(0, 10), vec![prop.clone()]);
+        assert_eq!(ctr.get_proposals(1, 10), vec![prop.clone()]);
         assert_eq!(ctr.get_proposals(2, 10), vec![]);
 
+        //
+        // move proposal to an active queue and vote
+        //
+        ctx.attached_deposit = BOND;
+        testing_env!(ctx.clone());
+        assert_eq!(Ok(true), ctr.top_up_proposal(id));
+
+        ctx.attached_deposit = 0;
+        testing_env!(ctx.clone());
         vote(ctx.clone(), &mut ctr, vec![acc(1), acc(2), acc(3)], id);
 
         prop = ctr.get_proposal(id).unwrap();
