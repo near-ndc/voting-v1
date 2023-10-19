@@ -217,6 +217,7 @@ impl Contract {
         let mut p = self.assert_pre_vote_prop(id)?;
         if env::block_timestamp_ms() - p.start > self.pre_vote_duration {
             self.slash_prop(id, p.bond);
+            self.pre_vote_proposals.remove(&id);
             return Ok(false);
         }
         let user = env::predecessor_account_id();
@@ -473,6 +474,10 @@ mod unit_tests {
         let id = contract
             .create_proposal(PropKind::Text, "Proposal unit test 1".to_string())
             .unwrap();
+
+        context.attached_deposit = 0;
+        testing_env!(context.clone());
+
         (context, contract, id)
     }
 
@@ -775,6 +780,7 @@ mod unit_tests {
 
         // add the missing support and assert that the proposal was moved to active
         ctx.predecessor_account_id = acc(PRE_VOTE_SUPPORT as u8);
+        ctx.block_timestamp = START + 2 * MSECOND;
         testing_env!(ctx.clone());
         assert_eq!(ctr.support_proposal(id), Ok(true));
 
@@ -786,12 +792,25 @@ mod unit_tests {
         let p = ctr.assert_proposal(id);
         assert_eq!(p.status, ProposalStatus::InProgress);
         assert_eq!(p.support, PRE_VOTE_SUPPORT);
+        assert_eq!(p.start, ctx.block_timestamp / MSECOND);
         assert!(p.supported.is_empty());
 
         // can't support proposal which was already moved
         assert_eq!(ctr.support_proposal(id), Err(PrevotePropError::NotFound));
 
-        // TODO: add test with overdue
+        //
+        // Should not be able to support an overdue proposal
+        //
+        ctx.attached_deposit = PRE_BOND;
+        testing_env!(ctx.clone());
+
+        let id = ctr
+            .create_proposal(PropKind::Text, "proposal".to_owned())
+            .unwrap();
+        ctx.block_timestamp += (PRE_VOTE_DURATION + 1) * MSECOND;
+        testing_env!(ctx.clone());
+        assert_eq!(ctr.support_proposal(id), Ok(false));
+        assert_eq!(ctr.get_proposal(id), None);
     }
 
     #[test]
