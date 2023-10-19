@@ -320,8 +320,6 @@ impl Contract {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod unit_tests {
-    use std::ptr::eq;
-
     use near_sdk::{test_utils::VMContextBuilder, testing_env, VMContext, ONE_NEAR};
 
     use crate::*;
@@ -557,33 +555,35 @@ mod unit_tests {
     #[test]
     fn overwrite_votes() {
         let (mut ctx, mut ctr, id) = setup_ctr(BOND);
-        let mut prop = ctr.get_proposal(id).unwrap();
-        assert_eq!(prop.proposal.status, ProposalStatus::InProgress);
-        assert!((prop.proposal.votes.is_empty()));
+        let mut p = ctr.get_proposal(id).unwrap();
+        assert_eq!(p.proposal.status, ProposalStatus::InProgress);
+        assert!((p.proposal.votes.is_empty()));
 
         ctx.predecessor_account_id = acc(1);
         testing_env!(ctx.clone());
 
         assert_eq!(ctr.vote(id, Vote::Approve), Ok(()));
-        prop = ctr.get_proposal(id).unwrap();
-        assert_eq!(prop.proposal.approve, 1);
-        assert_eq!(prop.proposal.abstain, 0);
-        assert_eq!(prop.proposal.reject, 0);
-        assert_eq!(prop.proposal.spam, 0);
+        p.proposal.approve = 1;
+        p.proposal.votes.insert(acc(1), Vote::Approve);
+        assert_eq!(ctr.get_proposal(id).unwrap(), p);
 
         assert_eq!(ctr.vote(id, Vote::Abstain), Ok(()));
-        prop = ctr.get_proposal(id).unwrap();
-        assert_eq!(prop.proposal.approve, 0);
-        assert_eq!(prop.proposal.abstain, 1);
-        assert_eq!(prop.proposal.reject, 0);
-        assert_eq!(prop.proposal.spam, 0);
+        p.proposal.approve = 0;
+        p.proposal.abstain = 1;
+        p.proposal.votes.insert(acc(1), Vote::Abstain);
+        assert_eq!(ctr.get_proposal(id).unwrap(), p);
 
         assert_eq!(ctr.vote(id, Vote::Reject), Ok(()));
-        prop = ctr.get_proposal(id).unwrap();
-        assert_eq!(prop.proposal.approve, 0);
-        assert_eq!(prop.proposal.abstain, 0);
-        assert_eq!(prop.proposal.reject, 1);
-        assert_eq!(prop.proposal.spam, 0);
+        p.proposal.abstain = 0;
+        p.proposal.reject = 1;
+        p.proposal.votes.insert(acc(1), Vote::Reject);
+        assert_eq!(ctr.get_proposal(id).unwrap(), p);
+
+        assert_eq!(ctr.vote(id, Vote::Spam), Ok(()));
+        p.proposal.reject = 0;
+        p.proposal.spam = 1;
+        p.proposal.votes.insert(acc(1), Vote::Spam);
+        assert_eq!(ctr.get_proposal(id).unwrap(), p);
     }
 
     fn create_all_props(ctr: &mut Contract) -> (u32, u32) {
