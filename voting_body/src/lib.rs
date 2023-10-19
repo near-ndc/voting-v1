@@ -206,7 +206,7 @@ impl Contract {
             bond -= diff;
         }
         p.additional_bond = Some((user, bond));
-        self.move_prop_to_active(id, &mut p);
+        self.insert_prop_to_active(id, &mut p);
         Ok(true)
     }
 
@@ -222,7 +222,10 @@ impl Contract {
         let user = env::predecessor_account_id();
         p.add_support(user)?;
         if p.support >= self.pre_vote_support {
-            self.move_prop_to_active(id, &mut p);
+            self.pre_vote_proposals.remove(&id);
+            self.insert_prop_to_active(id, &mut p);
+        } else {
+            self.pre_vote_proposals.insert(&id, &p);
         }
         Ok(true)
     }
@@ -357,7 +360,7 @@ impl Contract {
         }
     }
 
-    fn move_prop_to_active(&mut self, prop_id: u32, p: &mut Proposal) {
+    fn insert_prop_to_active(&mut self, prop_id: u32, p: &mut Proposal) {
         p.supported.clear();
         p.status = ProposalStatus::InProgress;
         p.start = env::block_timestamp_ms();
