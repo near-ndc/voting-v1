@@ -74,7 +74,7 @@ A proposal is marked as **spam** when:
 
 Spam proposals are removed, and the bond is slashed (sent to the community treasury).
 
-A proposal is **rejected** if voting time is over (proposal is not in progress any more), and it was not approved nor marked as spam.
+A proposal is **rejected** if voting time is over (proposal is not in progress anymore), and it was not approved nor marked as spam.
 
 ### Quorums and Thresholds
 
