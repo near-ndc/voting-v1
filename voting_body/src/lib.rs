@@ -416,11 +416,10 @@ mod unit_tests {
         assert_eq!(prop1.proposal.status, ProposalStatus::PreVote);
         assert_eq!(ctr.number_of_proposals(), 1);
         assert_eq!(
-            ctr.get_proposals(0, 10),
+            ctr.get_proposals(0, 10, None),
             vec![],
             "should only return active proposals"
         );
-
         //
         // move proposal to an active queue and vote
         //
@@ -433,7 +432,7 @@ mod unit_tests {
         prop1.proposal.status = ProposalStatus::InProgress;
         prop1.proposal.start = (START + MSECOND) / MSECOND;
         prop1.proposal.additional_bond = Some((acc(2), BOND - PRE_BOND));
-        assert_eq!(ctr.get_proposals(0, 10), vec![prop1.clone()]);
+        assert_eq!(ctr.get_proposals(0, 10, None), vec![prop1.clone()]);
 
         ctx.attached_deposit = 0;
         testing_env!(ctx.clone());
@@ -485,11 +484,17 @@ mod unit_tests {
         prop2.proposal.votes.insert(acc(1), Vote::Reject);
         prop2.proposal.votes.insert(acc(2), Vote::Reject);
 
-        assert_eq!(ctr.get_proposals(0, 1), vec![prop1.clone()]);
-        assert_eq!(ctr.get_proposals(0, 10), vec![prop1.clone(), prop2.clone()]);
-        assert_eq!(ctr.get_proposals(1, 10), vec![prop1.clone(), prop2.clone()]);
-        assert_eq!(ctr.get_proposals(2, 10), vec![prop2.clone()]);
-        assert_eq!(ctr.get_proposals(3, 10), vec![]);
+        assert_eq!(ctr.get_proposals(0, 1, None), vec![prop1.clone()]);
+        assert_eq!(
+            ctr.get_proposals(0, 10, None),
+            vec![prop1.clone(), prop2.clone()]
+        );
+        assert_eq!(
+            ctr.get_proposals(1, 10, None),
+            vec![prop1.clone(), prop2.clone()]
+        );
+        assert_eq!(ctr.get_proposals(2, 10, None), vec![prop2.clone()]);
+        assert_eq!(ctr.get_proposals(3, 10, None), vec![]);
 
         // TODO: add a test case for checking not authorized (but firstly we need to implement that)
         // ctx.predecessor_account_id = acc(5);
@@ -622,5 +627,44 @@ mod unit_tests {
             .unwrap();
 
         (prop_text, prop_fc)
+    }
+
+    #[test]
+    fn get_proposals() {
+        let (mut ctx, mut ctr, id1) = setup_ctr(5 * BOND);
+        ctx.attached_deposit = BOND;
+        testing_env!(ctx.clone());
+        let id2 = ctr
+            .create_proposal(PropKind::Text, "Proposal unit test 2".to_string())
+            .unwrap();
+        ctx.attached_deposit = BOND;
+        testing_env!(ctx);
+        let id3 = ctr
+            .create_proposal(PropKind::Text, "Proposal unit test 3".to_string())
+            .unwrap();
+        let prop1 = ctr.get_proposal(id1).unwrap();
+        let prop2 = ctr.get_proposal(id2).unwrap();
+        let prop3 = ctr.get_proposal(id3).unwrap();
+        assert_eq!(ctr.number_of_proposals(), 3);
+        // non reversed
+        assert_eq!(
+            ctr.get_proposals(0, 10, None),
+            vec![prop1.clone(), prop2.clone(), prop3.clone()]
+        );
+        // non reversed with litmit
+        assert_eq!(
+            ctr.get_proposals(0, 2, None),
+            vec![prop1.clone(), prop2.clone()]
+        );
+        // reversed
+        assert_eq!(
+            ctr.get_proposals(3, 10, Some(true)),
+            vec![prop3.clone(), prop2.clone(), prop1.clone()]
+        );
+        // reversed with limit
+        assert_eq!(
+            ctr.get_proposals(3, 2, Some(true)),
+            vec![prop3.clone(), prop2.clone()]
+        );
     }
 }
