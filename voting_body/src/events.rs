@@ -22,7 +22,7 @@ pub(crate) fn emit_prop_created(prop_id: u32, kind: &PropKind, active: bool) {
     });
 }
 
-/// Emitted when moveing proposal from pre-vote to active queue.
+/// Emitted when moving proposal from pre-vote to active queue.
 pub(crate) fn emit_prop_active(prop_id: u32) {
     emit_event(EventPayload {
         event: "proposal-activate",
