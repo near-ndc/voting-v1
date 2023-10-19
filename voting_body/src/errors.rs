@@ -5,7 +5,6 @@ use near_sdk::FunctionError;
 #[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq, Debug))]
 pub enum VoteError {
     NotAuthorized,
-    DoubleVote,
     NotInProgress,
     NotActive,
 }
@@ -14,7 +13,6 @@ impl FunctionError for VoteError {
     fn panic(&self) -> ! {
         match self {
             VoteError::NotAuthorized => panic_str("not authorized"),
-            VoteError::DoubleVote => panic_str("user already voted"),
             VoteError::NotInProgress => panic_str("proposal not in progress"),
             VoteError::NotActive => panic_str("voting time is over"),
         }
