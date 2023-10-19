@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use crate::VoteError;
 
 /// Consent sets the conditions for vote to pass. It specifies a quorum (minimum amount of
-/// accounts that have to vote) and the approval threshold (% of #approve votes) for a proposal
+/// accounts that have to vote and the approval threshold (% of #approve votes) for a proposal
 /// to pass.
 #[derive(BorshSerialize, BorshDeserialize, Deserialize, Serialize)]
 #[serde(crate = "near_sdk::serde")]
