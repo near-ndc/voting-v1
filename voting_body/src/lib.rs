@@ -343,7 +343,7 @@ mod unit_tests {
             .unwrap();
 
         assert_eq!(ctr.vote(id, Vote::Approve), Ok(()));
-        // the second vote will just overwrite the existing one
+        // verify second vote overwrites the existing one
         assert_eq!(ctr.vote(id, Vote::Approve), Ok(()));
 
         ctx.block_timestamp = (START + ctr.voting_duration + 1) * MSECOND;
