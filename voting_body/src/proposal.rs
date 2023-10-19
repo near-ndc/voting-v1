@@ -26,7 +26,9 @@ pub enum Consent {
 pub struct Proposal {
     /// Original proposer.
     pub proposer: AccountId,
+    /// original bond, used to cover the storage for all votes
     pub bond: Balance,
+    pub(crate) additional_bond: Option<(AccountId, Balance)>,
     /// Description of this proposal.
     pub description: String,
     /// Kind of proposal with relevant information.
@@ -40,8 +42,8 @@ pub struct Proposal {
     /// Map of who voted and how.
     // TODO: must not be a hashmap
     pub votes: HashMap<AccountId, Vote>,
-    /// Submission time (for voting period).
-    pub submission_time: u64,
+    /// start time (for voting period).
+    pub start: u64,
     /// Unix time in miliseconds when the proposal reached approval threshold. `None` if it is not approved.
     pub approved_at: Option<u64>,
 }
@@ -102,7 +104,7 @@ impl Proposal {
 
     pub fn recompute_status(&mut self, voting_duration: u64) {
         if &self.status == &ProposalStatus::InProgress
-            && env::block_timestamp_ms() > self.submission_time + voting_duration
+            && env::block_timestamp_ms() > self.start + voting_duration
         {
             self.status = ProposalStatus::Rejected;
         }

@@ -56,3 +56,18 @@ impl FunctionError for CreatePropError {
         }
     }
 }
+
+#[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq, Debug))]
+pub enum MovePropError {
+    NotFound,
+    MinBond,
+}
+
+impl FunctionError for MovePropError {
+    fn panic(&self) -> ! {
+        match self {
+            MovePropError::NotFound => panic_str("proposal not found"),
+            MovePropError::MinBond => panic_str("min active_queue_bond is required"),
+        }
+    }
+}

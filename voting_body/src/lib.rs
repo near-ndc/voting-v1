@@ -116,6 +116,8 @@ impl Contract {
         emit_prop_created(self.prop_counter, &kind, active);
         let prop = Proposal {
             proposer: user.clone(),
+            bond,
+            additional_bond: None,
             description,
             kind,
             status: if active {
@@ -128,9 +130,8 @@ impl Contract {
             abstain: 0,
             spam: 0,
             votes: HashMap::new(),
-            submission_time: now,
+            start: now,
             approved_at: None,
-            bond,
         };
         if active {
             self.proposals.insert(&self.prop_counter, &prop);
@@ -151,11 +152,44 @@ impl Contract {
     #[payable]
     #[handle_result]
     /// Allows to add more bond to a proposal to move it to the active queue. Anyone can top up.
-    pub fn top_up_proposal(
-        &mut self,
-        kind: PropKind,
-        description: String,
-    ) -> Result<u32, CreatePropError> {
+    /// Returns true if the transaction succeeded, or false if the proposal is outdated and
+    /// can't be top up any more.
+    /// Emits:
+    /// * proposal-prevote-slashed: when the prevote proposal is overdue and didn't get enough
+    ///   support on time.
+    /// * proposal-active: when a proposal was successfully updated.
+    /// Excess of attached bond is sent back to the caller.
+    /// Returns error when proposal is not in the pre-vote queue or not enough bond was attached.
+    pub fn top_up_proposal(&mut self, id: u32) -> Result<bool, MovePropError> {
+        let user = env::predecessor_account_id();
+        let now = env::block_timestamp_ms();
+        let mut bond = env::attached_deposit();
+        let mut p = self.remove_pre_vote_prop(id)?;
+
+        if now - p.start > self.pre_vote_duration {
+            // transfer attached N, slash bond & keep the proposal removed.
+            Promise::new(user.clone()).transfer(bond);
+            Promise::new(self.community_treasury.clone()).transfer(p.bond);
+            emit_prevote_prop_slashed(id, p.bond);
+            return Ok(false);
+        }
+
+        let required_bond = self.active_queue_bond - p.bond;
+        if bond < required_bond {
+            return Err(MovePropError::MinBond);
+        }
+        let diff = required_bond - bond;
+        if diff > 0 {
+            Promise::new(user.clone()).transfer(diff);
+            bond -= diff;
+        }
+        p.status = ProposalStatus::InProgress;
+        p.additional_bond = Some((user, bond));
+        p.start = now;
+        self.proposals.insert(&id, &p);
+        emit_prop_active(id);
+
+        Ok(true)
     }
 
     #[handle_result]
@@ -167,7 +201,7 @@ impl Contract {
         if !matches!(prop.status, ProposalStatus::InProgress) {
             return Err(VoteError::NotInProgress);
         }
-        if env::block_timestamp_ms() > prop.submission_time + self.voting_duration {
+        if env::block_timestamp_ms() > prop.start + self.voting_duration {
             return Err(VoteError::NotActive);
         }
 
@@ -207,7 +241,7 @@ impl Contract {
             return Err(ExecError::NotApproved);
         }
         let now = env::block_timestamp_ms();
-        if now <= prop.submission_time + self.voting_duration {
+        if now <= prop.start + self.voting_duration {
             return Err(ExecError::ExecTime);
         }
 
@@ -255,6 +289,13 @@ impl Contract {
 
     fn assert_proposal(&self, id: u32) -> Proposal {
         self.proposals.get(&id).expect("proposal does not exist")
+    }
+
+    fn remove_pre_vote_prop(&mut self, id: u32) -> Result<Proposal, MovePropError> {
+        match self.pre_vote_proposals.remove(&id) {
+            Some(p) => Ok(p),
+            None => Err(MovePropError::NotFound),
+        }
     }
 
     #[private]
@@ -410,7 +451,7 @@ mod unit_tests {
             .unwrap();
 
         let prop = ctr.get_proposal(id).unwrap();
-        ctx.block_timestamp = (prop.proposal.submission_time + ctr.voting_duration + 1) * MSECOND;
+        ctx.block_timestamp = (prop.proposal.start + ctr.voting_duration + 1) * MSECOND;
         testing_env!(ctx);
 
         let prop = ctr.get_proposal(id).unwrap();
