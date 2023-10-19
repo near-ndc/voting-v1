@@ -149,6 +149,22 @@ impl Contract {
         Ok(self.prop_counter)
     }
 
+    /// Removes overdue pre-vote proposal.
+    /// Fails if proposal is not overdue or not in pre-vote queue.
+    #[handle_result]
+    pub fn remove_overdue_proposal(&mut self, id: u32) -> Result<(), MovePropError> {
+        let p = self.remove_pre_vote_prop(id)?;
+        if env::block_timestamp_ms() - p.start <= self.pre_vote_duration {
+            return Err(MovePropError::NotOverdue);
+        }
+        Promise::new(env::predecessor_account_id()).transfer(REMOVE_REWARD);
+        self.slash_prop(id, p.bond - REMOVE_REWARD);
+        // NOTE: we don't need to check p.additional_bond: if it is set then the prop wouldn't
+        // be in the pre-vote queue.
+
+        Ok(())
+    }
+
     #[payable]
     #[handle_result]
     /// Allows to add more bond to a proposal to move it to the active queue. Anyone can top up.
@@ -167,11 +183,11 @@ impl Contract {
         let mut p = self.remove_pre_vote_prop(id)?;
 
         if now - p.start > self.pre_vote_duration {
-            // transfer attached N, slash bond & keep the proposal removed.
+            // Transfer attached N, slash bond & keep the proposal removed.
+            // Note: user wanted to advance the proposal, rather than slash it, so reward is not
+            // distributed.
             Promise::new(user.clone()).transfer(bond);
-            let treasury = self.accounts.get().unwrap().community_treasury;
-            Promise::new(treasury).transfer(p.bond);
-            emit_prevote_prop_slashed(id, p.bond);
+            self.slash_prop(id, p.bond);
             return Ok(false);
         }
 
@@ -297,6 +313,12 @@ impl Contract {
             Some(p) => Ok(p),
             None => Err(MovePropError::NotFound),
         }
+    }
+
+    fn slash_prop(&mut self, prop_id: u32, amount: Balance) {
+        let treasury = self.accounts.get().unwrap().community_treasury;
+        Promise::new(treasury).transfer(amount);
+        emit_prevote_prop_slashed(prop_id, amount);
     }
 
     #[private]
