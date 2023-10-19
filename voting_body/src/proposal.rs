@@ -1,7 +1,7 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::json_types::{Base64VecU8, U128, U64};
 use near_sdk::serde::{Deserialize, Serialize};
-use near_sdk::{env, AccountId};
+use near_sdk::{env, AccountId, Balance};
 
 use std::collections::HashMap;
 
@@ -26,6 +26,7 @@ pub enum Consent {
 pub struct Proposal {
     /// Original proposer.
     pub proposer: AccountId,
+    pub bond: Balance,
     /// Description of this proposal.
     pub description: String,
     /// Kind of proposal with relevant information.
@@ -100,6 +101,14 @@ impl Proposal {
         }
         self.votes.insert(user, vote);
         Ok(())
+    }
+
+    pub fn recompute_status(&mut self, voting_duration: u64) {
+        if &self.status == &ProposalStatus::InProgress
+            && env::block_timestamp_ms() > self.submission_time + voting_duration
+        {
+            self.status = ProposalStatus::Rejected;
+        }
     }
 }
 
