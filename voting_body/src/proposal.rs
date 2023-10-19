@@ -148,6 +148,7 @@ impl PropKind {
 #[serde(crate = "near_sdk::serde")]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Clone))]
 pub enum ProposalStatus {
+    PreVote,
     InProgress,
     Approved,
     Rejected,

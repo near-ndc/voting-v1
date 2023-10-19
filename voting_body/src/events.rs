@@ -14,10 +14,18 @@ fn emit_event<T: Serialize>(event: EventPayload<T>) {
     .emit();
 }
 
-pub(crate) fn emit_prop_created(prop_id: u32, kind: &PropKind) {
+/// * `active`: set to true if the prosal was added to an active queue directly.
+pub(crate) fn emit_prop_created(prop_id: u32, kind: &PropKind, active: bool) {
     emit_event(EventPayload {
         event: "new-proposal",
-        data: json!({ "prop_id": prop_id, "kind": kind.to_name() }),
+        data: json!({ "prop_id": prop_id, "kind": kind.to_name(),  "active": active}),
+    });
+}
+
+pub(crate) fn emit_prop_active(prop_id: u32) {
+    emit_event(EventPayload {
+        event: "proposal-active",
+        data: json!({ "prop_id": prop_id}),
     });
 }
 

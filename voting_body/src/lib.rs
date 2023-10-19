@@ -106,26 +106,39 @@ impl Contract {
         let now = env::block_timestamp_ms();
         let bond = env::attached_deposit();
 
+        if bond < self.pre_vote_bond {
+            return Err(CreatePropError::MinBond);
+        }
+        // TODO: check if proposal is created by a congress member. If yes, move it to active
+        // immediately.
+        let active = bond >= self.active_queue_bond;
         self.prop_counter += 1;
-        emit_prop_created(self.prop_counter, &kind);
-        self.proposals.insert(
-            &self.prop_counter,
-            &Proposal {
-                proposer: user.clone(),
-                description,
-                kind,
-                status: ProposalStatus::InProgress,
-                approve: 0,
-                reject: 0,
-                abstain: 0,
-                spam: 0,
-                votes: HashMap::new(),
-                submission_time: now,
-                approved_at: None,
-                bond,
+        emit_prop_created(self.prop_counter, &kind, active);
+        let prop = Proposal {
+            proposer: user.clone(),
+            description,
+            kind,
+            status: if active {
+                ProposalStatus::InProgress
+            } else {
+                ProposalStatus::PreVote
             },
-        );
+            approve: 0,
+            reject: 0,
+            abstain: 0,
+            spam: 0,
+            votes: HashMap::new(),
+            submission_time: now,
+            approved_at: None,
+            bond,
+        };
+        if active {
+            self.proposals.insert(&self.prop_counter, &prop);
+        } else {
+            self.pre_vote_proposals.insert(&self.prop_counter, &prop);
+        }
 
+        // TODO: this has to change, because we can have more votes
         // max amount of votes is threshold + threshold-1.
         let extra_storage = VOTE_STORAGE * (2 * self.threshold - 1) as u64;
         if let Err(reason) = finalize_storage_check(storage_start, extra_storage, user) {
@@ -133,6 +146,16 @@ impl Contract {
         }
 
         Ok(self.prop_counter)
+    }
+
+    #[payable]
+    #[handle_result]
+    /// Allows to add more bond to a proposal to move it to the active queue. Anyone can top up.
+    pub fn top_up_proposal(
+        &mut self,
+        kind: PropKind,
+        description: String,
+    ) -> Result<u32, CreatePropError> {
     }
 
     #[handle_result]
@@ -301,7 +324,7 @@ mod unit_tests {
         );
         context.block_timestamp = START * MSECOND;
         context.predecessor_account_id = acc(1);
-        context.attached_deposit = attach_deposit * MILI_NEAR;
+        context.attached_deposit = PRE_BOND;
         testing_env!(context.clone());
 
         let id = contract
@@ -321,10 +344,9 @@ mod unit_tests {
 
     #[test]
     fn basic_flow() {
-        let (mut ctx, mut ctr, id) = setup_ctr(100);
+        let (mut ctx, mut ctr, id) = setup_ctr(PRE_BOND);
         let mut prop = ctr.get_proposal(id).unwrap();
-        assert_eq!(prop.proposal.status, ProposalStatus::InProgress);
-
+        assert_eq!(prop.proposal.status, ProposalStatus::PreVote);
         assert_eq!(ctr.number_of_proposals(), 1);
 
         // check `get_proposals` query
