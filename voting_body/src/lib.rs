@@ -6,7 +6,7 @@ use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap};
 use near_sdk::json_types::U128;
 use near_sdk::{
-    env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseOrValue,
+    env, near_bindgen, require, Balance, Gas, PanicOnDefault, Promise, PromiseOrValue,
     PromiseResult,
 };
 
@@ -249,7 +249,9 @@ impl Contract {
         if prop.status == ProposalStatus::Spam {
             self.proposals.remove(&id);
             emit_spam(id);
-            // TODO: slash bonds
+            let treasury = self.accounts.get().unwrap().community_treasury;
+            Promise::new(treasury).transfer(prop.bond);
+            emit_prop_slashed(id, prop.bond);
             return Ok(());
         } else {
             self.proposals.insert(&id, &prop);
@@ -365,7 +367,7 @@ impl Contract {
         p.supported.clear();
         p.status = ProposalStatus::InProgress;
         p.start = env::block_timestamp_ms();
-        self.proposals.insert(&prop_id, &p);
+        self.proposals.insert(&prop_id, p);
         emit_prop_active(prop_id);
     }
 
@@ -397,9 +399,9 @@ impl Contract {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod unit_tests {
-    use near_sdk::{test_utils::VMContextBuilder, testing_env, VMContext, ONE_NEAR};
+    use near_sdk::{test_utils::VMContextBuilder, testing_env, AccountId, VMContext, ONE_NEAR};
 
-    use crate::*;
+    use crate::{view::ConfigOutput, *};
 
     /// 1ms in nano seconds
     const MSECOND: u64 = 1_000_000;
@@ -666,6 +668,36 @@ mod unit_tests {
     }
 
     #[test]
+    fn config_query() {
+        let (_, ctr, _) = setup_ctr(PRE_BOND);
+        let expected = ConfigOutput {
+            prop_counter: 1,
+            pre_vote_bond: U128(PRE_BOND),
+            active_queue_bond: U128(BOND),
+            pre_vote_support: 10,
+            simple_consent: Consent {
+                quorum: 3,
+                threshold: 50,
+            },
+            super_consent: Consent {
+                quorum: 5,
+                threshold: 60,
+            },
+            pre_vote_duration: PRE_VOTE_DURATION,
+            voting_duration: VOTING_DURATION,
+            accounts: Accounts {
+                iah_registry: iah_registry(),
+                community_treasury: treasury(),
+                congress_hom: hom(),
+                congress_coa: coa(),
+                congress_tc: tc(),
+                admin: admin(),
+            },
+        };
+        assert_eq!(ctr.config(), expected);
+    }
+
+    #[test]
     fn overwrite_votes() {
         let (mut ctx, mut ctr, id) = setup_ctr(BOND);
         let mut p = ctr.get_proposal(id).unwrap();
@@ -699,7 +731,7 @@ mod unit_tests {
         assert_eq!(ctr.get_proposal(id).unwrap(), p);
     }
 
-    fn create_all_props(ctr: &mut Contract) -> (u32, u32) {
+    fn _create_all_props(ctr: &mut Contract) -> (u32, u32) {
         let prop_text = ctr
             .create_proposal(PropKind::Text, "text proposal".to_string())
             .unwrap();
@@ -827,7 +859,7 @@ mod unit_tests {
             quorum: 12,
             threshold: 2,
         };
-        ctr.admin_update_consent(c1.clone(), c2.clone());
+        ctr.admin_update_consent(c1, c2);
         assert_eq!(c1, ctr.simple_consent);
         assert_eq!(c2, ctr.super_consent);
     }

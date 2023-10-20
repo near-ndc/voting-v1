@@ -16,6 +16,22 @@ pub struct ProposalOutput {
     pub proposal: Proposal,
 }
 
+/// This is format of output via JSON for the config.
+#[derive(Serialize)]
+#[cfg_attr(test, derive(PartialEq, Debug))]
+#[serde(crate = "near_sdk::serde")]
+pub struct ConfigOutput {
+    pub prop_counter: u32,
+    pub pre_vote_bond: U128,
+    pub active_queue_bond: U128,
+    pub pre_vote_support: u32,
+    pub simple_consent: Consent,
+    pub super_consent: Consent,
+    pub voting_duration: u64,
+    pub pre_vote_duration: u64,
+    pub accounts: Accounts,
+}
+
 #[near_bindgen]
 impl Contract {
     /**********
@@ -73,5 +89,19 @@ impl Contract {
 
     pub fn number_of_proposals(&self) -> u32 {
         self.prop_counter
+    }
+
+    pub fn config(&self) -> ConfigOutput {
+        ConfigOutput {
+            prop_counter: self.prop_counter,
+            pre_vote_bond: U128(self.pre_vote_bond),
+            active_queue_bond: U128(self.active_queue_bond),
+            pre_vote_support: self.pre_vote_support,
+            simple_consent: self.simple_consent,
+            super_consent: self.super_consent,
+            pre_vote_duration: self.pre_vote_duration,
+            voting_duration: self.voting_duration,
+            accounts: self.accounts.get().unwrap(),
+        }
     }
 }
