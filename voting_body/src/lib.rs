@@ -6,7 +6,7 @@ use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap};
 use near_sdk::json_types::U128;
 use near_sdk::{
-    env, near_bindgen, require, Balance, Gas, PanicOnDefault, Promise, PromiseOrValue,
+    env, near_bindgen, require, Balance, PanicOnDefault, Promise, PromiseOrValue,
     PromiseResult,
 };
 
@@ -145,10 +145,7 @@ impl Contract {
             self.pre_vote_proposals.insert(&self.prop_counter, &prop);
         }
 
-        // TODO: this has to change, because we can have more votes
-        // max amount of votes is threshold + threshold-1.
-        let extra_storage = VOTE_STORAGE * (2 * THRESHOLD - 1) as u64;
-        if let Err(reason) = finalize_storage_check(storage_start, extra_storage, user) {
+        if let Err(reason) = finalize_storage_check(storage_start, 0, user) {
             return Err(CreatePropError::Storage(reason));
         }
 
@@ -231,6 +228,7 @@ impl Contract {
         Ok(true)
     }
 
+    #[payable]
     #[handle_result]
     // TODO: must be called via iah_call
     pub fn vote(&mut self, id: u32, vote: Vote) -> Result<(), VoteError> {
@@ -279,6 +277,11 @@ impl Contract {
     #[handle_result]
     pub fn execute(&mut self, id: u32) -> Result<PromiseOrValue<()>, ExecError> {
         let mut prop = self.assert_proposal(id);
+        if prop.status == ProposalStatus::Rejected {
+            // Return bond amount
+            // Keep some near for storage
+            return Ok(PromiseOrValue::Value(()));
+        }
         if !matches!(
             prop.status,
             // if the previous proposal execution failed, we should be able to re-execute it
@@ -311,6 +314,11 @@ impl Contract {
             PropKind::Text => (),
         };
         self.proposals.insert(&id, &prop);
+
+        if prop.status != ProposalStatus::Failed {
+            // Return bond amount
+            // Keep some near for storage
+        }
 
         let result = match result {
             PromiseOrValue::Promise(promise) => promise
