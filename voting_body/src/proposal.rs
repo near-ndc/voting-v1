@@ -50,6 +50,8 @@ pub struct Proposal {
     pub start: u64,
     /// Unix time in miliseconds when the proposal reached approval threshold. `None` if it is not approved.
     pub approved_at: Option<u64>,
+    /// Proposal storage cost (excluding vote)
+    pub proposal_storage_cost: u128,
 }
 
 impl Proposal {

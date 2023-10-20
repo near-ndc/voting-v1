@@ -67,10 +67,6 @@ impl Contract {
         simple_consent: Consent,
         super_consent: Consent,
     ) -> Self {
-        require!(
-            pre_vote_bond.0 >= PROPOSAL_STORAGE_COST,
-            "min proposal storage cost is required"
-        );
         Self {
             prop_counter: 0,
             pre_vote_proposals: LookupMap::new(StorageKey::PreVoteProposals),
@@ -120,7 +116,7 @@ impl Contract {
         let active = bond >= self.active_queue_bond;
         self.prop_counter += 1;
         emit_prop_created(self.prop_counter, &kind, active);
-        let prop = Proposal {
+        let mut prop = Proposal {
             proposer: user.clone(),
             bond,
             additional_bond: None,
@@ -140,6 +136,7 @@ impl Contract {
             votes: HashMap::new(),
             start: now,
             approved_at: None,
+            proposal_storage_cost: 0,
         };
         if active {
             self.proposals.insert(&self.prop_counter, &prop);
@@ -149,6 +146,16 @@ impl Contract {
 
         if let Err(reason) = finalize_storage_check(storage_start, 0, user) {
             return Err(CreatePropError::Storage(reason));
+        }
+        prop.proposal_storage_cost =
+            (env::storage_usage() - storage_start) as u128 * env::storage_byte_cost();
+        if bond < prop.proposal_storage_cost {
+            return Err(CreatePropError::MinBond);
+        }
+        if active {
+            self.proposals.insert(&self.prop_counter, &prop);
+        } else {
+            self.pre_vote_proposals.insert(&self.prop_counter, &prop);
         }
 
         Ok(self.prop_counter)
@@ -343,7 +350,7 @@ impl Contract {
         }
 
         // Vote storage is already paid by voters. We only keep storage for proposal.
-        let refund = prop.bond - PROPOSAL_STORAGE_COST;
+        let refund = prop.bond - prop.proposal_storage_cost;
         Promise::new(prop.proposer.clone()).transfer(refund);
         if let Some(val) = prop.additional_bond.clone() {
             Promise::new(val.0).transfer(val.1);
