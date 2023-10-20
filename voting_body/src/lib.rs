@@ -367,7 +367,7 @@ impl Contract {
         p.supported.clear();
         p.status = ProposalStatus::InProgress;
         p.start = env::block_timestamp_ms();
-        self.proposals.insert(&prop_id, &p);
+        self.proposals.insert(&prop_id, p);
         emit_prop_active(prop_id);
     }
 
@@ -859,7 +859,7 @@ mod unit_tests {
             quorum: 12,
             threshold: 2,
         };
-        ctr.admin_update_consent(c1.clone(), c2.clone());
+        ctr.admin_update_consent(c1, c2);
         assert_eq!(c1, ctr.simple_consent);
         assert_eq!(c2, ctr.super_consent);
     }
