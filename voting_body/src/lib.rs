@@ -334,8 +334,11 @@ impl Contract {
         if prop.bond == 0 {
             return false;
         }
-        if prop.status == ProposalStatus::InProgress
-            && env::block_timestamp_ms() <= prop.start + self.voting_duration
+        if (prop.status == ProposalStatus::InProgress
+            && env::block_timestamp_ms() <= prop.start + self.voting_duration)
+            || prop.status == ProposalStatus::PreVote
+            || prop.status == ProposalStatus::Spam
+            || prop.status == ProposalStatus::Vetoed
         {
             return false;
         }
