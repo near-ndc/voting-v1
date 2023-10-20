@@ -256,6 +256,9 @@ impl Contract {
             return Ok(());
         } else {
             self.proposals.insert(&id, &prop);
+            if let Err(reason) = finalize_storage_check(storage_start, 0, user) {
+                return Err(VoteError::Storage(reason));
+            }
         }
 
         emit_vote(id);
@@ -266,10 +269,6 @@ impl Contract {
             if res.is_err() {
                 emit_vote_execute(id, res.err().unwrap());
             }
-        }
-
-        if let Err(reason) = finalize_storage_check(storage_start, 0, user) {
-            return Err(VoteError::Storage(reason));
         }
 
         Ok(())
