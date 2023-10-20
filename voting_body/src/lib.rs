@@ -532,6 +532,11 @@ mod unit_tests {
 
         ctx.attached_deposit = 0;
         testing_env!(ctx.clone());
+        // Try vote with less storage
+        match ctr.vote(id, Vote::Approve) {
+            Err(VoteError::Storage(_)) => (),
+            x => panic!("expected Storage, got: {:?}", x),
+        }
         vote(
             ctx.clone(),
             &mut ctr,
