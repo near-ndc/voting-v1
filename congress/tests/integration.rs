@@ -564,6 +564,41 @@ async fn tc_ban_and_dismiss_fail_cases() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[tokio::test]
+async fn migration_mainnet() -> anyhow::Result<()> {
+    let worker_sandbox = near_workspaces::sandbox().await?;
+    let worker_mainnet = near_workspaces::mainnet().await?;
+    let congress_hom_id: AccountId = "congress-hom-v1.ndc-gwg.near".parse()?;
+    let congress = worker_sandbox
+        .import_contract(&congress_hom_id, &worker_mainnet)
+        .initial_balance(parse_near!("10000000 N"))
+        .with_data()
+        .transact()
+        .await?;
+
+    // deploy the new contract
+    let res = congress
+        .as_account()
+        .deploy(include_bytes!("../../res/congress.wasm"))
+        .await?;
+    assert!(res.is_success());
+
+    let new_congress = res.into_result()?;
+
+    // call the migrate method
+    let res = new_congress
+        .call("migrate")
+        .args_json(json!({}))
+        .max_gas()
+        .transact()
+        .await?;
+    assert!(res.is_success(), "{:?}", res.receipt_failures());
+
+    //TODO: add queries to check the values
+
+    Ok(())
+}
+
 fn to_near_account(acc: &AccountId) -> NearAccountId {
     NearAccountId::new_unchecked(acc.to_string())
 }
