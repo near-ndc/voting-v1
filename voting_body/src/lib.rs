@@ -1067,9 +1067,19 @@ mod unit_tests {
 
         //
         // check that proposal was moved
-        ctx.predecessor_account_id = iah_registry();
         let id = create_proposal(ctx.clone(), &mut ctr, PRE_BOND);
+        ctx.block_timestamp += MSECOND;
+        testing_env!(ctx.clone());
         let mut prop = ctr.get_proposal(id).unwrap();
+
         assert_eq!(ctr.on_support_by_congress(Ok(true), id), Ok(true));
+        assert_eq!(
+            ctr.assert_pre_vote_prop(id),
+            Err(PrevotePropError::NotFound)
+        );
+        // modify prop to expected values and see if it equals the stored one
+        prop.proposal.status = ProposalStatus::InProgress;
+        prop.proposal.start += 1; // start is in miliseconds
+        assert_eq!(ctr.get_proposal(id).unwrap(), prop);
     }
 }
