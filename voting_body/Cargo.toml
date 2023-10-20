@@ -24,3 +24,6 @@ near-workspaces.workspace = true
 near-primitives.workspace = true
 near-units.workspace = true
 integrations = { path = "../integrations" }
+
+
+num-iter = "^0.1"

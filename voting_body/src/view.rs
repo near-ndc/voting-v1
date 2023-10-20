@@ -1,4 +1,4 @@
-use std::cmp::min;
+use std::cmp::{max, min};
 
 use near_sdk::serde::Serialize;
 
@@ -40,39 +40,34 @@ impl Contract {
 
     /// Returns all proposals from the active queue, which were not marked as a spam. This
     /// includes proposals that are in progress, rejected, approved or failed.
-    /// TODO: simplify this https://github.com/near-ndc/voting-v1/pull/102#discussion_r1365810686
+    /// If `from_index == 0` then it will start from the first element (or the last one if
+    /// reverse is set to true).
     pub fn get_proposals(
         &self,
         from_index: u32,
         limit: u32,
         reverse: Option<bool>,
     ) -> Vec<ProposalOutput> {
-        if reverse.unwrap_or(false) {
-            let mut start = 1;
-            let end_index = min(from_index, self.prop_counter);
-            if end_index > limit {
-                start = end_index - limit + 1;
-            }
+        let iter: Box<dyn Iterator<Item = u32>> = if reverse.unwrap_or(false) {
+            let end = if from_index == 0 {
+                self.prop_counter
+            } else {
+                min(from_index, self.prop_counter)
+            };
+            let start = if end < limit { 1 } else { end - limit };
 
-            return (start..=end_index)
-                .rev()
-                .filter_map(|id| {
-                    self.proposals.get(&id).map(|mut proposal| {
-                        proposal.recompute_status(self.voting_duration);
-                        ProposalOutput { id, proposal }
-                    })
-                })
-                .collect();
-        }
+            Box::new((start..=end).rev())
+        } else {
+            Box::new(max(from_index, 1)..=min(self.prop_counter, from_index + limit))
+        };
 
-        (from_index..=min(self.prop_counter, from_index + limit))
-            .filter_map(|id| {
-                self.proposals.get(&id).map(|mut proposal| {
-                    proposal.recompute_status(self.voting_duration);
-                    ProposalOutput { id, proposal }
-                })
+        iter.filter_map(|id| {
+            self.proposals.get(&id).map(|mut proposal| {
+                proposal.recompute_status(self.voting_duration);
+                ProposalOutput { id, proposal }
             })
-            .collect()
+        })
+        .collect()
     }
 
     /// Get specific proposal.
@@ -103,5 +98,17 @@ impl Contract {
             voting_duration: self.voting_duration,
             accounts: self.accounts.get().unwrap(),
         }
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod test {
+    use num_iter::range_step;
+
+    #[test]
+    pub fn check_iterator() {
+        let expected = vec![3, 2, 1];
+        let x: Vec<i32> = range_step(3, 1 - 1, -1).collect();
+        assert_eq!(expected, x)
     }
 }
