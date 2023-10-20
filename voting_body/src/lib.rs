@@ -796,7 +796,7 @@ mod unit_tests {
             .create_proposal(PropKind::Text, "Proposal unit test 2".to_string())
             .unwrap();
         ctx.attached_deposit = BOND;
-        testing_env!(ctx);
+        testing_env!(ctx.clone());
         let id3 = ctr
             .create_proposal(PropKind::Text, "Proposal unit test 3".to_string())
             .unwrap();
@@ -805,6 +805,7 @@ mod unit_tests {
         let prop3 = ctr.get_proposal(id3).unwrap();
         assert_eq!(ctr.number_of_proposals(), 3);
         // non reversed
+        assert_eq!(ctr.get_proposals(1, 1, None), vec![prop1.clone()]);
         assert_eq!(
             ctr.get_proposals(0, 10, None),
             vec![prop1.clone(), prop2.clone(), prop3.clone()]
@@ -814,16 +815,39 @@ mod unit_tests {
             ctr.get_proposals(0, 2, None),
             vec![prop1.clone(), prop2.clone()]
         );
-        // reversed
+        assert_eq!(
+            ctr.get_proposals(0, 2, Some(false)),
+            vec![prop1.clone(), prop2.clone()]
+        );
+        assert_eq!(
+            ctr.get_proposals(1, 2, Some(false)),
+            vec![prop1.clone(), prop2.clone()]
+        );
+        // reversed, limit bigger than amount of proposals -> return all
         assert_eq!(
             ctr.get_proposals(3, 10, Some(true)),
             vec![prop3.clone(), prop2.clone(), prop1.clone()]
         );
-        // reversed with limit
+        // reversed with limit and over the "last proposal"
         assert_eq!(
-            ctr.get_proposals(3, 2, Some(true)),
+            ctr.get_proposals(5, 2, Some(true)),
             vec![prop3.clone(), prop2.clone()]
         );
+
+        // few more edge cases
+        assert_eq!(ctr.get_proposals(1, 0, None), vec![], "limit=0");
+        assert_eq!(
+            ctr.get_proposals(0, 1, None),
+            vec![prop1.clone()],
+            "0 = start from the last proposal (rev=false)"
+        );
+        assert_eq!(
+            ctr.get_proposals(0, 1, Some(true)),
+            vec![prop3.clone()],
+            "0 = start from the last proposal (rev=true)"
+        );
+        assert_eq!(ctr.get_proposals(2, 1, None), vec![prop2.clone()],);
+        assert_eq!(ctr.get_proposals(2, 1, Some(true)), vec![prop2.clone()],);
     }
 
     #[test]

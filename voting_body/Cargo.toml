@@ -17,6 +17,8 @@ serde_json.workspace = true
 
 common = { path = "../common" }
 
+itertools = "^0.11"
+
 [dev-dependencies]
 anyhow.workspace = true
 tokio.workspace = true
