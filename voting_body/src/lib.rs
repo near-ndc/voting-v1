@@ -391,10 +391,7 @@ impl Contract {
     }
 
     fn refund_bond(&mut self, prop: Proposal) {
-        // Return bond amount
-        // Keep some near for storage
-        // Note: Vote storage is already paid by voters
-        // We only keep storage for proposal storage
+        // Vote storage is already paid by voters. We only keep storage for proposal.
         let refund = prop.bond - PROPOSAL_STORAGE_COST;
         Promise::new(prop.proposer).transfer(refund);
         if let Some(val) = prop.additional_bond {
