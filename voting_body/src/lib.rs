@@ -277,6 +277,9 @@ impl Contract {
         let mut prop = self.assert_proposal(id);
         if prop.status == ProposalStatus::Rejected {
             self.refund_bond(prop.clone());
+            prop.bond = 0;
+            prop.additional_bond = None;
+            self.proposals.insert(&id, &prop);
             return Ok(PromiseOrValue::Value(()));
         }
         if !matches!(
@@ -310,11 +313,13 @@ impl Contract {
             PropKind::ApproveBudget { .. } => (),
             PropKind::Text => (),
         };
-        self.proposals.insert(&id, &prop);
-
         if prop.status != ProposalStatus::Failed {
             self.refund_bond(prop.clone());
+            prop.bond = 0;
+            prop.additional_bond = None;
         }
+
+        self.proposals.insert(&id, &prop);
 
         let result = match result {
             PromiseOrValue::Promise(promise) => promise
