@@ -235,6 +235,7 @@ impl Contract {
     // TODO: must be called via iah_call
     pub fn vote(&mut self, id: u32, vote: Vote) -> Result<(), VoteError> {
         let user = env::predecessor_account_id();
+        let storage_start = env::storage_usage();
         let mut prop = self.assert_proposal(id);
 
         if !matches!(prop.status, ProposalStatus::InProgress) {
@@ -244,7 +245,7 @@ impl Contract {
             return Err(VoteError::NotActive);
         }
 
-        prop.add_vote(user, vote, THRESHOLD)?;
+        prop.add_vote(user.clone(), vote, THRESHOLD)?;
 
         if prop.status == ProposalStatus::Spam {
             self.proposals.remove(&id);
@@ -265,6 +266,10 @@ impl Contract {
             if res.is_err() {
                 emit_vote_execute(id, res.err().unwrap());
             }
+        }
+
+        if let Err(reason) = finalize_storage_check(storage_start, 0, user) {
+            return Err(VoteError::Storage(reason));
         }
 
         Ok(())
@@ -413,6 +418,7 @@ mod unit_tests {
     const PRE_BOND: u128 = ONE_NEAR * 3;
     const BOND: u128 = ONE_NEAR * 500;
     const PRE_VOTE_SUPPORT: u32 = 10;
+    const VOTE_DEPOSIT: u128 = ONE_NEAR / 1000;
 
     fn acc(idx: u8) -> AccountId {
         AccountId::new_unchecked(format!("user-{}.near", idx))
@@ -486,6 +492,7 @@ mod unit_tests {
     fn vote(mut ctx: VMContext, ctr: &mut Contract, accs: Vec<AccountId>, id: u32, vote: Vote) {
         for a in accs {
             ctx.predecessor_account_id = a.clone();
+            ctx.attached_deposit = VOTE_DEPOSIT;
             testing_env!(ctx.clone());
             let res = ctr.vote(id, vote.clone());
             assert_eq!(
@@ -553,6 +560,7 @@ mod unit_tests {
         //
         ctx.attached_deposit = BOND;
         ctx.predecessor_account_id = acc(3);
+        ctx.account_balance = ONE_NEAR * 1000;
         testing_env!(ctx.clone());
         let id = ctr
             .create_proposal(PropKind::Text, "proposal".to_owned())
@@ -606,6 +614,8 @@ mod unit_tests {
         //
         // create proposal, set timestamp past voting period, status should be rejected
         //
+        ctx.attached_deposit = BOND;
+        testing_env!(ctx.clone());
         let id = ctr
             .create_proposal(PropKind::Text, "Proposal unit test query 3".to_string())
             .unwrap();
@@ -705,6 +715,7 @@ mod unit_tests {
         assert!((p.proposal.votes.is_empty()));
 
         ctx.predecessor_account_id = acc(1);
+        ctx.attached_deposit = VOTE_DEPOSIT;
         testing_env!(ctx.clone());
 
         assert_eq!(ctr.vote(id, Vote::Approve), Ok(()));

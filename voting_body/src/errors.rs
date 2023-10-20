@@ -7,6 +7,7 @@ pub enum VoteError {
     NotAuthorized,
     NotInProgress,
     NotActive,
+    Storage(String),
 }
 
 impl FunctionError for VoteError {
@@ -15,6 +16,7 @@ impl FunctionError for VoteError {
             VoteError::NotAuthorized => panic_str("not authorized"),
             VoteError::NotInProgress => panic_str("proposal not in progress"),
             VoteError::NotActive => panic_str("voting time is over"),
+            VoteError::Storage(reason) => panic_str(reason),
         }
     }
 }
