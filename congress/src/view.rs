@@ -1,5 +1,6 @@
 use std::cmp::min;
 
+use itertools::Either;
 use near_sdk::serde::{Deserialize, Serialize};
 
 use crate::*;
@@ -52,32 +53,26 @@ impl Contract {
         limit: u32,
         reverse: Option<bool>,
     ) -> Vec<ProposalOutput> {
-        if reverse.unwrap_or(false) {
-            let mut start = 1;
-            let end_index = min(from_index, self.prop_counter);
-            if end_index > limit {
-                start = end_index - limit + 1;
-            }
+        let iter = if reverse.unwrap_or(false) {
+            let end = if from_index == 0 {
+                self.prop_counter
+            } else {
+                min(from_index, self.prop_counter)
+            };
+            let start = if end <= limit { 1 } else { end - (limit - 1) };
+            Either::Left((start..=end).rev())
+        } else {
+            let from_index = max(from_index, 1);
+            Either::Right(from_index..=min(self.prop_counter, from_index + limit - 1))
+        };
 
-            return (start..=end_index)
-                .rev()
-                .filter_map(|id| {
-                    self.proposals.get(&id).map(|mut proposal| {
-                        proposal.recompute_status(self.voting_duration);
-                        ProposalOutput { id, proposal }
-                    })
-                })
-                .collect();
-        }
-
-        (from_index..=min(self.prop_counter, from_index + limit))
-            .filter_map(|id| {
-                self.proposals.get(&id).map(|mut proposal| {
-                    proposal.recompute_status(self.voting_duration);
-                    ProposalOutput { id, proposal }
-                })
+        iter.filter_map(|id| {
+            self.proposals.get(&id).map(|mut proposal| {
+                proposal.recompute_status(self.voting_duration);
+                ProposalOutput { id, proposal }
             })
-            .collect()
+        })
+        .collect()
     }
 
     /// Get specific proposal.
