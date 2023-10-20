@@ -6,7 +6,7 @@ use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap};
 use near_sdk::json_types::U128;
 use near_sdk::{
-    env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseOrValue,
+    env, near_bindgen, require, Balance, Gas, PanicOnDefault, Promise, PromiseOrValue,
     PromiseResult,
 };
 
@@ -249,7 +249,8 @@ impl Contract {
         if prop.status == ProposalStatus::Spam {
             self.proposals.remove(&id);
             emit_spam(id);
-            Promise::new(self.community_treasury.clone()).transfer(prop.bond);
+            let treasury = self.accounts.get().unwrap().community_treasury;
+            Promise::new(treasury).transfer(prop.bond);
             emit_prop_slashed(id, prop.bond);
             return Ok(());
         } else {
@@ -398,7 +399,7 @@ impl Contract {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod unit_tests {
-    use near_sdk::{test_utils::VMContextBuilder, testing_env, VMContext, ONE_NEAR};
+    use near_sdk::{test_utils::VMContextBuilder, testing_env, AccountId, VMContext, ONE_NEAR};
 
     use crate::{view::ConfigOutput, *};
 
@@ -671,14 +672,29 @@ mod unit_tests {
         let (_, ctr, _) = setup_ctr(PRE_BOND);
         let expected = ConfigOutput {
             prop_counter: 1,
-            pre_vote_bond: U128(3000000000000000000000000),
-            active_queue_bond: U128(500000000000000000000000000),
-            threshold: 3,
-            voting_duration: 300000,
-            iah_registry: iah_registry(),
-            community_treasury: treasury(),
+            pre_vote_bond: U128(PRE_BOND),
+            active_queue_bond: U128(BOND),
+            pre_vote_support: 3,
+            simple_consent: Consent {
+                quorum: 3,
+                threshold: 50,
+            },
+            super_consent: Consent {
+                quorum: 5,
+                threshold: 60,
+            },
+            pre_vote_duration: PRE_VOTE_DURATION,
+            voting_duration: VOTING_DURATION,
+            accounts: Accounts {
+                iah_registry: iah_registry(),
+                community_treasury: treasury(),
+                congress_hom: hom(),
+                congress_coa: coa(),
+                congress_tc: tc(),
+                admin: admin(),
+            },
         };
-        assert_eq!( ctr.config(), expected);
+        assert_eq!(ctr.config(), expected);
     }
 
     #[test]
@@ -715,7 +731,7 @@ mod unit_tests {
         assert_eq!(ctr.get_proposal(id).unwrap(), p);
     }
 
-    fn create_all_props(ctr: &mut Contract) -> (u32, u32) {
+    fn _create_all_props(ctr: &mut Contract) -> (u32, u32) {
         let prop_text = ctr
             .create_proposal(PropKind::Text, "text proposal".to_string())
             .unwrap();

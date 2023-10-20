@@ -24,10 +24,12 @@ pub struct ConfigOutput {
     pub prop_counter: u32,
     pub pre_vote_bond: U128,
     pub active_queue_bond: U128,
-    pub threshold: u32,
+    pub pre_vote_support: u32,
+    pub simple_consent: Consent,
+    pub super_consent: Consent,
     pub voting_duration: u64,
-    pub iah_registry: AccountId,
-    pub community_treasury: AccountId,
+    pub pre_vote_duration: u64,
+    pub accounts: Accounts,
 }
 
 #[near_bindgen]
@@ -94,10 +96,12 @@ impl Contract {
             prop_counter: self.prop_counter,
             pre_vote_bond: U128(self.pre_vote_bond),
             active_queue_bond: U128(self.active_queue_bond),
-            threshold: self.threshold,
+            pre_vote_support: self.pre_vote_support,
+            simple_consent: self.simple_consent,
+            super_consent: self.super_consent,
+            pre_vote_duration: self.pre_vote_duration,
             voting_duration: self.voting_duration,
-            iah_registry: self.iah_registry.to_owned(),
-            community_treasury: self.community_treasury.to_owned(),
+            accounts: self.accounts.get().unwrap(),
         }
     }
 }
