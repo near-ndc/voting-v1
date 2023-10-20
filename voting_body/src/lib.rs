@@ -307,7 +307,7 @@ impl Contract {
             }
             PropKind::Veto { dao, prop_id } => {
                 result = ext_congress::ext(dao.clone())
-                    .veto_hook(prop_id.clone())
+                    .veto_hook(*prop_id)
                     .into();
             }
             PropKind::ApproveBudget { .. } => (),
