@@ -1,3 +1,4 @@
+pub mod errors;
 mod events;
 
 pub use events::*;
