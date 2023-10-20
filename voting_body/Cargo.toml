@@ -16,6 +16,7 @@ near-sdk.workspace = true
 serde_json.workspace = true
 
 common = { path = "../common" }
+congress = { path = "../congress" }
 
 [dev-dependencies]
 anyhow.workspace = true

@@ -289,21 +289,20 @@ impl Contract {
         prop.status = ProposalStatus::Executed;
         let mut result = PromiseOrValue::Value(());
         match &prop.kind {
-            PropKind::FunctionCall {
-                receiver_id,
-                actions,
-            } => {
-                let mut promise = Promise::new(receiver_id.clone());
-                for action in actions {
-                    promise = promise.function_call(
-                        action.method_name.clone(),
-                        action.args.clone().into(),
-                        action.deposit.0,
-                        Gas(action.gas.0),
-                    );
-                }
-                result = promise.into();
+            PropKind::Dismiss { dao, member } => {
+                result = ext_congress::ext(dao.clone())
+                    .dismiss_hook(member.clone())
+                    .into();
             }
+            PropKind::Dissolve { dao } => {
+                result = ext_congress::ext(dao.clone()).dissolve_hook().into();
+            }
+            PropKind::Veto { dao, prop_id } => {
+                result = ext_congress::ext(dao.clone())
+                    .veto_hook(prop_id.clone())
+                    .into();
+            }
+            PropKind::ApproveBudget { .. } => (),
             PropKind::Text => (),
         };
         self.proposals.insert(&id, &prop);
@@ -729,23 +728,6 @@ mod unit_tests {
         p.proposal.spam = 1;
         p.proposal.votes.insert(acc(1), Vote::Spam);
         assert_eq!(ctr.get_proposal(id).unwrap(), p);
-    }
-
-    fn _create_all_props(ctr: &mut Contract) -> (u32, u32) {
-        let prop_text = ctr
-            .create_proposal(PropKind::Text, "text proposal".to_string())
-            .unwrap();
-        let prop_fc = ctr
-            .create_proposal(
-                PropKind::FunctionCall {
-                    receiver_id: acc(10),
-                    actions: vec![],
-                },
-                "function call proposal".to_string(),
-            )
-            .unwrap();
-
-        (prop_text, prop_fc)
     }
 
     #[test]
