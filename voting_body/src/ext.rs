@@ -1,4 +1,4 @@
-use congress::HookError;
+use common::errors::HookError;
 use near_sdk::ext_contract;
 use near_sdk::AccountId;
 

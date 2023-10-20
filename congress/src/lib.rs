@@ -1,6 +1,7 @@
 use std::cmp::min;
 use std::collections::HashMap;
 
+use common::errors::HookError;
 use common::finalize_storage_check;
 use events::*;
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
