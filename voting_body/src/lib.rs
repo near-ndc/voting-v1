@@ -674,7 +674,7 @@ mod unit_tests {
             prop_counter: 1,
             pre_vote_bond: U128(PRE_BOND),
             active_queue_bond: U128(BOND),
-            pre_vote_support: 3,
+            pre_vote_support: 10,
             simple_consent: Consent {
                 quorum: 3,
                 threshold: 50,
