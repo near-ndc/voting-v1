@@ -17,6 +17,8 @@ serde_json.workspace = true
 
 common = { path = "../common" }
 
+num-iter = "^0.1"
+
 [dev-dependencies]
 anyhow.workspace = true
 tokio.workspace = true
@@ -24,6 +26,3 @@ near-workspaces.workspace = true
 near-primitives.workspace = true
 near-units.workspace = true
 integrations = { path = "../integrations" }
-
-
-num-iter = "^0.1"

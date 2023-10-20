@@ -32,6 +32,8 @@ pub struct ConfigOutput {
     pub accounts: Accounts,
 }
 
+use num_iter::range_step_inclusive;
+
 #[near_bindgen]
 impl Contract {
     /**********
@@ -48,20 +50,29 @@ impl Contract {
         limit: u32,
         reverse: Option<bool>,
     ) -> Vec<ProposalOutput> {
-        let iter: Box<dyn Iterator<Item = u32>> = if reverse.unwrap_or(false) {
+        let iter = if reverse.unwrap_or(false) {
             let end = if from_index == 0 {
-                self.prop_counter
+                self.prop_counter as i32
             } else {
-                min(from_index, self.prop_counter)
+                min(from_index, self.prop_counter) as i32
             };
+            let limit = limit as i32;
             let start = if end < limit { 1 } else { end - limit };
+            range_step_inclusive(end, start, -1)
 
-            Box::new((start..=end).rev())
+            // Box::new((start..=end).rev())
         } else {
-            Box::new(max(from_index, 1)..=min(self.prop_counter, from_index + limit))
+            range_step_inclusive(
+                max(from_index, 1) as i32,
+                min(self.prop_counter, from_index + limit) as i32,
+                1,
+            )
+
+            //Box::new(max(from_index, 1)..=min(self.prop_counter, from_index + limit))
         };
 
         iter.filter_map(|id| {
+            let id = id as u32;
             self.proposals.get(&id).map(|mut proposal| {
                 proposal.recompute_status(self.voting_duration);
                 ProposalOutput { id, proposal }
@@ -103,12 +114,12 @@ impl Contract {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod test {
-    use num_iter::range_step;
+    use num_iter::range_step_inclusive;
 
     #[test]
     pub fn check_iterator() {
         let expected = vec![3, 2, 1];
-        let x: Vec<i32> = range_step(3, 1 - 1, -1).collect();
+        let x: Vec<i32> = range_step_inclusive(3, 1, -1).collect();
         assert_eq!(expected, x)
     }
 }
