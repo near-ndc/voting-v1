@@ -33,6 +33,8 @@ If a proposal doesn't meet the conditions to move to the active queue, then the 
 
 This is the main set of proposals. Proposals in this queue are eligible for voting and displayed by the default in the UI. Proposals from the active queue are not removed unless they are marked as spam (see details). They are preserved and anyone can query them, even when a proposal was rejected.
 
+When a proposal is moved from the pre-voting queue to active queue, the set of accounts that supported the proposal is cleared - it's not needed any more, and we can save the space and proposal load time.
+
 ```mermaid
 ---
 title: Proposal Queues

@@ -3,16 +3,16 @@ use near_sdk::json_types::{Base64VecU8, U128, U64};
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{env, AccountId, Balance};
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
-use crate::VoteError;
+use crate::{PrevotePropError, VoteError};
 
 /// Consent sets the conditions for vote to pass. It specifies a quorum (minimum amount of
 /// accounts that have to vote and the approval threshold (% of #approve votes) for a proposal
 /// to pass.
-#[derive(BorshSerialize, BorshDeserialize, Deserialize, Serialize)]
+#[derive(BorshSerialize, BorshDeserialize, Deserialize, Serialize, Clone, Copy)]
 #[serde(crate = "near_sdk::serde")]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Clone))]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq))]
 pub struct Consent {
     pub quorum: u32,
     pub threshold: u16,
@@ -41,6 +41,8 @@ pub struct Proposal {
     pub reject: u32,
     pub spam: u32,
     pub abstain: u32,
+    pub support: u32,
+    pub supported: HashSet<AccountId>,
     /// Map of who voted and how.
     // TODO: must not be a hashmap
     pub votes: HashMap<AccountId, Vote>,
@@ -51,6 +53,15 @@ pub struct Proposal {
 }
 
 impl Proposal {
+    pub fn add_support(&mut self, user: AccountId) -> Result<(), PrevotePropError> {
+        if self.supported.contains(&user) {
+            return Err(PrevotePropError::DoubleSupport);
+        }
+        self.support += 1;
+        self.supported.insert(user);
+        Ok(())
+    }
+
     pub fn add_vote(
         &mut self,
         user: AccountId,

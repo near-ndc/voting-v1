@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use common::finalize_storage_check;
 use events::*;
@@ -6,7 +6,7 @@ use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap};
 use near_sdk::json_types::U128;
 use near_sdk::{
-    env, near_bindgen, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseOrValue,
+    env, near_bindgen, require, Balance, Gas, PanicOnDefault, Promise, PromiseOrValue,
     PromiseResult,
 };
 
@@ -40,6 +40,8 @@ pub struct Contract {
     /// spam.
     pub pre_vote_bond: Balance,
     pub active_queue_bond: Balance,
+    /// amount of users that need to support a proposal to move it to the active queue;
+    pub pre_vote_support: u32,
 
     /// minimum amount of members to approve the proposal
     /// u32 can hold a number up to 4.2 B. That is enough for many future iterations.
@@ -59,6 +61,7 @@ impl Contract {
     pub fn new(
         pre_vote_duration: u64,
         voting_duration: u64,
+        pre_vote_support: u32,
         pre_vote_bond: U128,
         active_queue_bond: U128,
         accounts: Accounts,
@@ -73,6 +76,7 @@ impl Contract {
             voting_duration,
             pre_vote_bond: pre_vote_bond.0,
             active_queue_bond: active_queue_bond.0,
+            pre_vote_support,
             accounts: LazyOption::new(StorageKey::Accounts, Some(&accounts)),
             simple_consent,
             super_consent,
@@ -129,6 +133,8 @@ impl Contract {
             reject: 0,
             abstain: 0,
             spam: 0,
+            support: 0,
+            supported: HashSet::new(),
             votes: HashMap::new(),
             start: now,
             approved_at: None,
@@ -152,10 +158,10 @@ impl Contract {
     /// Removes overdue pre-vote proposal.
     /// Fails if proposal is not overdue or not in pre-vote queue.
     #[handle_result]
-    pub fn remove_overdue_proposal(&mut self, id: u32) -> Result<(), MovePropError> {
+    pub fn remove_overdue_proposal(&mut self, id: u32) -> Result<(), PrevotePropError> {
         let p = self.remove_pre_vote_prop(id)?;
         if env::block_timestamp_ms() - p.start <= self.pre_vote_duration {
-            return Err(MovePropError::NotOverdue);
+            return Err(PrevotePropError::NotOverdue);
         }
         Promise::new(env::predecessor_account_id()).transfer(REMOVE_REWARD);
         self.slash_prop(id, p.bond - REMOVE_REWARD);
@@ -176,13 +182,12 @@ impl Contract {
     /// * proposal-active: when a proposal was successfully updated.
     /// Excess of attached bond is sent back to the caller.
     /// Returns error when proposal is not in the pre-vote queue or not enough bond was attached.
-    pub fn top_up_proposal(&mut self, id: u32) -> Result<bool, MovePropError> {
+    pub fn top_up_proposal(&mut self, id: u32) -> Result<bool, PrevotePropError> {
         let user = env::predecessor_account_id();
-        let now = env::block_timestamp_ms();
         let mut bond = env::attached_deposit();
         let mut p = self.remove_pre_vote_prop(id)?;
 
-        if now - p.start > self.pre_vote_duration {
+        if env::block_timestamp_ms() - p.start > self.pre_vote_duration {
             // Transfer attached N, slash bond & keep the proposal removed.
             // Note: user wanted to advance the proposal, rather than slash it, so reward is not
             // distributed.
@@ -193,19 +198,36 @@ impl Contract {
 
         let required_bond = self.active_queue_bond - p.bond;
         if bond < required_bond {
-            return Err(MovePropError::MinBond);
+            return Err(PrevotePropError::MinBond);
         }
         let diff = bond - required_bond;
         if diff > 0 {
             Promise::new(user.clone()).transfer(diff);
             bond -= diff;
         }
-        p.status = ProposalStatus::InProgress;
         p.additional_bond = Some((user, bond));
-        p.start = now;
-        self.proposals.insert(&id, &p);
-        emit_prop_active(id);
+        self.insert_prop_to_active(id, &mut p);
+        Ok(true)
+    }
 
+    /// Supports proposal in the pre-vote queue.
+    /// Returns false if the proposal can't be supported because it is overdue.
+    #[handle_result]
+    pub fn support_proposal(&mut self, id: u32) -> Result<bool, PrevotePropError> {
+        let mut p = self.assert_pre_vote_prop(id)?;
+        if env::block_timestamp_ms() - p.start > self.pre_vote_duration {
+            self.slash_prop(id, p.bond);
+            self.pre_vote_proposals.remove(&id);
+            return Ok(false);
+        }
+        let user = env::predecessor_account_id();
+        p.add_support(user)?;
+        if p.support >= self.pre_vote_support {
+            self.pre_vote_proposals.remove(&id);
+            self.insert_prop_to_active(id, &mut p);
+        } else {
+            self.pre_vote_proposals.insert(&id, &p);
+        }
         Ok(true)
     }
 
@@ -227,7 +249,9 @@ impl Contract {
         if prop.status == ProposalStatus::Spam {
             self.proposals.remove(&id);
             emit_spam(id);
-            // TODO: slash bonds
+            let treasury = self.accounts.get().unwrap().community_treasury;
+            Promise::new(treasury).transfer(prop.bond);
+            emit_prop_slashed(id, prop.bond);
             return Ok(());
         } else {
             self.proposals.insert(&id, &prop);
@@ -300,18 +324,50 @@ impl Contract {
     }
 
     /*****************
+     * ADMIN
+     ****************/
+
+    pub fn admin_update_consent(&mut self, simple_consent: Consent, super_consent: Consent) {
+        self.assert_admin();
+        self.simple_consent = simple_consent;
+        self.super_consent = super_consent;
+    }
+
+    /*****************
      * INTERNAL
      ****************/
+
+    fn assert_admin(&self) {
+        require!(
+            env::predecessor_account_id() == self.accounts.get().unwrap().admin,
+            "not authorized"
+        );
+    }
 
     fn assert_proposal(&self, id: u32) -> Proposal {
         self.proposals.get(&id).expect("proposal does not exist")
     }
 
-    fn remove_pre_vote_prop(&mut self, id: u32) -> Result<Proposal, MovePropError> {
+    fn remove_pre_vote_prop(&mut self, id: u32) -> Result<Proposal, PrevotePropError> {
         match self.pre_vote_proposals.remove(&id) {
             Some(p) => Ok(p),
-            None => Err(MovePropError::NotFound),
+            None => Err(PrevotePropError::NotFound),
         }
+    }
+
+    fn assert_pre_vote_prop(&mut self, id: u32) -> Result<Proposal, PrevotePropError> {
+        match self.pre_vote_proposals.get(&id) {
+            Some(p) => Ok(p),
+            None => Err(PrevotePropError::NotFound),
+        }
+    }
+
+    fn insert_prop_to_active(&mut self, prop_id: u32, p: &mut Proposal) {
+        p.supported.clear();
+        p.status = ProposalStatus::InProgress;
+        p.start = env::block_timestamp_ms();
+        self.proposals.insert(&prop_id, p);
+        emit_prop_active(prop_id);
     }
 
     fn slash_prop(&mut self, prop_id: u32, amount: Balance) {
@@ -342,9 +398,9 @@ impl Contract {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod unit_tests {
-    use near_sdk::{test_utils::VMContextBuilder, testing_env, VMContext, ONE_NEAR};
+    use near_sdk::{test_utils::VMContextBuilder, testing_env, AccountId, VMContext, ONE_NEAR};
 
-    use crate::*;
+    use crate::{view::ConfigOutput, *};
 
     /// 1ms in nano seconds
     const MSECOND: u64 = 1_000_000;
@@ -355,6 +411,7 @@ mod unit_tests {
     const PRE_VOTE_DURATION: u64 = 60 * 10 * 1000;
     const PRE_BOND: u128 = ONE_NEAR * 3;
     const BOND: u128 = ONE_NEAR * 500;
+    const PRE_VOTE_SUPPORT: u32 = 10;
 
     fn acc(idx: u8) -> AccountId {
         AccountId::new_unchecked(format!("user-{}.near", idx))
@@ -380,12 +437,17 @@ mod unit_tests {
         AccountId::new_unchecked("treasury.near".to_string())
     }
 
+    fn admin() -> AccountId {
+        AccountId::new_unchecked("admin.near".to_string())
+    }
+
     /// creates a test contract with proposal
     fn setup_ctr(attach_deposit: u128) -> (VMContext, Contract, u32) {
         let mut context = VMContextBuilder::new().build();
         let mut contract = Contract::new(
             PRE_VOTE_DURATION,
             VOTING_DURATION,
+            PRE_VOTE_SUPPORT,
             U128(PRE_BOND),
             U128(BOND),
             Accounts {
@@ -394,6 +456,7 @@ mod unit_tests {
                 congress_hom: hom(),
                 congress_coa: coa(),
                 congress_tc: tc(),
+                admin: admin(),
             },
             Consent {
                 quorum: 3,
@@ -412,6 +475,10 @@ mod unit_tests {
         let id = contract
             .create_proposal(PropKind::Text, "Proposal unit test 1".to_string())
             .unwrap();
+
+        context.attached_deposit = 0;
+        testing_env!(context.clone());
+
         (context, contract, id)
     }
 
@@ -600,6 +667,36 @@ mod unit_tests {
     }
 
     #[test]
+    fn config_query() {
+        let (_, ctr, _) = setup_ctr(PRE_BOND);
+        let expected = ConfigOutput {
+            prop_counter: 1,
+            pre_vote_bond: U128(PRE_BOND),
+            active_queue_bond: U128(BOND),
+            pre_vote_support: 10,
+            simple_consent: Consent {
+                quorum: 3,
+                threshold: 50,
+            },
+            super_consent: Consent {
+                quorum: 5,
+                threshold: 60,
+            },
+            pre_vote_duration: PRE_VOTE_DURATION,
+            voting_duration: VOTING_DURATION,
+            accounts: Accounts {
+                iah_registry: iah_registry(),
+                community_treasury: treasury(),
+                congress_hom: hom(),
+                congress_coa: coa(),
+                congress_tc: tc(),
+                admin: admin(),
+            },
+        };
+        assert_eq!(ctr.config(), expected);
+    }
+
+    #[test]
     fn overwrite_votes() {
         let (mut ctx, mut ctr, id) = setup_ctr(BOND);
         let mut p = ctr.get_proposal(id).unwrap();
@@ -635,7 +732,7 @@ mod unit_tests {
 
     #[test]
     fn get_proposals() {
-        let (mut ctx, mut ctr, id1) = setup_ctr(5 * BOND);
+        let (mut ctx, mut ctr, id1) = setup_ctr(BOND);
         ctx.attached_deposit = BOND;
         testing_env!(ctx.clone());
         let id2 = ctr
@@ -670,5 +767,82 @@ mod unit_tests {
             ctr.get_proposals(3, 2, Some(true)),
             vec![prop3.clone(), prop2.clone()]
         );
+    }
+
+    #[test]
+    fn support_proposal() {
+        let (mut ctx, mut ctr, id) = setup_ctr(PRE_BOND);
+
+        // make one less support then what is necessary to test that the proposal is still in prevote
+        for i in 1..PRE_VOTE_SUPPORT {
+            ctx.predecessor_account_id = acc(i as u8);
+            testing_env!(ctx.clone());
+            assert_eq!(ctr.support_proposal(id), Ok(true));
+        }
+
+        assert_eq!(
+            ctr.support_proposal(id),
+            Err(PrevotePropError::DoubleSupport)
+        );
+
+        let p = ctr.assert_pre_vote_prop(id).unwrap();
+        assert_eq!(p.status, ProposalStatus::PreVote);
+        assert_eq!(p.support, PRE_VOTE_SUPPORT - 1);
+        for i in 1..PRE_VOTE_SUPPORT {
+            assert!(p.supported.contains(&acc(i as u8)))
+        }
+
+        // add the missing support and assert that the proposal was moved to active
+        ctx.predecessor_account_id = acc(PRE_VOTE_SUPPORT as u8);
+        ctx.block_timestamp = START + 2 * MSECOND;
+        testing_env!(ctx.clone());
+        assert_eq!(ctr.support_proposal(id), Ok(true));
+
+        // should be removed from prevote queue
+        assert_eq!(
+            ctr.assert_pre_vote_prop(id),
+            Err(PrevotePropError::NotFound)
+        );
+        let p = ctr.assert_proposal(id);
+        assert_eq!(p.status, ProposalStatus::InProgress);
+        assert_eq!(p.support, PRE_VOTE_SUPPORT);
+        assert_eq!(p.start, ctx.block_timestamp / MSECOND);
+        assert!(p.supported.is_empty());
+
+        // can't support proposal which was already moved
+        assert_eq!(ctr.support_proposal(id), Err(PrevotePropError::NotFound));
+
+        //
+        // Should not be able to support an overdue proposal
+        //
+        ctx.attached_deposit = PRE_BOND;
+        testing_env!(ctx.clone());
+
+        let id = ctr
+            .create_proposal(PropKind::Text, "proposal".to_owned())
+            .unwrap();
+        ctx.block_timestamp += (PRE_VOTE_DURATION + 1) * MSECOND;
+        testing_env!(ctx.clone());
+        assert_eq!(ctr.support_proposal(id), Ok(false));
+        assert_eq!(ctr.get_proposal(id), None);
+    }
+
+    #[test]
+    fn update_consent() {
+        let (mut ctx, mut ctr, _) = setup_ctr(BOND);
+        ctx.predecessor_account_id = admin();
+        testing_env!(ctx.clone());
+
+        let c1 = Consent {
+            quorum: 11,
+            threshold: 1,
+        };
+        let c2 = Consent {
+            quorum: 12,
+            threshold: 2,
+        };
+        ctr.admin_update_consent(c1, c2);
+        assert_eq!(c1, ctr.simple_consent);
+        assert_eq!(c2, ctr.super_consent);
     }
 }
