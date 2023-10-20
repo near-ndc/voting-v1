@@ -571,8 +571,6 @@ mod unit_tests {
         assert_eq!(prop1.proposal.status, ProposalStatus::Approved);
 
         // Proposal already got enough votes - it's approved
-        ctx.predecessor_account_id = iah_registry();
-        testing_env!(ctx.clone());
         assert_eq!(
             ctr.vote(acc(5), iah_proof(), payload(id, Vote::Approve)),
             Err(VoteError::NotInProgress)
@@ -589,7 +587,6 @@ mod unit_tests {
         // Check all votes
         //
         ctx.attached_deposit = BOND;
-        ctx.predecessor_account_id = iah_registry();
         ctx.account_balance = ONE_NEAR * 1000;
         testing_env!(ctx.clone());
         let id = ctr
