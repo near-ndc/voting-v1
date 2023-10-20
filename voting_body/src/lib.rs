@@ -238,7 +238,7 @@ impl Contract {
     pub fn vote(
         &mut self,
         caller: AccountId,
-        _iah_proof: SBTs,
+        #[allow(unused_variables)] iah_proof: SBTs,
         payload: VotePayload,
     ) -> Result<(), VoteError> {
         self.assert_iah_registry(); // must be called by registry.is_human_call()
