@@ -149,9 +149,6 @@ impl Contract {
         }
         prop.proposal_storage_cost =
             (env::storage_usage() - storage_start) as u128 * env::storage_byte_cost();
-        if bond < prop.proposal_storage_cost {
-            return Err(CreatePropError::MinBond);
-        }
         if active {
             self.proposals.insert(&self.prop_counter, &prop);
         } else {
