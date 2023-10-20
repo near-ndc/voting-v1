@@ -243,7 +243,7 @@ impl Contract {
     ) -> Result<(), VoteError> {
         self.assert_iah_registry(); // must be called by registry.is_human_call()
         let storage_start = env::storage_usage();
-        let mut prop = self.assert_proposal(payload.id);
+        let mut prop = self.assert_proposal(payload.prop_id);
 
         if !matches!(prop.status, ProposalStatus::InProgress) {
             return Err(VoteError::NotInProgress);
@@ -255,23 +255,23 @@ impl Contract {
         prop.add_vote(caller.clone(), payload.vote, THRESHOLD)?;
 
         if prop.status == ProposalStatus::Spam {
-            self.proposals.remove(&payload.id);
-            emit_spam(payload.id);
+            self.proposals.remove(&payload.prop_id);
+            emit_spam(payload.prop_id);
             let treasury = self.accounts.get().unwrap().community_treasury;
             Promise::new(treasury).transfer(prop.bond);
-            emit_prop_slashed(payload.id, prop.bond);
+            emit_prop_slashed(payload.prop_id, prop.bond);
             return Ok(());
         } else {
-            self.proposals.insert(&payload.id, &prop);
+            self.proposals.insert(&payload.prop_id, &prop);
         }
 
-        emit_vote(payload.id);
+        emit_vote(payload.prop_id);
 
         if prop.status == ProposalStatus::Approved {
             // We ignore a failure of self.execute here to assure that the vote is counted.
-            let res = self.execute(payload.id);
+            let res = self.execute(payload.prop_id);
             if res.is_err() {
-                emit_vote_execute(payload.id, res.err().unwrap());
+                emit_vote_execute(payload.prop_id, res.err().unwrap());
             }
         }
 

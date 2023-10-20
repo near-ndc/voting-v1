@@ -2,11 +2,11 @@ use crate::{PropKind, Vote};
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::AccountId;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize, Serialize)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Clone))]
 #[serde(crate = "near_sdk::serde")]
 pub struct VotePayload {
-    pub id: u32,
+    pub prop_id: u32,
     pub vote: Vote,
 }
 
@@ -18,6 +18,4 @@ pub struct CreateProposalPayload {
     pub description: String,
 }
 
-pub type TokenId = u64;
-
-pub type SBTs = Vec<(AccountId, Vec<TokenId>)>;
+pub type SBTs = Vec<(AccountId, Vec<u64>)>;
