@@ -330,7 +330,7 @@ impl Contract {
     /// Refund is only possible after voting period is over
     /// Because vote overwrite is allowed, we can't be sure if rejected proposal can be slashed
     pub fn refund_bond(&mut self, id: u32) -> bool {
-        let mut prop = self.assert_proposal(id);
+        let prop = self.assert_proposal(id);
         if prop.bond == 0 {
             return false;
         }
