@@ -233,9 +233,8 @@ impl Contract {
     }
 
     #[handle_result]
-    // TODO: must be called via iah_call
     pub fn vote(&mut self, id: u32, vote: Vote, user: AccountId) -> Result<(), VoteError> {
-        self.assert_iah_registry();
+        self.assert_iah_registry(); // must be called by registry.is_human_call()
         let storage_start = env::storage_usage();
         let mut prop = self.assert_proposal(id);
 
