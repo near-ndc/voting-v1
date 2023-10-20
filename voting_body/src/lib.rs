@@ -561,7 +561,6 @@ mod unit_tests {
     #[test]
     fn config_query() {
         let (_, ctr, _) = setup_ctr(PRE_BOND);
-        let config = ctr.config();
         let expected = ConfigOutput {
             prop_counter: 1,
             pre_vote_bond: U128(3000000000000000000000000),
@@ -571,7 +570,7 @@ mod unit_tests {
             iah_registry: iah_registry(),
             community_treasury: treasury(),
         };
-        assert_eq!(config, expected);
+        assert_eq!( ctr.config(), expected);
     }
 
     #[test]
