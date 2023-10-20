@@ -55,20 +55,20 @@ impl Contract {
             } else {
                 min(from_index, self.prop_counter)
             };
-            let start = if end < limit { 1 } else { end - limit };
+            let start = if end <= limit { 1 } else { end - (limit - 1) };
             Either::Left((start..=end).rev())
         } else {
-            Either::Right(max(from_index, 1)..=min(self.prop_counter, from_index + limit))
+            let from_index = max(from_index, 1);
+            Either::Right(from_index..=min(self.prop_counter, from_index + limit - 1))
         };
 
-        iter.into_iter()
-            .filter_map(|id| {
-                self.proposals.get(&id).map(|mut proposal| {
-                    proposal.recompute_status(self.voting_duration);
-                    ProposalOutput { id, proposal }
-                })
+        iter.filter_map(|id| {
+            self.proposals.get(&id).map(|mut proposal| {
+                proposal.recompute_status(self.voting_duration);
+                ProposalOutput { id, proposal }
             })
-            .collect()
+        })
+        .collect()
     }
 
     /// Get specific proposal.
