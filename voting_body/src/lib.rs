@@ -278,6 +278,7 @@ impl Contract {
     /// Allows anyone to execute proposal.
     #[handle_result]
     pub fn execute(&mut self, id: u32) -> Result<PromiseOrValue<()>, ExecError> {
+        self.refund_bond(id);
         let mut prop = self.assert_proposal(id);
         if !matches!(
             prop.status,
@@ -327,25 +328,27 @@ impl Contract {
         Ok(result)
     }
 
-    /// Refund is only possible after voting period is over
-    /// Because vote overwrite is allowed, we can't be sure if rejected proposal can be slashed
+    /// Refund after voting period is over
     pub fn refund_bond(&mut self, id: u32) -> bool {
         let mut prop = self.assert_proposal(id);
         if prop.bond == 0 {
             return false;
         }
-
-        if env::block_timestamp_ms() > prop.start + self.voting_duration {
-            // Vote storage is already paid by voters. We only keep storage for proposal.
-            let refund = prop.bond - PROPOSAL_STORAGE_COST;
-            Promise::new(prop.proposer.clone()).transfer(refund);
-            if let Some(val) = prop.additional_bond.clone() {
-                Promise::new(val.0).transfer(val.1);
-            }
-            prop.bond = 0;
-            prop.additional_bond = None;
-            self.proposals.insert(&id, &prop);
+        if prop.status == ProposalStatus::InProgress
+            && env::block_timestamp_ms() <= prop.start + self.voting_duration
+        {
+            return false;
         }
+
+        // Vote storage is already paid by voters. We only keep storage for proposal.
+        let refund = prop.bond - PROPOSAL_STORAGE_COST;
+        Promise::new(prop.proposer.clone()).transfer(refund);
+        if let Some(val) = prop.additional_bond.clone() {
+            Promise::new(val.0).transfer(val.1);
+        }
+        prop.bond = 0;
+        prop.additional_bond = None;
+        self.proposals.insert(&id, &prop);
         true
     }
 
