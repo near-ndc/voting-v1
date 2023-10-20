@@ -1,5 +1,6 @@
 use std::cmp::{max, min};
 
+use itertools::Either;
 use near_sdk::serde::Serialize;
 
 use crate::*;
@@ -32,8 +33,6 @@ pub struct ConfigOutput {
     pub accounts: Accounts,
 }
 
-use num_iter::range_step_inclusive;
-
 #[near_bindgen]
 impl Contract {
     /**********
@@ -52,33 +51,24 @@ impl Contract {
     ) -> Vec<ProposalOutput> {
         let iter = if reverse.unwrap_or(false) {
             let end = if from_index == 0 {
-                self.prop_counter as i32
+                self.prop_counter
             } else {
-                min(from_index, self.prop_counter) as i32
+                min(from_index, self.prop_counter)
             };
-            let limit = limit as i32;
             let start = if end < limit { 1 } else { end - limit };
-            range_step_inclusive(end, start, -1)
-
-            // Box::new((start..=end).rev())
+            Either::Left((start..=end).rev())
         } else {
-            range_step_inclusive(
-                max(from_index, 1) as i32,
-                min(self.prop_counter, from_index + limit) as i32,
-                1,
-            )
-
-            //Box::new(max(from_index, 1)..=min(self.prop_counter, from_index + limit))
+            Either::Right(max(from_index, 1)..=min(self.prop_counter, from_index + limit))
         };
 
-        iter.filter_map(|id| {
-            let id = id as u32;
-            self.proposals.get(&id).map(|mut proposal| {
-                proposal.recompute_status(self.voting_duration);
-                ProposalOutput { id, proposal }
+        iter.into_iter()
+            .filter_map(|id| {
+                self.proposals.get(&id).map(|mut proposal| {
+                    proposal.recompute_status(self.voting_duration);
+                    ProposalOutput { id, proposal }
+                })
             })
-        })
-        .collect()
+            .collect()
     }
 
     /// Get specific proposal.
@@ -109,17 +99,5 @@ impl Contract {
             voting_duration: self.voting_duration,
             accounts: self.accounts.get().unwrap(),
         }
-    }
-}
-
-#[cfg(all(test, not(target_arch = "wasm32")))]
-mod test {
-    use num_iter::range_step_inclusive;
-
-    #[test]
-    pub fn check_iterator() {
-        let expected = vec![3, 2, 1];
-        let x: Vec<i32> = range_step_inclusive(3, 1, -1).collect();
-        assert_eq!(expected, x)
     }
 }
