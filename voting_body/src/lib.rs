@@ -710,6 +710,42 @@ mod unit_tests {
     }
 
     #[test]
+    fn refund_bond_test() {
+        let (mut ctx, mut ctr, id) = setup_ctr(BOND);
+        vote(
+            ctx.clone(),
+            &mut ctr,
+            vec![acc(1), acc(2), acc(3)],
+            id,
+            Vote::Approve,
+        );
+        ctx.block_timestamp = START + (ctr.voting_duration + 1) * MSECOND;
+        testing_env!(ctx.clone());
+
+        ctr.execute(id).unwrap();
+        let mut prop = ctr.get_proposal(id).unwrap();
+        assert_eq!(prop.proposal.status, ProposalStatus::Executed);
+
+        // try to get refund again
+        assert_eq!(ctr.refund_bond(id), false);
+
+        // Get refund for proposal with no status update
+        ctx.attached_deposit = BOND;
+        testing_env!(ctx.clone());
+        let id2 = ctr
+            .create_proposal(PropKind::Text, "Proposal unit test 2".to_string())
+            .unwrap();
+        prop = ctr.get_proposal(id2).unwrap();
+
+        // Set time after voting period
+        ctx.block_timestamp = (prop.proposal.start + ctr.voting_duration + 1) * MSECOND;
+        testing_env!(ctx);
+
+        // Call refund
+        assert_eq!(ctr.refund_bond(id2), true);
+    }
+
+    #[test]
     fn config_query() {
         let (_, ctr, _) = setup_ctr(PRE_BOND);
         let expected = ConfigOutput {
