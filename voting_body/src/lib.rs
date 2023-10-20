@@ -10,7 +10,7 @@ use near_sdk::{
     near_bindgen, require, AccountId, Balance, PanicOnDefault, Promise, PromiseOrValue,
     PromiseResult,
 };
-use types::{SBTs, VotePayload};
+use types::{CreateProposalPayload, SBTs, VotePayload};
 
 mod constants;
 mod errors;
@@ -102,14 +102,14 @@ impl Contract {
     #[payable]
     #[handle_result]
     // TODO: bond, and deduce storage cost from the bond.
-    // TODO: must be called via iah_call
     pub fn create_proposal(
         &mut self,
-        kind: PropKind,
-        description: String,
+        caller: AccountId,
+        #[allow(unused_variables)] iah_proof: SBTs,
+        payload: CreateProposalPayload,
     ) -> Result<u32, CreatePropError> {
+        self.assert_iah_registry(); //must be called via iah_call
         let storage_start = env::storage_usage();
-        let user = env::predecessor_account_id();
         let now = env::block_timestamp_ms();
         let bond = env::attached_deposit();
 
@@ -120,13 +120,13 @@ impl Contract {
         // immediately.
         let active = bond >= self.active_queue_bond;
         self.prop_counter += 1;
-        emit_prop_created(self.prop_counter, &kind, active);
+        emit_prop_created(self.prop_counter, &payload.kind, active);
         let prop = Proposal {
-            proposer: user.clone(),
+            proposer: caller.clone(),
             bond,
             additional_bond: None,
-            description,
-            kind,
+            description: payload.description,
+            kind: payload.kind,
             status: if active {
                 ProposalStatus::InProgress
             } else {
@@ -151,7 +151,7 @@ impl Contract {
         // TODO: this has to change, because we can have more votes
         // max amount of votes is threshold + threshold-1.
         let extra_storage = VOTE_STORAGE * (2 * THRESHOLD - 1) as u64;
-        if let Err(reason) = finalize_storage_check(storage_start, extra_storage, user) {
+        if let Err(reason) = finalize_storage_check(storage_start, extra_storage, caller) {
             return Err(CreatePropError::Storage(reason));
         }
 
@@ -461,8 +461,12 @@ mod unit_tests {
         AccountId::new_unchecked("admin.near".to_string())
     }
 
-    fn payload(id: u32, vote: Vote) -> VotePayload {
+    fn vote_payload(id: u32, vote: Vote) -> VotePayload {
         VotePayload { id, vote }
+    }
+
+    fn proposal_payload(kind: PropKind, description: String) -> CreateProposalPayload {
+        CreateProposalPayload { kind, description }
     }
 
     fn iah_proof() -> SBTs {
@@ -501,7 +505,11 @@ mod unit_tests {
         testing_env!(context.clone());
 
         let id = contract
-            .create_proposal(PropKind::Text, "Proposal unit test 1".to_string())
+            .create_proposal(
+                acc(1),
+                iah_proof(),
+                proposal_payload(PropKind::Text, "Proposal unit test 1".to_string()),
+            )
             .unwrap();
 
         context.attached_deposit = 0;
@@ -515,7 +523,7 @@ mod unit_tests {
             ctx.predecessor_account_id = iah_registry();
             ctx.attached_deposit = VOTE_DEPOSIT;
             testing_env!(ctx.clone());
-            let res = ctr.vote(a.clone(), iah_proof(), payload(id, vote.clone()));
+            let res = ctr.vote(a.clone(), iah_proof(), vote_payload(id, vote.clone()));
             assert_eq!(
                 res,
                 Ok(()),
@@ -555,7 +563,7 @@ mod unit_tests {
         ctx.attached_deposit = 0;
         testing_env!(ctx.clone());
         // Try vote with less storage
-        match ctr.vote(acc(2), iah_proof(), payload(id, Vote::Approve)) {
+        match ctr.vote(acc(2), iah_proof(), vote_payload(id, Vote::Approve)) {
             Err(VoteError::Storage(_)) => (),
             x => panic!("expected Storage, got: {:?}", x),
         }
@@ -572,14 +580,18 @@ mod unit_tests {
 
         // Proposal already got enough votes - it's approved
         assert_eq!(
-            ctr.vote(acc(5), iah_proof(), payload(id, Vote::Approve)),
+            ctr.vote(acc(5), iah_proof(), vote_payload(id, Vote::Approve)),
             Err(VoteError::NotInProgress)
         );
 
         //
         // Create a new proposal, not enough bond
         //
-        let resp = ctr.create_proposal(PropKind::Text, "proposal".to_owned());
+        let resp = ctr.create_proposal(
+            acc(1),
+            iah_proof(),
+            proposal_payload(PropKind::Text, "proposal".to_owned()),
+        );
         assert_eq!(resp, Err(CreatePropError::MinBond));
 
         //
@@ -590,11 +602,15 @@ mod unit_tests {
         ctx.account_balance = ONE_NEAR * 1000;
         testing_env!(ctx.clone());
         let id = ctr
-            .create_proposal(PropKind::Text, "proposal".to_owned())
+            .create_proposal(
+                acc(1),
+                iah_proof(),
+                proposal_payload(PropKind::Text, "proposal".to_owned()),
+            )
             .unwrap();
         let mut prop2 = ctr.get_proposal(id).unwrap();
         assert_eq!(
-            ctr.vote(acc(3), iah_proof(), payload(id, Vote::Approve)),
+            ctr.vote(acc(3), iah_proof(), vote_payload(id, Vote::Approve)),
             Ok(())
         );
         vote(
@@ -647,7 +663,11 @@ mod unit_tests {
         ctx.attached_deposit = BOND;
         testing_env!(ctx.clone());
         let id = ctr
-            .create_proposal(PropKind::Text, "Proposal unit test query 3".to_string())
+            .create_proposal(
+                acc(1),
+                iah_proof(),
+                proposal_payload(PropKind::Text, "Proposal unit test query 3".to_string()),
+            )
             .unwrap();
 
         let prop = ctr.get_proposal(id).unwrap();
@@ -664,7 +684,7 @@ mod unit_tests {
         ctx.block_timestamp = START + (ctr.voting_duration + 1) * MSECOND;
         testing_env!(ctx.clone());
         assert_eq!(
-            ctr.vote(acc(1), iah_proof(), payload(id, Vote::Approve)),
+            ctr.vote(acc(1), iah_proof(), vote_payload(id, Vote::Approve)),
             Err(VoteError::NotActive)
         );
     }
@@ -673,7 +693,7 @@ mod unit_tests {
     #[should_panic(expected = "proposal does not exist")]
     fn proposal_does_not_exist() {
         let (_, mut ctr, _) = setup_ctr(BOND);
-        ctr.vote(acc(1), iah_proof(), payload(10, Vote::Approve))
+        ctr.vote(acc(1), iah_proof(), vote_payload(10, Vote::Approve))
             .unwrap();
     }
 
@@ -752,7 +772,7 @@ mod unit_tests {
         testing_env!(ctx.clone());
 
         assert_eq!(
-            ctr.vote(acc(1), iah_proof(), payload(id, Vote::Approve)),
+            ctr.vote(acc(1), iah_proof(), vote_payload(id, Vote::Approve)),
             Ok(())
         );
         p.proposal.approve = 1;
@@ -760,7 +780,7 @@ mod unit_tests {
         assert_eq!(ctr.get_proposal(id).unwrap(), p);
 
         assert_eq!(
-            ctr.vote(acc(1), iah_proof(), payload(id, Vote::Abstain)),
+            ctr.vote(acc(1), iah_proof(), vote_payload(id, Vote::Abstain)),
             Ok(())
         );
         p.proposal.approve = 0;
@@ -769,7 +789,7 @@ mod unit_tests {
         assert_eq!(ctr.get_proposal(id).unwrap(), p);
 
         assert_eq!(
-            ctr.vote(acc(1), iah_proof(), payload(id, Vote::Reject)),
+            ctr.vote(acc(1), iah_proof(), vote_payload(id, Vote::Reject)),
             Ok(())
         );
         p.proposal.abstain = 0;
@@ -778,7 +798,7 @@ mod unit_tests {
         assert_eq!(ctr.get_proposal(id).unwrap(), p);
 
         assert_eq!(
-            ctr.vote(acc(1), iah_proof(), payload(id, Vote::Spam)),
+            ctr.vote(acc(1), iah_proof(), vote_payload(id, Vote::Spam)),
             Ok(())
         );
         p.proposal.reject = 0;
@@ -793,12 +813,20 @@ mod unit_tests {
         ctx.attached_deposit = BOND;
         testing_env!(ctx.clone());
         let id2 = ctr
-            .create_proposal(PropKind::Text, "Proposal unit test 2".to_string())
+            .create_proposal(
+                acc(1),
+                iah_proof(),
+                proposal_payload(PropKind::Text, "Proposal unit test 2".to_string()),
+            )
             .unwrap();
         ctx.attached_deposit = BOND;
         testing_env!(ctx);
         let id3 = ctr
-            .create_proposal(PropKind::Text, "Proposal unit test 3".to_string())
+            .create_proposal(
+                acc(1),
+                iah_proof(),
+                proposal_payload(PropKind::Text, "Proposal unit test 3".to_string()),
+            )
             .unwrap();
         let prop1 = ctr.get_proposal(id1).unwrap();
         let prop2 = ctr.get_proposal(id2).unwrap();
@@ -872,11 +900,16 @@ mod unit_tests {
         //
         // Should not be able to support an overdue proposal
         //
+        ctx.predecessor_account_id = iah_registry();
         ctx.attached_deposit = PRE_BOND;
         testing_env!(ctx.clone());
 
         let id = ctr
-            .create_proposal(PropKind::Text, "proposal".to_owned())
+            .create_proposal(
+                acc(1),
+                iah_proof(),
+                proposal_payload(PropKind::Text, "proposal".to_owned()),
+            )
             .unwrap();
         ctx.block_timestamp += (PRE_VOTE_DURATION + 1) * MSECOND;
         testing_env!(ctx.clone());
@@ -909,7 +942,21 @@ mod unit_tests {
         let (mut ctx, mut ctr, id) = setup_ctr(BOND);
         ctx.predecessor_account_id = acc(1);
         testing_env!(ctx);
-        ctr.vote(acc(1), iah_proof(), payload(id, Vote::Approve))
+        ctr.vote(acc(1), iah_proof(), vote_payload(id, Vote::Approve))
             .unwrap();
+    }
+
+    #[should_panic(expected = "must be called by iah_registry")]
+    #[test]
+    fn create_proposal_not_called_by_iah_registry() {
+        let (mut ctx, mut ctr, _) = setup_ctr(BOND);
+        ctx.predecessor_account_id = acc(1);
+        testing_env!(ctx);
+        ctr.create_proposal(
+            acc(1),
+            iah_proof(),
+            proposal_payload(PropKind::Text, "Proposal unit test".to_string()),
+        )
+        .unwrap();
     }
 }
