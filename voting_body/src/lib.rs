@@ -98,6 +98,7 @@ impl Contract {
     /// Returns the new proposal ID.
     /// Caller is required to attach enough deposit to cover the proposal storage as well as all
     /// possible votes.
+    /// Must be called via `iah_registry.is_human_call`.
     /// NOTE: storage is paid from the bond.
     #[payable]
     #[handle_result]
@@ -108,7 +109,7 @@ impl Contract {
         #[allow(unused_variables)] iah_proof: SBTs,
         payload: CreatePropPayload,
     ) -> Result<u32, CreatePropError> {
-        self.assert_iah_registry(); //must be called via iah_call
+        self.assert_iah_registry();
         let storage_start = env::storage_usage();
         let now = env::block_timestamp_ms();
         let bond = env::attached_deposit();
@@ -215,6 +216,7 @@ impl Contract {
 
     /// Supports proposal in the pre-vote queue.
     /// Returns false if the proposal can't be supported because it is overdue.
+    /// Must be called via `iah_registry.is_human_call`.
     #[handle_result]
     pub fn support_proposal(
         &mut self,
@@ -222,7 +224,7 @@ impl Contract {
         #[allow(unused_variables)] iah_proof: SBTs,
         payload: SupportPropPayload,
     ) -> Result<bool, PrevotePropError> {
-        self.assert_iah_registry(); // must be called via registry.is_human_call()
+        self.assert_iah_registry();
         let mut p = self.assert_pre_vote_prop(payload.prop_id)?;
         if env::block_timestamp_ms() - p.start > self.pre_vote_duration {
             self.slash_prop(payload.prop_id, p.bond);
@@ -239,6 +241,46 @@ impl Contract {
         Ok(true)
     }
 
+    /// Congressional support for a pre-vote proposal to move it to the active queue.
+    /// Returns false if the proposal can't be supported because it is overdue.
+    #[handle_result]
+    pub fn support_proposal_by_congress(
+        &mut self,
+        prop_id: u32,
+        dao: AccountId,
+    ) -> Result<Promise, PrevotePropError> {
+        let a = self.accounts.get().unwrap();
+        if !(a.congress_coa == dao || a.congress_hom == dao || a.congress_tc == dao) {
+            return Err(PrevotePropError::NotCongress);
+        }
+
+        Ok(ext_congress::ext(dao.clone())
+            .veto_hook(prop_id.clone())
+            .then(ext_self::ext(env::current_account_id()).on_support_by_congress(prop_id)))
+    }
+
+    /// Returns false if the proposal can't be supported because it is overdue.
+    #[private]
+    #[handle_result]
+    pub fn on_support_by_congress(
+        &mut self,
+        #[callback_result] is_member: Result<bool, near_sdk::PromiseError>,
+        prop_id: u32,
+    ) -> Result<bool, PrevotePropError> {
+        if !is_member.unwrap_or(false) {
+            return Err(PrevotePropError::NotCongressMember);
+        }
+
+        let mut p = self.remove_pre_vote_prop(prop_id)?;
+        if env::block_timestamp_ms() - p.start > self.pre_vote_duration {
+            self.slash_prop(prop_id, p.bond);
+            return Ok(false);
+        }
+        self.insert_prop_to_active(prop_id, &mut p);
+        Ok(true)
+    }
+
+    /// Must be called via `iah_registry.is_human_call`.
     #[handle_result]
     pub fn vote(
         &mut self,
@@ -246,7 +288,7 @@ impl Contract {
         #[allow(unused_variables)] iah_proof: SBTs,
         payload: VotePayload,
     ) -> Result<(), VoteError> {
-        self.assert_iah_registry(); // must be called by registry.is_human_call()
+        self.assert_iah_registry();
         let storage_start = env::storage_usage();
         let mut prop = self.assert_proposal(payload.prop_id);
 
@@ -304,18 +346,18 @@ impl Contract {
         }
 
         prop.status = ProposalStatus::Executed;
-        let mut result = PromiseOrValue::Value(());
+        let mut out = PromiseOrValue::Value(());
         match &prop.kind {
             PropKind::Dismiss { dao, member } => {
-                result = ext_congress::ext(dao.clone())
+                out = ext_congress::ext(dao.clone())
                     .dismiss_hook(member.clone())
                     .into();
             }
             PropKind::Dissolve { dao } => {
-                result = ext_congress::ext(dao.clone()).dissolve_hook().into();
+                out = ext_congress::ext(dao.clone()).dissolve_hook().into();
             }
             PropKind::Veto { dao, prop_id } => {
-                result = ext_congress::ext(dao.clone())
+                out = ext_congress::ext(dao.clone())
                     .veto_hook(prop_id.clone())
                     .into();
             }
@@ -324,7 +366,7 @@ impl Contract {
         };
         self.proposals.insert(&id, &prop);
 
-        let result = match result {
+        let out = match out {
             PromiseOrValue::Promise(promise) => promise
                 .then(
                     ext_self::ext(env::current_account_id())
@@ -334,10 +376,10 @@ impl Contract {
                 .into(),
             _ => {
                 emit_executed(id);
-                result
+                out
             }
         };
-        Ok(result)
+        Ok(out)
     }
 
     /*****************
