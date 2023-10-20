@@ -14,10 +14,10 @@ crate-type = ["cdylib", "rlib"]
 uint.workspace = true
 near-sdk.workspace = true
 serde_json.workspace = true
+itertools.workspace = true
 
 common = { path = "../common" }
 
-itertools = "^0.11"
 
 [dev-dependencies]
 anyhow.workspace = true
