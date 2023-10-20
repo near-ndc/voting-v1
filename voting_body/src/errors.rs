@@ -56,16 +56,20 @@ impl FunctionError for CreatePropError {
 }
 
 #[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq, Debug))]
-pub enum MovePropError {
+pub enum PrevotePropError {
     NotFound,
     MinBond,
+    NotOverdue,
+    DoubleSupport,
 }
 
-impl FunctionError for MovePropError {
+impl FunctionError for PrevotePropError {
     fn panic(&self) -> ! {
         match self {
-            MovePropError::NotFound => panic_str("proposal not found"),
-            MovePropError::MinBond => panic_str("min active_queue_bond is required"),
+            PrevotePropError::NotFound => panic_str("proposal not found"),
+            PrevotePropError::MinBond => panic_str("min active_queue_bond is required"),
+            PrevotePropError::NotOverdue => panic_str("proposal is not overdue"),
+            PrevotePropError::DoubleSupport => panic_str("already supported the proposal"),
         }
     }
 }

@@ -27,11 +27,13 @@ Proposals in this queue are not active. VB members can't vote for proposals in t
 - is topped up with more NEAR to reach `active_queue_bond`
 - is supported by one of the Congress members
 
-If a proposal doesn't meet the conditions to move to the active queue, then the `pre_vote_bond` is moved to a community fund (if the bond is higher, then the reminder is send back to the proposer).
+If a proposal doesn't meet the conditions to move to the active queue, then the proposal is removed and the bond is moved to a community fund. For overdue proposals, anyone can call `remove_pre_vote_prop` method to do the cleanup and slash. To incentivize it, `REMOVE_REWARD` is deduced from the bond and sent to the caller.
 
 ### Active queue
 
 This is the main set of proposals. Proposals in this queue are eligible for voting and displayed by the default in the UI. Proposals from the active queue are not removed unless they are marked as spam (see details). They are preserved and anyone can query them, even when a proposal was rejected.
+
+When a proposal is moved from the pre-voting queue to active queue, the set of accounts that supported the proposal is cleared - it's not needed any more, and we can save the space and proposal load time.
 
 ```mermaid
 ---
