@@ -497,6 +497,7 @@ mod unit_tests {
         context.block_timestamp = START;
         context.predecessor_account_id = acc(1);
         context.attached_deposit = attach_deposit;
+        context.account_balance = ONE_NEAR * 2000;
         testing_env!(context.clone());
 
         let id = contract
