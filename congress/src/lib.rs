@@ -1226,4 +1226,11 @@ mod unit_tests {
         let prop = ctr.get_proposal(id).unwrap();
         assert_eq!(prop.proposal.abstain, 1);
     }
+
+    #[test]
+    fn is_member() {
+        let (_, ctr, _) = setup_ctr(100);
+        assert!(ctr.is_member(acc(2)));
+        assert!(!ctr.is_member(acc(10)))
+    }
 }

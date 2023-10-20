@@ -100,6 +100,12 @@ impl Contract {
         }
     }
 
+    /// Returns all members with permissions
+    pub fn is_member(&self, account: AccountId) -> bool {
+        let (members, _) = self.members.get().unwrap();
+        members.contains(&account)
+    }
+
     /// Returns permissions of a given member.
     /// Returns empty vector (`[]`) if not a member.
     pub fn member_permissions(&self, member: AccountId) -> Vec<PropPerm> {
