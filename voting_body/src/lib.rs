@@ -7,7 +7,7 @@ use near_sdk::{
     collections::{LazyOption, LookupMap},
     env,
     json_types::U128,
-    near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseOrValue,
+    near_bindgen, require, AccountId, Balance, PanicOnDefault, Promise, PromiseOrValue,
     PromiseResult,
 };
 
