@@ -67,6 +67,10 @@ impl Contract {
         simple_consent: Consent,
         super_consent: Consent,
     ) -> Self {
+        require!(
+            pre_vote_bond.0 >= PROPOSAL_STORAGE_COST,
+            "min proposal storage cost is required"
+        );
         Self {
             prop_counter: 0,
             pre_vote_proposals: LookupMap::new(StorageKey::PreVoteProposals),
@@ -108,7 +112,7 @@ impl Contract {
         let now = env::block_timestamp_ms();
         let bond = env::attached_deposit();
 
-        if bond < self.pre_vote_bond || bond < PROPOSAL_STORAGE_COST {
+        if bond < self.pre_vote_bond {
             return Err(CreatePropError::MinBond);
         }
         // TODO: check if proposal is created by a congress member. If yes, move it to active
@@ -275,13 +279,6 @@ impl Contract {
     #[handle_result]
     pub fn execute(&mut self, id: u32) -> Result<PromiseOrValue<()>, ExecError> {
         let mut prop = self.assert_proposal(id);
-        if prop.bond != 0 && prop.status == ProposalStatus::Rejected {
-            self.refund_bond(prop.clone());
-            prop.bond = 0;
-            prop.additional_bond = None;
-            self.proposals.insert(&id, &prop);
-            return Ok(PromiseOrValue::Value(()));
-        }
         if !matches!(
             prop.status,
             // if the previous proposal execution failed, we should be able to re-execute it
@@ -306,18 +303,11 @@ impl Contract {
                 result = ext_congress::ext(dao.clone()).dissolve_hook().into();
             }
             PropKind::Veto { dao, prop_id } => {
-                result = ext_congress::ext(dao.clone())
-                    .veto_hook(*prop_id)
-                    .into();
+                result = ext_congress::ext(dao.clone()).veto_hook(*prop_id).into();
             }
             PropKind::ApproveBudget { .. } => (),
             PropKind::Text => (),
         };
-        if prop.status != ProposalStatus::Failed {
-            self.refund_bond(prop.clone());
-            prop.bond = 0;
-            prop.additional_bond = None;
-        }
 
         self.proposals.insert(&id, &prop);
 
@@ -335,6 +325,26 @@ impl Contract {
             }
         };
         Ok(result)
+    }
+
+    /// Refund is only possible after voting period is over
+    /// Because vote overwrite is allowed, we can't be sure if rejected proposal can be slashed
+    pub fn refund_bond(&mut self, id: u32) -> bool {
+        let mut prop = self.assert_proposal(id);
+        if prop.bond == 0 {
+            return false;
+        }
+
+        if env::block_timestamp_ms() > prop.start + self.voting_duration {
+            // Vote storage is already paid by voters. We only keep storage for proposal.
+            let refund = prop.bond - PROPOSAL_STORAGE_COST;
+            Promise::new(prop.proposer.clone()).transfer(refund);
+            if let Some(val) = prop.additional_bond.clone() {
+                Promise::new(val.0).transfer(val.1);
+            }
+            self.proposals.insert(&id, &prop);
+        }
+        true
     }
 
     /*****************
@@ -388,15 +398,6 @@ impl Contract {
         let treasury = self.accounts.get().unwrap().community_treasury;
         Promise::new(treasury).transfer(amount);
         emit_prevote_prop_slashed(prop_id, amount);
-    }
-
-    fn refund_bond(&mut self, prop: Proposal) {
-        // Vote storage is already paid by voters. We only keep storage for proposal.
-        let refund = prop.bond - PROPOSAL_STORAGE_COST;
-        Promise::new(prop.proposer).transfer(refund);
-        if let Some(val) = prop.additional_bond {
-            Promise::new(val.0).transfer(val.1);
-        }
     }
 
     #[private]
