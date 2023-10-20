@@ -275,7 +275,7 @@ impl Contract {
     #[handle_result]
     pub fn execute(&mut self, id: u32) -> Result<PromiseOrValue<()>, ExecError> {
         let mut prop = self.assert_proposal(id);
-        if prop.status == ProposalStatus::Rejected {
+        if prop.bond != 0 && prop.status == ProposalStatus::Rejected {
             self.refund_bond(prop.clone());
             prop.bond = 0;
             prop.additional_bond = None;
