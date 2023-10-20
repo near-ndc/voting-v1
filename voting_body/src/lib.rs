@@ -6,8 +6,7 @@ use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap};
 use near_sdk::json_types::U128;
 use near_sdk::{
-    env, near_bindgen, require, Balance, PanicOnDefault, Promise, PromiseOrValue,
-    PromiseResult,
+    env, near_bindgen, require, Balance, PanicOnDefault, Promise, PromiseOrValue, PromiseResult,
 };
 
 mod constants;
@@ -98,7 +97,6 @@ impl Contract {
     /// NOTE: storage is paid from the bond.
     #[payable]
     #[handle_result]
-    // TODO: bond, and deduce storage cost from the bond.
     // TODO: must be called via iah_call
     pub fn create_proposal(
         &mut self,
@@ -110,7 +108,7 @@ impl Contract {
         let now = env::block_timestamp_ms();
         let bond = env::attached_deposit();
 
-        if bond < self.pre_vote_bond {
+        if bond < self.pre_vote_bond || bond < PROPOSAL_STORAGE_COST {
             return Err(CreatePropError::MinBond);
         }
         // TODO: check if proposal is created by a congress member. If yes, move it to active
@@ -278,8 +276,7 @@ impl Contract {
     pub fn execute(&mut self, id: u32) -> Result<PromiseOrValue<()>, ExecError> {
         let mut prop = self.assert_proposal(id);
         if prop.status == ProposalStatus::Rejected {
-            // Return bond amount
-            // Keep some near for storage
+            self.refund_bond(prop.clone());
             return Ok(PromiseOrValue::Value(()));
         }
         if !matches!(
@@ -316,8 +313,7 @@ impl Contract {
         self.proposals.insert(&id, &prop);
 
         if prop.status != ProposalStatus::Failed {
-            // Return bond amount
-            // Keep some near for storage
+            self.refund_bond(prop.clone());
         }
 
         let result = match result {
@@ -387,6 +383,18 @@ impl Contract {
         let treasury = self.accounts.get().unwrap().community_treasury;
         Promise::new(treasury).transfer(amount);
         emit_prevote_prop_slashed(prop_id, amount);
+    }
+
+    fn refund_bond(&mut self, prop: Proposal) {
+        // Return bond amount
+        // Keep some near for storage
+        // Note: Vote storage is already paid by voters
+        // We only keep storage for proposal storage
+        let refund = prop.bond - PROPOSAL_STORAGE_COST;
+        Promise::new(prop.proposer).transfer(refund);
+        if let Some(val) = prop.additional_bond {
+            Promise::new(val.0).transfer(val.1);
+        }
     }
 
     #[private]
