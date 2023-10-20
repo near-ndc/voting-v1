@@ -211,7 +211,7 @@ impl Contract {
             self.proposals.remove(&id);
             emit_spam(id);
             Promise::new(self.community_treasury.clone()).transfer(prop.bond);
-            emit_spam_slashed(id, prop.bond);
+            emit_prop_slashed(id, prop.bond);
             return Ok(());
         } else {
             self.proposals.insert(&id, &prop);
