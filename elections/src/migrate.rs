@@ -20,7 +20,7 @@ impl Contract {
     #[private]
     #[init(ignore_state)]
     /* pub  */
-    pub fn migrate(class_metadata: sbt::ClassMetadata) -> Self {
+    pub fn migrate() -> Self {
         let old_state: OldState = env::state_read().expect("failed");
         // new field in the smart contract :
         // + class_metadata: ClassMetadata,
@@ -37,7 +37,7 @@ impl Contract {
             authority: old_state.authority,
             sbt_registry: old_state.sbt_registry,
             disqualified_candidates: old_state.disqualified_candidates,
-            class_metadata,
+            class_metadata: LookupMap::new(StorageKey::ClassMetadata),
         }
     }
 }
