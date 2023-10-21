@@ -101,7 +101,6 @@ impl Contract {
     /// NOTE: storage is paid from the bond.
     #[payable]
     #[handle_result]
-    // TODO: bond, and deduce storage cost from the bond.
     pub fn create_proposal(
         &mut self,
         caller: AccountId,
@@ -121,7 +120,7 @@ impl Contract {
         let active = bond >= self.active_queue_bond;
         self.prop_counter += 1;
         emit_prop_created(self.prop_counter, &payload.kind, active);
-        let prop = Proposal {
+        let mut prop = Proposal {
             proposer: caller.clone(),
             bond,
             additional_bond: None,
@@ -141,6 +140,7 @@ impl Contract {
             votes: HashMap::new(),
             start: now,
             approved_at: None,
+            proposal_storage_cost: 0,
         };
         if active {
             self.proposals.insert(&self.prop_counter, &prop);
@@ -148,11 +148,15 @@ impl Contract {
             self.pre_vote_proposals.insert(&self.prop_counter, &prop);
         }
 
-        // TODO: this has to change, because we can have more votes
-        // max amount of votes is threshold + threshold-1.
-        let extra_storage = VOTE_STORAGE * (2 * THRESHOLD - 1) as u64;
-        if let Err(reason) = finalize_storage_check(storage_start, extra_storage, caller) {
+        if let Err(reason) = finalize_storage_check(storage_start, 0, caller) {
             return Err(CreatePropError::Storage(reason));
+        }
+        prop.proposal_storage_cost =
+            (env::storage_usage() - storage_start) as u128 * env::storage_byte_cost();
+        if active {
+            self.proposals.insert(&self.prop_counter, &prop);
+        } else {
+            self.pre_vote_proposals.insert(&self.prop_counter, &prop);
         }
 
         Ok(self.prop_counter)
@@ -239,6 +243,7 @@ impl Contract {
         Ok(true)
     }
 
+    #[payable]
     #[handle_result]
     pub fn vote(
         &mut self,
@@ -268,6 +273,9 @@ impl Contract {
             return Ok(());
         } else {
             self.proposals.insert(&payload.prop_id, &prop);
+            if let Err(reason) = finalize_storage_check(storage_start, 0, caller) {
+                return Err(VoteError::Storage(reason));
+            }
         }
 
         emit_vote(payload.prop_id);
@@ -280,16 +288,13 @@ impl Contract {
             }
         }
 
-        if let Err(reason) = finalize_storage_check(storage_start, 0, caller) {
-            return Err(VoteError::Storage(reason));
-        }
-
         Ok(())
     }
 
     /// Allows anyone to execute proposal.
     #[handle_result]
     pub fn execute(&mut self, id: u32) -> Result<PromiseOrValue<()>, ExecError> {
+        self.refund_bond(id);
         let mut prop = self.assert_proposal(id);
         if !matches!(
             prop.status,
@@ -315,13 +320,12 @@ impl Contract {
                 result = ext_congress::ext(dao.clone()).dissolve_hook().into();
             }
             PropKind::Veto { dao, prop_id } => {
-                result = ext_congress::ext(dao.clone())
-                    .veto_hook(prop_id.clone())
-                    .into();
+                result = ext_congress::ext(dao.clone()).veto_hook(*prop_id).into();
             }
             PropKind::ApproveBudget { .. } => (),
             PropKind::Text => (),
         };
+
         self.proposals.insert(&id, &prop);
 
         let result = match result {
@@ -338,6 +342,33 @@ impl Contract {
             }
         };
         Ok(result)
+    }
+
+    /// Refund after voting period is over
+    pub fn refund_bond(&mut self, id: u32) -> bool {
+        let mut prop = self.assert_proposal(id);
+        if prop.bond == 0 {
+            return false;
+        }
+        if (prop.status == ProposalStatus::InProgress
+            && env::block_timestamp_ms() <= prop.start + self.voting_duration)
+            || prop.status == ProposalStatus::PreVote
+            || prop.status == ProposalStatus::Spam
+            || prop.status == ProposalStatus::Vetoed
+        {
+            return false;
+        }
+
+        // Vote storage is already paid by voters. We only keep storage for proposal.
+        let refund = prop.bond - prop.proposal_storage_cost;
+        Promise::new(prop.proposer.clone()).transfer(refund);
+        if let Some(val) = prop.additional_bond.clone() {
+            Promise::new(val.0).transfer(val.1);
+        }
+        prop.bond = 0;
+        prop.additional_bond = None;
+        self.proposals.insert(&id, &prop);
+        true
     }
 
     /*****************
@@ -511,6 +542,7 @@ mod unit_tests {
         context.block_timestamp = START;
         context.predecessor_account_id = iah_registry();
         context.attached_deposit = attach_deposit;
+        context.account_balance = ONE_NEAR * 2000;
         testing_env!(context.clone());
 
         let id = contract
@@ -738,6 +770,46 @@ mod unit_tests {
 
         prop = ctr.get_proposal(id).unwrap();
         assert_eq!(prop.proposal.status, ProposalStatus::Executed);
+    }
+
+    #[test]
+    fn refund_bond_test() {
+        let (mut ctx, mut ctr, id) = setup_ctr(BOND);
+        vote(
+            ctx.clone(),
+            &mut ctr,
+            vec![acc(1), acc(2), acc(3)],
+            id,
+            Vote::Approve,
+        );
+        ctx.block_timestamp = START + (ctr.voting_duration + 1) * MSECOND;
+        testing_env!(ctx.clone());
+
+        ctr.execute(id).unwrap();
+        let mut prop = ctr.get_proposal(id).unwrap();
+        assert_eq!(prop.proposal.status, ProposalStatus::Executed);
+
+        // try to get refund again
+        assert!(!ctr.refund_bond(id));
+
+        // Get refund for proposal with no status update
+        ctx.attached_deposit = BOND;
+        testing_env!(ctx.clone());
+        let id2 = ctr
+            .create_proposal(
+                acc(1),
+                iah_proof(),
+                create_prop_payload(PropKind::Text, "Proposal unit test".to_string()),
+            )
+            .unwrap();
+        prop = ctr.get_proposal(id2).unwrap();
+
+        // Set time after voting period
+        ctx.block_timestamp = (prop.proposal.start + ctr.voting_duration + 1) * MSECOND;
+        testing_env!(ctx);
+
+        // Call refund
+        assert!(ctr.refund_bond(id2));
     }
 
     #[test]
