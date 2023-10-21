@@ -2,12 +2,15 @@ use std::collections::{HashMap, HashSet};
 
 use common::finalize_storage_check;
 use events::*;
-use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::{LazyOption, LookupMap};
-use near_sdk::json_types::U128;
 use near_sdk::{
-    env, near_bindgen, require, Balance, PanicOnDefault, Promise, PromiseOrValue, PromiseResult,
+    borsh::{self, BorshDeserialize, BorshSerialize},
+    collections::{LazyOption, LookupMap},
+    env,
+    json_types::U128,
+    near_bindgen, require, AccountId, Balance, PanicOnDefault, Promise, PromiseOrValue,
+    PromiseResult,
 };
+use types::{CreatePropPayload, SBTs, SupportPropPayload, VotePayload};
 
 mod constants;
 mod errors;
@@ -15,6 +18,7 @@ mod events;
 mod ext;
 pub mod proposal;
 mod storage;
+mod types;
 mod view;
 
 pub use crate::constants::*;
@@ -97,14 +101,14 @@ impl Contract {
     /// NOTE: storage is paid from the bond.
     #[payable]
     #[handle_result]
-    // TODO: must be called via iah_call
     pub fn create_proposal(
         &mut self,
-        kind: PropKind,
-        description: String,
+        caller: AccountId,
+        #[allow(unused_variables)] iah_proof: SBTs,
+        payload: CreatePropPayload,
     ) -> Result<u32, CreatePropError> {
+        self.assert_iah_registry(); //must be called via iah_call
         let storage_start = env::storage_usage();
-        let user = env::predecessor_account_id();
         let now = env::block_timestamp_ms();
         let bond = env::attached_deposit();
 
@@ -115,13 +119,13 @@ impl Contract {
         // immediately.
         let active = bond >= self.active_queue_bond;
         self.prop_counter += 1;
-        emit_prop_created(self.prop_counter, &kind, active);
+        emit_prop_created(self.prop_counter, &payload.kind, active);
         let mut prop = Proposal {
-            proposer: user.clone(),
+            proposer: caller.clone(),
             bond,
             additional_bond: None,
-            description,
-            kind,
+            description: payload.description,
+            kind: payload.kind,
             status: if active {
                 ProposalStatus::InProgress
             } else {
@@ -216,31 +220,40 @@ impl Contract {
     /// Supports proposal in the pre-vote queue.
     /// Returns false if the proposal can't be supported because it is overdue.
     #[handle_result]
-    pub fn support_proposal(&mut self, id: u32) -> Result<bool, PrevotePropError> {
-        let mut p = self.assert_pre_vote_prop(id)?;
+    pub fn support_proposal(
+        &mut self,
+        caller: AccountId,
+        #[allow(unused_variables)] iah_proof: SBTs,
+        payload: SupportPropPayload,
+    ) -> Result<bool, PrevotePropError> {
+        self.assert_iah_registry(); // must be called via registry.is_human_call()
+        let mut p = self.assert_pre_vote_prop(payload.prop_id)?;
         if env::block_timestamp_ms() - p.start > self.pre_vote_duration {
-            self.slash_prop(id, p.bond);
-            self.pre_vote_proposals.remove(&id);
+            self.slash_prop(payload.prop_id, p.bond);
+            self.pre_vote_proposals.remove(&payload.prop_id);
             return Ok(false);
         }
-        let user = env::predecessor_account_id();
-        p.add_support(user)?;
+        p.add_support(caller)?;
         if p.support >= self.pre_vote_support {
-            self.pre_vote_proposals.remove(&id);
-            self.insert_prop_to_active(id, &mut p);
+            self.pre_vote_proposals.remove(&payload.prop_id);
+            self.insert_prop_to_active(payload.prop_id, &mut p);
         } else {
-            self.pre_vote_proposals.insert(&id, &p);
+            self.pre_vote_proposals.insert(&payload.prop_id, &p);
         }
         Ok(true)
     }
 
     #[payable]
     #[handle_result]
-    // TODO: must be called via iah_call
-    pub fn vote(&mut self, id: u32, vote: Vote) -> Result<(), VoteError> {
-        let user = env::predecessor_account_id();
+    pub fn vote(
+        &mut self,
+        caller: AccountId,
+        #[allow(unused_variables)] iah_proof: SBTs,
+        payload: VotePayload,
+    ) -> Result<(), VoteError> {
+        self.assert_iah_registry(); // must be called by registry.is_human_call()
         let storage_start = env::storage_usage();
-        let mut prop = self.assert_proposal(id);
+        let mut prop = self.assert_proposal(payload.prop_id);
 
         if !matches!(prop.status, ProposalStatus::InProgress) {
             return Err(VoteError::NotInProgress);
@@ -249,29 +262,29 @@ impl Contract {
             return Err(VoteError::NotActive);
         }
 
-        prop.add_vote(user.clone(), vote, THRESHOLD)?;
+        prop.add_vote(caller.clone(), payload.vote, THRESHOLD)?;
 
         if prop.status == ProposalStatus::Spam {
-            self.proposals.remove(&id);
-            emit_spam(id);
+            self.proposals.remove(&payload.prop_id);
+            emit_spam(payload.prop_id);
             let treasury = self.accounts.get().unwrap().community_treasury;
             Promise::new(treasury).transfer(prop.bond);
-            emit_prop_slashed(id, prop.bond);
+            emit_prop_slashed(payload.prop_id, prop.bond);
             return Ok(());
         } else {
-            self.proposals.insert(&id, &prop);
+            self.proposals.insert(&payload.prop_id, &prop);
             if let Err(reason) = finalize_storage_check(storage_start, 0, user) {
                 return Err(VoteError::Storage(reason));
             }
         }
 
-        emit_vote(id);
+        emit_vote(payload.prop_id);
 
         if prop.status == ProposalStatus::Approved {
             // We ignore a failure of self.execute here to assure that the vote is counted.
-            let res = self.execute(id);
+            let res = self.execute(payload.prop_id);
             if res.is_err() {
-                emit_vote_execute(id, res.err().unwrap());
+                emit_vote_execute(payload.prop_id, res.err().unwrap());
             }
         }
 
@@ -379,6 +392,13 @@ impl Contract {
         );
     }
 
+    fn assert_iah_registry(&self) {
+        require!(
+            env::predecessor_account_id() == self.accounts.get().unwrap().iah_registry,
+            "must be called by iah_registry"
+        );
+    }
+
     fn assert_proposal(&self, id: u32) -> Proposal {
         self.proposals.get(&id).expect("proposal does not exist")
     }
@@ -477,6 +497,22 @@ mod unit_tests {
         AccountId::new_unchecked("admin.near".to_string())
     }
 
+    fn vote_payload(id: u32, vote: Vote) -> VotePayload {
+        VotePayload { prop_id: id, vote }
+    }
+
+    fn create_prop_payload(kind: PropKind, description: String) -> CreatePropPayload {
+        CreatePropPayload { kind, description }
+    }
+
+    fn support_prop_payload(id: u32) -> SupportPropPayload {
+        SupportPropPayload { prop_id: id }
+    }
+
+    fn iah_proof() -> SBTs {
+        vec![(iah_registry(), vec![1, 4])]
+    }
+
     /// creates a test contract with proposal
     fn setup_ctr(attach_deposit: u128) -> (VMContext, Contract, u32) {
         let mut context = VMContextBuilder::new().build();
@@ -504,13 +540,17 @@ mod unit_tests {
             },
         );
         context.block_timestamp = START;
-        context.predecessor_account_id = acc(1);
+        context.predecessor_account_id = iah_registry();
         context.attached_deposit = attach_deposit;
         context.account_balance = ONE_NEAR * 2000;
         testing_env!(context.clone());
 
         let id = contract
-            .create_proposal(PropKind::Text, "Proposal unit test 1".to_string())
+            .create_proposal(
+                acc(1),
+                iah_proof(),
+                create_prop_payload(PropKind::Text, "Proposal unit test 1".to_string()),
+            )
             .unwrap();
 
         context.attached_deposit = 0;
@@ -521,10 +561,10 @@ mod unit_tests {
 
     fn vote(mut ctx: VMContext, ctr: &mut Contract, accs: Vec<AccountId>, id: u32, vote: Vote) {
         for a in accs {
-            ctx.predecessor_account_id = a.clone();
+            ctx.predecessor_account_id = iah_registry();
             ctx.attached_deposit = VOTE_DEPOSIT;
             testing_env!(ctx.clone());
-            let res = ctr.vote(id, vote.clone());
+            let res = ctr.vote(a.clone(), iah_proof(), vote_payload(id, vote.clone()));
             assert_eq!(
                 res,
                 Ok(()),
@@ -560,10 +600,11 @@ mod unit_tests {
         prop1.proposal.additional_bond = Some((acc(2), BOND - PRE_BOND));
         assert_eq!(ctr.get_proposals(0, 10, None), vec![prop1.clone()]);
 
+        ctx.predecessor_account_id = iah_registry();
         ctx.attached_deposit = 0;
         testing_env!(ctx.clone());
         // Try vote with less storage
-        match ctr.vote(id, Vote::Approve) {
+        match ctr.vote(acc(2), iah_proof(), vote_payload(id, Vote::Approve)) {
             Err(VoteError::Storage(_)) => (),
             x => panic!("expected Storage, got: {:?}", x),
         }
@@ -579,14 +620,19 @@ mod unit_tests {
         assert_eq!(prop1.proposal.status, ProposalStatus::Approved);
 
         // Proposal already got enough votes - it's approved
-        ctx.predecessor_account_id = acc(5);
-        testing_env!(ctx.clone());
-        assert_eq!(ctr.vote(id, Vote::Approve), Err(VoteError::NotInProgress));
+        assert_eq!(
+            ctr.vote(acc(5), iah_proof(), vote_payload(id, Vote::Approve)),
+            Err(VoteError::NotInProgress)
+        );
 
         //
         // Create a new proposal, not enough bond
         //
-        let resp = ctr.create_proposal(PropKind::Text, "proposal".to_owned());
+        let resp = ctr.create_proposal(
+            acc(1),
+            iah_proof(),
+            create_prop_payload(PropKind::Text, "proposal".to_owned()),
+        );
         assert_eq!(resp, Err(CreatePropError::MinBond));
 
         //
@@ -594,14 +640,20 @@ mod unit_tests {
         // Check all votes
         //
         ctx.attached_deposit = BOND;
-        ctx.predecessor_account_id = acc(3);
         ctx.account_balance = ONE_NEAR * 1000;
         testing_env!(ctx.clone());
         let id = ctr
-            .create_proposal(PropKind::Text, "proposal".to_owned())
+            .create_proposal(
+                acc(1),
+                iah_proof(),
+                create_prop_payload(PropKind::Text, "proposal".to_owned()),
+            )
             .unwrap();
         let mut prop2 = ctr.get_proposal(id).unwrap();
-        assert_eq!(ctr.vote(id, Vote::Approve), Ok(()));
+        assert_eq!(
+            ctr.vote(acc(3), iah_proof(), vote_payload(id, Vote::Approve)),
+            Ok(())
+        );
         vote(
             ctx.clone(),
             &mut ctr,
@@ -652,7 +704,11 @@ mod unit_tests {
         ctx.attached_deposit = BOND;
         testing_env!(ctx.clone());
         let id = ctr
-            .create_proposal(PropKind::Text, "Proposal unit test query 3".to_string())
+            .create_proposal(
+                acc(1),
+                iah_proof(),
+                create_prop_payload(PropKind::Text, "Proposal unit test query 3".to_string()),
+            )
             .unwrap();
 
         let prop = ctr.get_proposal(id).unwrap();
@@ -668,14 +724,18 @@ mod unit_tests {
         let (mut ctx, mut ctr, id) = setup_ctr(BOND);
         ctx.block_timestamp = START + (ctr.voting_duration + 1) * MSECOND;
         testing_env!(ctx.clone());
-        assert_eq!(ctr.vote(id, Vote::Approve), Err(VoteError::NotActive));
+        assert_eq!(
+            ctr.vote(acc(1), iah_proof(), vote_payload(id, Vote::Approve)),
+            Err(VoteError::NotActive)
+        );
     }
 
     #[test]
     #[should_panic(expected = "proposal does not exist")]
     fn proposal_does_not_exist() {
         let (_, mut ctr, _) = setup_ctr(BOND);
-        ctr.vote(10, Vote::Approve).unwrap();
+        ctr.vote(acc(1), iah_proof(), vote_payload(10, Vote::Approve))
+            .unwrap();
     }
 
     #[test]
@@ -785,28 +845,39 @@ mod unit_tests {
         assert_eq!(p.proposal.status, ProposalStatus::InProgress);
         assert!((p.proposal.votes.is_empty()));
 
-        ctx.predecessor_account_id = acc(1);
         ctx.attached_deposit = VOTE_DEPOSIT;
         testing_env!(ctx.clone());
 
-        assert_eq!(ctr.vote(id, Vote::Approve), Ok(()));
+        assert_eq!(
+            ctr.vote(acc(1), iah_proof(), vote_payload(id, Vote::Approve)),
+            Ok(())
+        );
         p.proposal.approve = 1;
         p.proposal.votes.insert(acc(1), Vote::Approve);
         assert_eq!(ctr.get_proposal(id).unwrap(), p);
 
-        assert_eq!(ctr.vote(id, Vote::Abstain), Ok(()));
+        assert_eq!(
+            ctr.vote(acc(1), iah_proof(), vote_payload(id, Vote::Abstain)),
+            Ok(())
+        );
         p.proposal.approve = 0;
         p.proposal.abstain = 1;
         p.proposal.votes.insert(acc(1), Vote::Abstain);
         assert_eq!(ctr.get_proposal(id).unwrap(), p);
 
-        assert_eq!(ctr.vote(id, Vote::Reject), Ok(()));
+        assert_eq!(
+            ctr.vote(acc(1), iah_proof(), vote_payload(id, Vote::Reject)),
+            Ok(())
+        );
         p.proposal.abstain = 0;
         p.proposal.reject = 1;
         p.proposal.votes.insert(acc(1), Vote::Reject);
         assert_eq!(ctr.get_proposal(id).unwrap(), p);
 
-        assert_eq!(ctr.vote(id, Vote::Spam), Ok(()));
+        assert_eq!(
+            ctr.vote(acc(1), iah_proof(), vote_payload(id, Vote::Spam)),
+            Ok(())
+        );
         p.proposal.reject = 0;
         p.proposal.spam = 1;
         p.proposal.votes.insert(acc(1), Vote::Spam);
@@ -819,18 +890,27 @@ mod unit_tests {
         ctx.attached_deposit = BOND;
         testing_env!(ctx.clone());
         let id2 = ctr
-            .create_proposal(PropKind::Text, "Proposal unit test 2".to_string())
+            .create_proposal(
+                acc(1),
+                iah_proof(),
+                create_prop_payload(PropKind::Text, "Proposal unit test 2".to_string()),
+            )
             .unwrap();
         ctx.attached_deposit = BOND;
-        testing_env!(ctx);
+        testing_env!(ctx.clone());
         let id3 = ctr
-            .create_proposal(PropKind::Text, "Proposal unit test 3".to_string())
+            .create_proposal(
+                acc(1),
+                iah_proof(),
+                create_prop_payload(PropKind::Text, "Proposal unit test 3".to_string()),
+            )
             .unwrap();
         let prop1 = ctr.get_proposal(id1).unwrap();
         let prop2 = ctr.get_proposal(id2).unwrap();
         let prop3 = ctr.get_proposal(id3).unwrap();
         assert_eq!(ctr.number_of_proposals(), 3);
         // non reversed
+        assert_eq!(ctr.get_proposals(1, 1, None), vec![prop1.clone()]);
         assert_eq!(
             ctr.get_proposals(0, 10, None),
             vec![prop1.clone(), prop2.clone(), prop3.clone()]
@@ -840,16 +920,39 @@ mod unit_tests {
             ctr.get_proposals(0, 2, None),
             vec![prop1.clone(), prop2.clone()]
         );
-        // reversed
+        assert_eq!(
+            ctr.get_proposals(0, 2, Some(false)),
+            vec![prop1.clone(), prop2.clone()]
+        );
+        assert_eq!(
+            ctr.get_proposals(1, 2, Some(false)),
+            vec![prop1.clone(), prop2.clone()]
+        );
+        // reversed, limit bigger than amount of proposals -> return all
         assert_eq!(
             ctr.get_proposals(3, 10, Some(true)),
             vec![prop3.clone(), prop2.clone(), prop1.clone()]
         );
-        // reversed with limit
+        // reversed with limit and over the "last proposal"
         assert_eq!(
-            ctr.get_proposals(3, 2, Some(true)),
+            ctr.get_proposals(5, 2, Some(true)),
             vec![prop3.clone(), prop2.clone()]
         );
+
+        // few more edge cases
+        assert_eq!(ctr.get_proposals(1, 0, None), vec![], "limit=0");
+        assert_eq!(
+            ctr.get_proposals(0, 1, None),
+            vec![prop1.clone()],
+            "0 = start from the last proposal (rev=false)"
+        );
+        assert_eq!(
+            ctr.get_proposals(0, 1, Some(true)),
+            vec![prop3.clone()],
+            "0 = start from the last proposal (rev=true)"
+        );
+        assert_eq!(ctr.get_proposals(2, 1, None), vec![prop2.clone()],);
+        assert_eq!(ctr.get_proposals(2, 1, Some(true)), vec![prop2.clone()],);
     }
 
     #[test]
@@ -858,13 +961,14 @@ mod unit_tests {
 
         // make one less support then what is necessary to test that the proposal is still in prevote
         for i in 1..PRE_VOTE_SUPPORT {
-            ctx.predecessor_account_id = acc(i as u8);
-            testing_env!(ctx.clone());
-            assert_eq!(ctr.support_proposal(id), Ok(true));
+            assert_eq!(
+                ctr.support_proposal(acc(i as u8), iah_proof(), support_prop_payload(id)),
+                Ok(true)
+            );
         }
 
         assert_eq!(
-            ctr.support_proposal(id),
+            ctr.support_proposal(acc(1), iah_proof(), support_prop_payload(id)),
             Err(PrevotePropError::DoubleSupport)
         );
 
@@ -876,10 +980,16 @@ mod unit_tests {
         }
 
         // add the missing support and assert that the proposal was moved to active
-        ctx.predecessor_account_id = acc(PRE_VOTE_SUPPORT as u8);
         ctx.block_timestamp = START + 2 * MSECOND;
         testing_env!(ctx.clone());
-        assert_eq!(ctr.support_proposal(id), Ok(true));
+        assert_eq!(
+            ctr.support_proposal(
+                acc(PRE_VOTE_SUPPORT as u8),
+                iah_proof(),
+                support_prop_payload(id)
+            ),
+            Ok(true)
+        );
 
         // should be removed from prevote queue
         assert_eq!(
@@ -893,7 +1003,10 @@ mod unit_tests {
         assert!(p.supported.is_empty());
 
         // can't support proposal which was already moved
-        assert_eq!(ctr.support_proposal(id), Err(PrevotePropError::NotFound));
+        assert_eq!(
+            ctr.support_proposal(acc(1), iah_proof(), support_prop_payload(id)),
+            Err(PrevotePropError::NotFound)
+        );
 
         //
         // Should not be able to support an overdue proposal
@@ -902,11 +1015,18 @@ mod unit_tests {
         testing_env!(ctx.clone());
 
         let id = ctr
-            .create_proposal(PropKind::Text, "proposal".to_owned())
+            .create_proposal(
+                acc(1),
+                iah_proof(),
+                create_prop_payload(PropKind::Text, "proposal".to_owned()),
+            )
             .unwrap();
         ctx.block_timestamp += (PRE_VOTE_DURATION + 1) * MSECOND;
         testing_env!(ctx.clone());
-        assert_eq!(ctr.support_proposal(id), Ok(false));
+        assert_eq!(
+            ctr.support_proposal(acc(1), iah_proof(), support_prop_payload(id)),
+            Ok(false)
+        );
         assert_eq!(ctr.get_proposal(id), None);
     }
 
@@ -927,5 +1047,39 @@ mod unit_tests {
         ctr.admin_update_consent(c1, c2);
         assert_eq!(c1, ctr.simple_consent);
         assert_eq!(c2, ctr.super_consent);
+    }
+
+    #[should_panic(expected = "must be called by iah_registry")]
+    #[test]
+    fn vote_not_called_by_iah_registry() {
+        let (mut ctx, mut ctr, id) = setup_ctr(BOND);
+        ctx.predecessor_account_id = acc(1);
+        testing_env!(ctx);
+        ctr.vote(acc(1), iah_proof(), vote_payload(id, Vote::Approve))
+            .unwrap();
+    }
+
+    #[should_panic(expected = "must be called by iah_registry")]
+    #[test]
+    fn create_proposal_not_called_by_iah_registry() {
+        let (mut ctx, mut ctr, _) = setup_ctr(BOND);
+        ctx.predecessor_account_id = acc(1);
+        testing_env!(ctx);
+        ctr.create_proposal(
+            acc(1),
+            iah_proof(),
+            create_prop_payload(PropKind::Text, "Proposal unit test".to_string()),
+        )
+        .unwrap();
+    }
+
+    #[should_panic(expected = "must be called by iah_registry")]
+    #[test]
+    fn support_proposal_not_called_by_iah_registry() {
+        let (mut ctx, mut ctr, id) = setup_ctr(PRE_BOND);
+        ctx.predecessor_account_id = acc(1);
+        testing_env!(ctx);
+        ctr.support_proposal(acc(1), iah_proof(), support_prop_payload(id))
+            .unwrap();
     }
 }
