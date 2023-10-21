@@ -26,3 +26,10 @@ pub struct SupportPropPayload {
 }
 
 pub type SBTs = Vec<(AccountId, Vec<u64>)>;
+
+#[derive(Serialize)]
+#[serde(crate = "near_sdk::serde")]
+pub enum ExecResponse {
+    Slashed,
+    Executed,
+}

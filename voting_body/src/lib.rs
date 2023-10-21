@@ -10,7 +10,7 @@ use near_sdk::{
     near_bindgen, require, AccountId, Balance, PanicOnDefault, Promise, PromiseOrValue,
     PromiseResult,
 };
-use types::{CreatePropPayload, SBTs, SupportPropPayload, VotePayload};
+use types::{CreatePropPayload, ExecResponse, SBTs, SupportPropPayload, VotePayload};
 
 mod constants;
 mod errors;
@@ -162,7 +162,8 @@ impl Contract {
         Ok(self.prop_counter)
     }
 
-    /// Removes overdue pre-vote proposal.
+    /// Removes overdue pre-vote proposal and slashes the proposer.
+    /// User who calls the function to receives REMOVE_REWARD.
     /// Fails if proposal is not overdue or not in pre-vote queue.
     #[handle_result]
     pub fn remove_overdue_proposal(&mut self, id: u32) -> Result<(), PrevotePropError> {
@@ -332,25 +333,39 @@ impl Contract {
         Ok(())
     }
 
-    /// Allows anyone to execute proposal.
+    /// Allows anyone to execute or slash the proposal.
+    /// If proposal is slasheable, the user who executes gets REMOVE_REWARD.
+    ///
     #[handle_result]
-    pub fn execute(&mut self, id: u32) -> Result<PromiseOrValue<()>, ExecError> {
-        self.refund_bond(id);
+    pub fn execute(&mut self, id: u32) -> Result<PromiseOrValue<ExecResponse>, ExecError> {
         let mut prop = self.assert_proposal(id);
+        prop.recompute_status(self.voting_duration);
+
+        // Check if it's a spam and we need to slash
+        if prop.status == ProposalStatus::Spam {
+            if prop.slash_bond(self.accounts.get().unwrap().community_treasury) {
+                self.proposals.insert(&id, &prop);
+                return Ok(PromiseOrValue::Value(ExecResponse::Slashed));
+            }
+            return Err(ExecError::AlreadySlashed);
+        }
+
+        // Check if execute is possible if a proposal Approved by not executed yet,
+        // or failed (previous attempt to execute failed).
         if !matches!(
             prop.status,
-            // if the previous proposal execution failed, we should be able to re-execute it
             ProposalStatus::Approved | ProposalStatus::Failed
         ) {
             return Err(ExecError::NotApproved);
         }
         let now = env::block_timestamp_ms();
         if now <= prop.start + self.voting_duration {
-            return Err(ExecError::ExecTime);
+            return Err(ExecError::Timeout);
         }
 
+        prop.refund_bond();
         prop.status = ProposalStatus::Executed;
-        let mut out = PromiseOrValue::Value(());
+        let mut out = PromiseOrValue::Value(ExecResponse::Executed);
         match &prop.kind {
             PropKind::Dismiss { dao, member } => {
                 out = ext_congress::ext(dao.clone())
@@ -383,33 +398,6 @@ impl Contract {
             }
         };
         Ok(out)
-    }
-
-    /// Refund after voting period is over
-    pub fn refund_bond(&mut self, id: u32) -> bool {
-        let mut prop = self.assert_proposal(id);
-        if prop.bond == 0 {
-            return false;
-        }
-        if (prop.status == ProposalStatus::InProgress
-            && env::block_timestamp_ms() <= prop.start + self.voting_duration)
-            || prop.status == ProposalStatus::PreVote
-            || prop.status == ProposalStatus::Spam
-            || prop.status == ProposalStatus::Vetoed
-        {
-            return false;
-        }
-
-        // Vote storage is already paid by voters. We only keep storage for proposal.
-        let refund = prop.bond - prop.proposal_storage;
-        Promise::new(prop.proposer.clone()).transfer(refund);
-        if let Some(val) = prop.additional_bond.clone() {
-            Promise::new(val.0).transfer(val.1);
-        }
-        prop.bond = 0;
-        prop.additional_bond = None;
-        self.proposals.insert(&id, &prop);
-        true
     }
 
     /*****************
@@ -628,6 +616,27 @@ mod unit_tests {
         .unwrap()
     }
 
+    fn create_proposal_with_status(
+        mut ctx: VMContext,
+        ctr: &mut Contract,
+        status: ProposalStatus,
+    ) -> u32 {
+        ctx.predecessor_account_id = iah_registry();
+        ctx.attached_deposit = BOND;
+        testing_env!(ctx.clone());
+        let id = ctr
+            .create_proposal(
+                acc(1),
+                iah_proof(),
+                create_prop_payload(PropKind::Text, "Proposal unit test".to_string()),
+            )
+            .unwrap();
+        let mut prop = ctr.proposals.get(&id).unwrap();
+        prop.status = status;
+        ctr.proposals.insert(&id, &prop);
+        id
+    }
+
     #[test]
     fn basic_flow() {
         let (mut ctx, mut ctr, id) = setup_ctr(PRE_BOND);
@@ -775,12 +784,18 @@ mod unit_tests {
     }
 
     #[test]
-    fn proposal_execution_text() {
+    #[should_panic(expected = "proposal does not exist")]
+    fn execute_not_active() {
+        let (_, mut ctr, id) = setup_ctr(PRE_BOND);
+        assert!(ctr.execute(id).is_err());
+    }
+
+    #[test]
+    fn execution_text() {
         let (mut ctx, mut ctr, id) = setup_ctr(BOND);
         match ctr.execute(id) {
-            Err(ExecError::NotApproved) => (),
             Ok(_) => panic!("expected NotApproved, got: OK"),
-            Err(err) => panic!("expected NotApproved got: {:?}", err),
+            Err(err) => assert_eq!(err, ExecError::NotApproved),
         }
         vote(
             ctx.clone(),
@@ -790,22 +805,37 @@ mod unit_tests {
             Vote::Approve,
         );
 
-        let mut prop = ctr.get_proposal(id).unwrap();
-        assert_eq!(prop.proposal.status, ProposalStatus::Approved);
+        let mut p = ctr.get_proposal(id).unwrap();
+        assert_eq!(p.proposal.status, ProposalStatus::Approved);
 
         match ctr.execute(id) {
-            Err(ExecError::ExecTime) => (),
-            Ok(_) => panic!("expected ExecTime, got: OK"),
-            Err(err) => panic!("expected ExecTime got: {:?}", err),
+            Ok(_) => panic!("expected Timeout, got: OK"),
+            Err(err) => assert_eq!(err, ExecError::Timeout),
         }
 
         ctx.block_timestamp = START + (ctr.voting_duration + 1) * MSECOND;
-        testing_env!(ctx);
+        testing_env!(ctx.clone());
 
         ctr.execute(id).unwrap();
 
-        prop = ctr.get_proposal(id).unwrap();
-        assert_eq!(prop.proposal.status, ProposalStatus::Executed);
+        p = ctr.get_proposal(id).unwrap();
+        assert_eq!(p.proposal.status, ProposalStatus::Executed);
+
+        //
+        // check spam transaction
+        let id = create_proposal_with_status(ctx.clone(), &mut ctr, ProposalStatus::Spam);
+        match ctr.execute(id) {
+            Ok(PromiseOrValue::Value(ExecResponse::Slashed)) => (),
+            Ok(_) => panic!("expected Ok(ExecResponse:Slashed)"),
+            Err(err) => panic!("expected Ok(ExecResponse:Slashed) got: {:?}", err),
+        }
+        p = ctr.get_proposal(id).unwrap();
+        assert_eq!(p.proposal.bond, 0);
+        // second execute should return AlreadySlashed
+        match ctr.execute(id) {
+            Ok(_) => panic!("expected Err(ExecError::AlreadySlashed)"),
+            Err(err) => assert_eq!(err, ExecError::AlreadySlashed),
+        }
     }
 
     #[test]
@@ -822,11 +852,11 @@ mod unit_tests {
         testing_env!(ctx.clone());
 
         ctr.execute(id).unwrap();
-        let mut prop = ctr.get_proposal(id).unwrap();
-        assert_eq!(prop.proposal.status, ProposalStatus::Executed);
+        let mut p = ctr.get_proposal(id).unwrap();
+        assert_eq!(p.proposal.status, ProposalStatus::Executed);
 
         // try to get refund again
-        assert!(!ctr.refund_bond(id));
+        assert!(!p.proposal.refund_bond());
 
         // Get refund for proposal with no status update
         ctx.attached_deposit = BOND;
@@ -838,14 +868,14 @@ mod unit_tests {
                 create_prop_payload(PropKind::Text, "Proposal unit test".to_string()),
             )
             .unwrap();
-        prop = ctr.get_proposal(id2).unwrap();
+        p = ctr.get_proposal(id2).unwrap();
 
         // Set time after voting period
-        ctx.block_timestamp = (prop.proposal.start + ctr.voting_duration + 1) * MSECOND;
+        ctx.block_timestamp = (p.proposal.start + ctr.voting_duration + 1) * MSECOND;
         testing_env!(ctx);
 
         // Call refund
-        assert!(ctr.refund_bond(id2));
+        assert!(p.proposal.refund_bond());
     }
 
     #[test]

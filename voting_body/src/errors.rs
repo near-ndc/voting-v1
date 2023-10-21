@@ -25,17 +25,19 @@ impl FunctionError for VoteError {
 #[serde(crate = "near_sdk::serde")]
 #[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq, Debug))]
 pub enum ExecError {
-    ExecTime,
+    Timeout,
     NotApproved,
+    AlreadySlashed,
 }
 
 impl FunctionError for ExecError {
     fn panic(&self) -> ! {
         match self {
-            ExecError::ExecTime => panic_str("can only be executed after cooldown"),
+            ExecError::Timeout => panic_str("can only be executed after cooldown"),
             ExecError::NotApproved => {
                 panic_str("can execute only approved or re-execute failed proposals")
             }
+            ExecError::AlreadySlashed => panic_str("proposal was already slashed"),
         }
     }
 }
