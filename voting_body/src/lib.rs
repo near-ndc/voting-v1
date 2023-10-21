@@ -140,7 +140,7 @@ impl Contract {
             votes: HashMap::new(),
             start: now,
             approved_at: None,
-            proposal_storage_cost: 0,
+            proposal_storage: 0,
         };
         if active {
             self.proposals.insert(&self.prop_counter, &prop);
@@ -148,11 +148,10 @@ impl Contract {
             self.pre_vote_proposals.insert(&self.prop_counter, &prop);
         }
 
-        if let Err(reason) = finalize_storage_check(storage_start, 0, caller) {
-            return Err(CreatePropError::Storage(reason));
-        }
-        prop.proposal_storage_cost =
-            (env::storage_usage() - storage_start) as u128 * env::storage_byte_cost();
+        prop.proposal_storage = match finalize_storage_check(storage_start, 0, caller) {
+            Err(reason) => return Err(CreatePropError::Storage(reason)),
+            Ok(required) => required,
+        };
         if active {
             self.proposals.insert(&self.prop_counter, &prop);
         } else {
@@ -360,7 +359,7 @@ impl Contract {
         }
 
         // Vote storage is already paid by voters. We only keep storage for proposal.
-        let refund = prop.bond - prop.proposal_storage_cost;
+        let refund = prop.bond - prop.proposal_storage;
         Promise::new(prop.proposer.clone()).transfer(refund);
         if let Some(val) = prop.additional_bond.clone() {
             Promise::new(val.0).transfer(val.1);

@@ -2,7 +2,7 @@ pub mod errors;
 mod events;
 
 pub use events::*;
-use near_sdk::{env, AccountId, Promise};
+use near_sdk::{env, AccountId, Balance, Promise};
 
 /// checks if there was enough storage deposit provided, and returns the excess of the deposit
 /// back to the user.
@@ -11,7 +11,7 @@ pub fn finalize_storage_check(
     storage_start: u64,
     storage_extra: u64,
     user: AccountId,
-) -> Result<(), String> {
+) -> Result<Balance, String> {
     let storage_deposit = env::attached_deposit();
     let required_deposit =
         (env::storage_usage() - storage_start + storage_extra) as u128 * env::storage_byte_cost();
@@ -25,5 +25,5 @@ pub fn finalize_storage_check(
     if diff > 0 {
         Promise::new(user).transfer(diff);
     }
-    Ok(())
+    Ok(required_deposit)
 }
