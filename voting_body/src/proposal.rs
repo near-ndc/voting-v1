@@ -15,6 +15,7 @@ use crate::{PrevotePropError, VoteError, REMOVE_REWARD};
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq))]
 pub struct Consent {
     pub quorum: u32,
+    /// percent value
     pub threshold: u16,
 }
 
@@ -68,8 +69,8 @@ impl Proposal {
         &mut self,
         user: AccountId,
         vote: Vote,
-        threshold: u32,
-        //TODO: quorum
+        quorum: u32,
+        //TODO: threshold
     ) -> Result<(), VoteError> {
         // allow to overwrite existing votes
         if let Some(old_vote) = self.votes.get(&user) {
@@ -89,14 +90,14 @@ impl Proposal {
         match vote {
             Vote::Approve => {
                 self.approve += 1;
-                if self.approve >= threshold {
+                if self.approve >= quorum {
                     self.status = ProposalStatus::Approved;
                     self.approved_at = Some(env::block_timestamp_ms());
                 }
             }
             Vote::Reject => {
                 self.reject += 1;
-                if self.reject + self.spam >= threshold {
+                if self.reject + self.spam >= quorum {
                     if self.reject > self.spam {
                         self.status = ProposalStatus::Rejected;
                     } else {
@@ -110,7 +111,7 @@ impl Proposal {
             }
             Vote::Spam => {
                 self.spam += 1;
-                if self.reject + self.spam >= threshold {
+                if self.reject + self.spam >= quorum {
                     if self.spam > self.reject {
                         self.status = ProposalStatus::Spam;
                     } else {

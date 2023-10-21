@@ -27,9 +27,6 @@ pub use crate::ext::*;
 pub use crate::proposal::*;
 use crate::storage::*;
 
-// TODO temp value
-const THRESHOLD: u32 = 3;
-
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
 pub struct Contract {
@@ -304,7 +301,8 @@ impl Contract {
             return Err(VoteError::NotActive);
         }
 
-        prop.add_vote(caller.clone(), payload.vote, THRESHOLD)?;
+        // TODO: use proper quorum
+        prop.add_vote(caller.clone(), payload.vote, self.simple_consent.quorum)?;
 
         if prop.status == ProposalStatus::Spam {
             self.proposals.remove(&payload.prop_id);
