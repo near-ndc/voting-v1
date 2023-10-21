@@ -148,7 +148,7 @@ impl Contract {
             self.pre_vote_proposals.insert(&self.prop_counter, &prop);
         }
 
-        if let Err(reason) = finalize_storage_check(storage_start, 0, user) {
+        if let Err(reason) = finalize_storage_check(storage_start, 0, caller) {
             return Err(CreatePropError::Storage(reason));
         }
         prop.proposal_storage_cost =
@@ -273,7 +273,7 @@ impl Contract {
             return Ok(());
         } else {
             self.proposals.insert(&payload.prop_id, &prop);
-            if let Err(reason) = finalize_storage_check(storage_start, 0, user) {
+            if let Err(reason) = finalize_storage_check(storage_start, 0, caller) {
                 return Err(VoteError::Storage(reason));
             }
         }
@@ -796,7 +796,11 @@ mod unit_tests {
         ctx.attached_deposit = BOND;
         testing_env!(ctx.clone());
         let id2 = ctr
-            .create_proposal(PropKind::Text, "Proposal unit test 2".to_string())
+            .create_proposal(
+                acc(1),
+                iah_proof(),
+                create_prop_payload(PropKind::Text, "Proposal unit test".to_string()),
+            )
             .unwrap();
         prop = ctr.get_proposal(id2).unwrap();
 
