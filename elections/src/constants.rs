@@ -22,3 +22,6 @@ pub const MAX_REF_LINK_LEN: usize = 120;
 pub const FAILURE_CALLBACK_GAS: Gas = Gas(3 * Gas::ONE_TERA.0);
 
 pub const I_VOTED_SBT_CLASS: u64 = 1;
+pub const SBT_HOM: u64 = 2;
+pub const SBT_COA: u64 = 3;
+pub const SBT_TC: u64 = 4;
