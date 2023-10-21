@@ -63,6 +63,8 @@ pub enum PrevotePropError {
     MinBond,
     NotOverdue,
     DoubleSupport,
+    NotCongress,
+    NotCongressMember,
 }
 
 impl FunctionError for PrevotePropError {
@@ -72,6 +74,10 @@ impl FunctionError for PrevotePropError {
             PrevotePropError::MinBond => panic_str("min active_queue_bond is required"),
             PrevotePropError::NotOverdue => panic_str("proposal is not overdue"),
             PrevotePropError::DoubleSupport => panic_str("already supported the proposal"),
+            PrevotePropError::NotCongress => panic_str("dao is not part of the congress"),
+            PrevotePropError::NotCongressMember => {
+                panic_str("user is not part of the congress dao")
+            }
         }
     }
 }
