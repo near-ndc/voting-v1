@@ -790,7 +790,7 @@ mod unit_tests {
         assert_eq!(prop.proposal.status, ProposalStatus::Executed);
 
         // try to get refund again
-        assert_eq!(ctr.refund_bond(id), false);
+        assert!(!ctr.refund_bond(id));
 
         // Get refund for proposal with no status update
         ctx.attached_deposit = BOND;
@@ -809,7 +809,7 @@ mod unit_tests {
         testing_env!(ctx);
 
         // Call refund
-        assert_eq!(ctr.refund_bond(id2), true);
+        assert!(ctr.refund_bond(id2));
     }
 
     #[test]
