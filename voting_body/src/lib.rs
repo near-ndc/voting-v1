@@ -1233,7 +1233,7 @@ mod unit_tests {
             Ok(_) => panic!("expected Err(CreatePropError::FunctionCall)"),
             Err(err) => assert_eq!(
                 err,
-                CreatePropError::FunctionCall("receiver_id matches congress_id".to_string())
+                CreatePropError::FunctionCall("receiver_id can't be a congress house, use a specific proposal to interact with the congress".to_string())
             ),
         }
     }
