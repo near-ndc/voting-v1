@@ -73,7 +73,7 @@ There are several types of proposals with specific functionalities and limitatio
 
 4. **Approve Budget Proposal**
 
-   - **Arguments:** `prop_id`: `u32`
+   - **Arguments:** `dao`: `AccountId`, `prop_id`: `u32`
    - **Description:** This type of proposal serves as an approval mechanism for budget proposals without making any method calls.
 
 5. **Text Proposal**

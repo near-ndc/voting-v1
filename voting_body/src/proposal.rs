@@ -189,6 +189,7 @@ pub enum PropKind {
         prop_id: u32,
     },
     ApproveBudget {
+        dao: AccountId,
         prop_id: u32,
     },
     /// A default, text based proposal.
