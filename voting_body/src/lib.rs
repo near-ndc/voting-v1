@@ -123,7 +123,7 @@ impl Contract {
                 || *receiver_id == accounts.congress_tc
             {
                 return Err(CreatePropError::FunctionCall(
-                    "receiver_id matches congress_id".to_string(),
+                    "receiver_id can't be a congress house, use a specific proposal to interact with the congress".to_string(),
                 ));
             }
         }
