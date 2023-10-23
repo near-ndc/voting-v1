@@ -439,6 +439,19 @@ impl Contract {
         self.super_consent = super_consent;
     }
 
+    /// udpate voting time for e2e tests purposes
+    /// TODO: remove
+    pub fn admin_update_durations(&mut self, pre_vote_duration: u64, voting_duration: u64) {
+        self.assert_admin();
+        require!(
+            env::current_account_id().as_ref().contains("test"),
+            "can only be run in test contracts"
+        );
+
+        self.pre_vote_duration = pre_vote_duration;
+        self.voting_duration = voting_duration;
+    }
+
     /*****************
      * INTERNAL
      ****************/
