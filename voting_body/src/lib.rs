@@ -115,12 +115,12 @@ impl Contract {
             return Err(CreatePropError::MinBond);
         }
 
-        if let PropKind::FunctionCall { receiver_id, .. } = payload.kind.clone() {
+        if let PropKind::FunctionCall { receiver_id, .. } = &payload.kind {
             let accounts = self.accounts.get().unwrap();
 
-            if receiver_id == accounts.congress_coa
-                || receiver_id == accounts.congress_hom
-                || receiver_id == accounts.congress_tc
+            if *receiver_id == accounts.congress_coa
+                || *receiver_id == accounts.congress_hom
+                || *receiver_id == accounts.congress_tc
             {
                 return Err(CreatePropError::FunctionCall(
                     "receiver_id matches congress_id".to_string(),
