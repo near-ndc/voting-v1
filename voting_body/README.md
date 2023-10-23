@@ -52,6 +52,38 @@ flowchart TB
     PVQ-- timeout -->Trash
 ```
 
+### Proposal Types
+
+There are several types of proposals with specific functionalities and limitations:
+
+1. **Dismiss Proposal**
+
+   - **Arguments:** `dao`: `AccountId`, `member`: `AccountId`
+   - **Description:** This proposal calls the `Dismiss` hook in the provided DAO when executed, resulting in the removal of the specified member.
+
+2. **Dissolve Proposal**
+
+   - **Arguments:** `dao`: `AccountId`
+   - **Description:** Executing this proposal triggers the `Dissolve` hook in the provided DAO, dissolving the DAO itself.
+
+3. **Veto Proposal**
+
+   - **Arguments:** `dao`: `AccountId`, `prop_id`: `u32`
+   - **Description:** When executed, this proposal invokes the `Veto` hook in the provided DAO and vetoes the proposal identified by the specified `prop_id`.
+
+4. **Approve Budget Proposal**
+
+   - **Arguments:** `prop_id`: `u32`
+   - **Description:** This type of proposal serves as an approval mechanism for budget proposals without making any method calls.
+
+5. **Text Proposal**
+
+   - **Description:** A text proposal for general purposes, without specific arguments. It doesn't involve any method calls.
+
+6. **FunctionCall Proposal**
+   - **Arguments:** `receiver_id`: `AccountId`, `actions`: `Vec<ActionCall>`
+   - **Description:** This proposal enables you to call the `receiver_id` with a list of method names in a single promise. It allows your contract to execute various actions in other contracts, excluding congress contracts. Attempting to create a proposal that calls any congress DAOs will result in an error, preventing the proposal from being created.
+
 ## Voting
 
 Any VB member can vote on any _in progress_ proposal in the active queue. Voter can change his/her vote multiple times. Vote options:
