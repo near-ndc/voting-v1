@@ -1,8 +1,22 @@
 use crate::*;
 
 // congress/v0.1.0
-#[derive(BorshDeserialize)]
-pub struct OldContract {
+
+#[derive(BorshDeserialize, BorshSerialize)]
+pub struct OldProposal {
+    pub proposer: AccountId,
+    pub description: String,
+    pub kind: PropKind,
+    pub status: ProposalStatus,
+    pub approve: u8,
+    pub reject: u8,
+    // abstain missing in the old state
+    pub votes: HashMap<AccountId, Vote>,
+    pub submission_time: u64,
+    pub approved_at: Option<u64>,
+}
+#[derive(BorshDeserialize, BorshSerialize)]
+pub struct OldState {
     pub community_fund: AccountId,
     pub registry: AccountId,
     pub dissolved: bool,
@@ -20,27 +34,13 @@ pub struct OldContract {
     pub big_funding_threshold: Balance,
 }
 
-#[derive(BorshDeserialize)]
-pub struct OldProposal {
-    pub proposer: AccountId,
-    pub description: String,
-    pub kind: PropKind,
-    pub status: ProposalStatus,
-    pub approve: u8,
-    pub reject: u8,
-    // abstain missing in the old state
-    pub votes: HashMap<AccountId, Vote>,
-    pub submission_time: u64,
-    pub approved_at: Option<u64>,
-}
-
 #[near_bindgen]
 impl Contract {
     #[private]
     #[init(ignore_state)]
     /* pub  */
     pub fn migrate() -> Self {
-        let old_state: OldContract = env::state_read().expect("failed");
+        let old_state: OldState = env::state_read().expect("failed");
         // New field in the contract.proposals -> Proposal :
         // + abstain: u8,
 
@@ -67,8 +67,8 @@ impl Contract {
         }
 
         Self {
-            community_fund: old_state.community_fund,
-            registry: old_state.registry,
+            community_fund: old_state.community_fund.clone(),
+            registry: old_state.registry.clone(),
             dissolved: old_state.dissolved,
             prop_counter: old_state.prop_counter,
             proposals,

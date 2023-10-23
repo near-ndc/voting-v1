@@ -586,12 +586,7 @@ async fn migration_mainnet() -> anyhow::Result<()> {
     let new_congress = res.into_result()?;
 
     // call the migrate method
-    let res = new_congress
-        .call("migrate")
-        .args_json(json!({}))
-        .max_gas()
-        .transact()
-        .await?;
+    let res = new_congress.call("migrate").max_gas().transact().await?;
     assert!(res.is_success(), "{:?}", res.receipt_failures());
 
     //TODO: add queries to check the values
