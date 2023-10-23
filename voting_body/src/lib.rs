@@ -7,7 +7,7 @@ use near_sdk::{
     collections::{LazyOption, LookupMap},
     env,
     json_types::U128,
-    near_bindgen, require, AccountId, Balance, PanicOnDefault, Promise, PromiseOrValue,
+    near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseOrValue,
     PromiseResult,
 };
 use types::{CreatePropPayload, ExecResponse, SBTs, SupportPropPayload, VotePayload};
@@ -97,6 +97,7 @@ impl Contract {
     /// possible votes.
     /// Must be called via `iah_registry.is_human_call`.
     /// NOTE: storage is paid from the bond.
+    /// Panics when the FunctionCall is trying to call any of the congress contracts.
     #[payable]
     #[handle_result]
     pub fn create_proposal(
@@ -113,6 +114,20 @@ impl Contract {
         if bond < self.pre_vote_bond {
             return Err(CreatePropError::MinBond);
         }
+
+        if let PropKind::FunctionCall { receiver_id, .. } = payload.kind.clone() {
+            let accounts = self.accounts.get().unwrap();
+
+            if receiver_id == accounts.congress_coa
+                || receiver_id == accounts.congress_hom
+                || receiver_id == accounts.congress_tc
+            {
+                return Err(CreatePropError::FunctionCall(
+                    "receiver_id matches congress_id".to_string(),
+                ));
+            }
+        }
+
         // TODO: check if proposal is created by a congress member. If yes, move it to active
         // immediately.
         let active = bond >= self.active_queue_bond;
@@ -378,6 +393,21 @@ impl Contract {
             }
             PropKind::ApproveBudget { .. } => (),
             PropKind::Text => (),
+            PropKind::FunctionCall {
+                receiver_id,
+                actions,
+            } => {
+                let mut promise = Promise::new(receiver_id.clone());
+                for action in actions {
+                    promise = promise.function_call(
+                        action.method_name.clone(),
+                        action.args.clone().into(),
+                        action.deposit.0,
+                        Gas(action.gas.0),
+                    );
+                }
+                out = promise.into();
+            }
         };
 
         self.proposals.insert(&id, &prop);
@@ -1180,5 +1210,30 @@ mod unit_tests {
         prop.proposal.status = ProposalStatus::InProgress;
         prop.proposal.start += 1; // start is in miliseconds
         assert_eq!(ctr.get_proposal(id).unwrap(), prop);
+    }
+
+    #[test]
+    fn create_proposal_function_call_to_congress() {
+        let (mut ctx, mut ctr, _) = setup_ctr(BOND);
+        ctx.predecessor_account_id = iah_registry();
+        ctx.attached_deposit = BOND;
+        testing_env!(ctx.clone());
+        match ctr.create_proposal(
+            acc(1),
+            iah_proof(),
+            create_prop_payload(
+                PropKind::FunctionCall {
+                    receiver_id: hom(),
+                    actions: vec![],
+                },
+                "Proposal unit test".to_string(),
+            ),
+        ) {
+            Ok(_) => panic!("expected Err(CreatePropError::FunctionCall)"),
+            Err(err) => assert_eq!(
+                err,
+                CreatePropError::FunctionCall("receiver_id matches congress_id".to_string())
+            ),
+        }
     }
 }
