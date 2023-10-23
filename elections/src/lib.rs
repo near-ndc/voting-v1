@@ -51,7 +51,7 @@ pub struct Contract {
     pub disqualified_candidates: LazyOption<HashSet<AccountId>>,
 
     /// class metadata for I-Voted SBT
-    pub class_metadata: ClassMetadata,
+    pub class_metadata: LookupMap<ClassId, ClassMetadata>,
 }
 
 #[near_bindgen]
@@ -63,7 +63,6 @@ impl Contract {
         sbt_registry: AccountId,
         policy: String,
         finish_time: u64,
-        class_metadata: ClassMetadata,
     ) -> Self {
         let policy = assert_hash_hex_string(&policy);
 
@@ -79,7 +78,7 @@ impl Contract {
             policy,
             finish_time,
             disqualified_candidates: LazyOption::new(StorageKey::DisqualifiedCandidates, None),
-            class_metadata,
+            class_metadata: LookupMap::new(StorageKey::ClassMetadata),
         }
     }
 
@@ -396,9 +395,10 @@ impl Contract {
             .sbt_mint(token_spec);
     }
 
-    pub fn admin_set_class_metadata(&mut self, class_metadata: ClassMetadata) {
+    /// returns true if the class was already set and the metadata was ovewritten.
+    pub fn admin_set_class_metadata(&mut self, id: ClassId, class_metadata: ClassMetadata) -> bool {
         self.assert_admin();
-        self.class_metadata = class_metadata;
+        self.class_metadata.insert(&id, &class_metadata).is_some()
     }
 
     /*****************
@@ -728,13 +728,7 @@ mod unit_tests {
             .is_view(false)
             .build();
         testing_env!(ctx.clone());
-        let ctr = Contract::new(
-            admin(),
-            sbt_registry(),
-            policy1(),
-            START + 100,
-            class_metadata("test1".to_string()),
-        );
+        let ctr = Contract::new(admin(), sbt_registry(), policy1(), START + 100);
         ctx.predecessor_account_id = predecessor.clone();
         testing_env!(ctx.clone());
         (ctx, ctr)
@@ -1849,17 +1843,15 @@ mod unit_tests {
     #[test]
     fn admin_set_class_metadata() {
         let (_, mut ctr) = setup(&admin());
-        let res = ctr.class_metadata();
-        assert_eq!(*res, class_metadata("test1".to_string()));
-        ctr.admin_set_class_metadata(class_metadata("test2".to_string()));
-        let res = ctr.class_metadata();
-        assert_eq!(*res, class_metadata("test2".to_string()));
+        ctr.admin_set_class_metadata(1, class_metadata("test2".to_string()));
+        let res = ctr.class_metadata.get(&1);
+        assert_eq!(res.unwrap(), class_metadata("test2".to_string()));
     }
 
     #[test]
     #[should_panic(expected = "not an admin")]
     fn admin_set_class_metadata_not_admin() {
         let (_, mut ctr) = setup(&alice());
-        ctr.admin_set_class_metadata(class_metadata("test2".to_string()));
+        ctr.admin_set_class_metadata(1, class_metadata("test2".to_string()));
     }
 }

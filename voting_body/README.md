@@ -66,13 +66,14 @@ Syntax: #vote_type denotes number of votes of the specified type, eg: #approve m
 
 A proposal is **approved** when:
 
-- voting time is over
+- voting time is over;
 - AND consent is reached (quorum + threshold).
 
 A proposal is marked as **spam** when:
 
-- `#spam > #reject`
-- AND `#reject + #spam >= (1-threshold) * (#approve + #reject + #spam)`
+- simple near consent quorum is reached;
+- `#spam > #reject`;
+- AND `#reject + #spam >= (1-threshold) * (#approve + #reject + #spam)`.
 
 Spam proposals are removed, and the bond is slashed (sent to the community treasury).
 
@@ -81,7 +82,7 @@ A proposal is **rejected** if voting time is over (proposal is not in progress a
 ### Quorums and Thresholds
 
 **Quorum** assures that enough of the VB members voted.
-**Threshold** assures that enough VB members approved a proposal. It is defined as a minimum ratio of #approve votes over all votes to approve a proposal: `#approve > threshold * (#approve + #reject + #spam)`. It is either a simple majority or a super majority.
+**Majority Threshold** assures that enough VB members approved a proposal. It is a fractional value. Proposal is approved when: `#approve > threshold * (#approve + #reject + #spam)`. It is either a simple majority or a super majority.
 
-- **Near Consent:** quorum=(7% of the voting body) + **simple majority**=50% .
+- **Near Consent:** quorum=(7% of the voting body) + **simple majority**=50%.
 - **Near Supermajority Consent**: quorum=(12% of the voting body) + **super majority**=60%.

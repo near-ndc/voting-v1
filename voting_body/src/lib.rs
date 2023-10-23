@@ -10,7 +10,7 @@ use near_sdk::{
     near_bindgen, require, AccountId, Balance, PanicOnDefault, Promise, PromiseOrValue,
     PromiseResult,
 };
-use types::{CreatePropPayload, SBTs, SupportPropPayload, VotePayload};
+use types::{CreatePropPayload, ExecResponse, SBTs, SupportPropPayload, VotePayload};
 
 mod constants;
 mod errors;
@@ -26,9 +26,6 @@ pub use crate::errors::*;
 pub use crate::ext::*;
 pub use crate::proposal::*;
 use crate::storage::*;
-
-// TODO temp value
-const THRESHOLD: u32 = 3;
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
@@ -98,17 +95,17 @@ impl Contract {
     /// Returns the new proposal ID.
     /// Caller is required to attach enough deposit to cover the proposal storage as well as all
     /// possible votes.
+    /// Must be called via `iah_registry.is_human_call`.
     /// NOTE: storage is paid from the bond.
     #[payable]
     #[handle_result]
-    // TODO: bond, and deduce storage cost from the bond.
     pub fn create_proposal(
         &mut self,
         caller: AccountId,
         #[allow(unused_variables)] iah_proof: SBTs,
         payload: CreatePropPayload,
     ) -> Result<u32, CreatePropError> {
-        self.assert_iah_registry(); //must be called via iah_call
+        self.assert_iah_registry();
         let storage_start = env::storage_usage();
         let now = env::block_timestamp_ms();
         let bond = env::attached_deposit();
@@ -121,7 +118,7 @@ impl Contract {
         let active = bond >= self.active_queue_bond;
         self.prop_counter += 1;
         emit_prop_created(self.prop_counter, &payload.kind, active);
-        let prop = Proposal {
+        let mut prop = Proposal {
             proposer: caller.clone(),
             bond,
             additional_bond: None,
@@ -141,6 +138,7 @@ impl Contract {
             votes: HashMap::new(),
             start: now,
             approved_at: None,
+            proposal_storage: 0,
         };
         if active {
             self.proposals.insert(&self.prop_counter, &prop);
@@ -148,17 +146,21 @@ impl Contract {
             self.pre_vote_proposals.insert(&self.prop_counter, &prop);
         }
 
-        // TODO: this has to change, because we can have more votes
-        // max amount of votes is threshold + threshold-1.
-        let extra_storage = VOTE_STORAGE * (2 * THRESHOLD - 1) as u64;
-        if let Err(reason) = finalize_storage_check(storage_start, extra_storage, caller) {
-            return Err(CreatePropError::Storage(reason));
+        prop.proposal_storage = match finalize_storage_check(storage_start, 0, caller) {
+            Err(reason) => return Err(CreatePropError::Storage(reason)),
+            Ok(required) => required,
+        };
+        if active {
+            self.proposals.insert(&self.prop_counter, &prop);
+        } else {
+            self.pre_vote_proposals.insert(&self.prop_counter, &prop);
         }
 
         Ok(self.prop_counter)
     }
 
-    /// Removes overdue pre-vote proposal.
+    /// Removes overdue pre-vote proposal and slashes the proposer.
+    /// User who calls the function to receives REMOVE_REWARD.
     /// Fails if proposal is not overdue or not in pre-vote queue.
     #[handle_result]
     pub fn remove_overdue_proposal(&mut self, id: u32) -> Result<(), PrevotePropError> {
@@ -215,6 +217,7 @@ impl Contract {
 
     /// Supports proposal in the pre-vote queue.
     /// Returns false if the proposal can't be supported because it is overdue.
+    /// Must be called via `iah_registry.is_human_call`.
     #[handle_result]
     pub fn support_proposal(
         &mut self,
@@ -222,7 +225,7 @@ impl Contract {
         #[allow(unused_variables)] iah_proof: SBTs,
         payload: SupportPropPayload,
     ) -> Result<bool, PrevotePropError> {
-        self.assert_iah_registry(); // must be called via registry.is_human_call()
+        self.assert_iah_registry();
         let mut p = self.assert_pre_vote_prop(payload.prop_id)?;
         if env::block_timestamp_ms() - p.start > self.pre_vote_duration {
             self.slash_prop(payload.prop_id, p.bond);
@@ -239,6 +242,47 @@ impl Contract {
         Ok(true)
     }
 
+    /// Congressional support for a pre-vote proposal to move it to the active queue.
+    /// Returns false if the proposal can't be supported because it is overdue.
+    #[handle_result]
+    pub fn support_proposal_by_congress(
+        &mut self,
+        prop_id: u32,
+        dao: AccountId,
+    ) -> Result<Promise, PrevotePropError> {
+        let a = self.accounts.get().unwrap();
+        if !(a.congress_coa == dao || a.congress_hom == dao || a.congress_tc == dao) {
+            return Err(PrevotePropError::NotCongress);
+        }
+
+        Ok(ext_congress::ext(dao)
+            .is_member(env::predecessor_account_id())
+            .then(ext_self::ext(env::current_account_id()).on_support_by_congress(prop_id)))
+    }
+
+    /// Returns false if the proposal can't be supported because it is overdue.
+    #[private]
+    #[handle_result]
+    pub fn on_support_by_congress(
+        &mut self,
+        #[callback_result] is_member: Result<bool, near_sdk::PromiseError>,
+        prop_id: u32,
+    ) -> Result<bool, PrevotePropError> {
+        if !is_member.unwrap_or(false) {
+            return Err(PrevotePropError::NotCongressMember);
+        }
+
+        let mut p = self.remove_pre_vote_prop(prop_id)?;
+        if env::block_timestamp_ms() - p.start > self.pre_vote_duration {
+            self.slash_prop(prop_id, p.bond);
+            return Ok(false);
+        }
+        self.insert_prop_to_active(prop_id, &mut p);
+        Ok(true)
+    }
+
+    /// Must be called via `iah_registry.is_human_call`.
+    #[payable]
     #[handle_result]
     pub fn vote(
         &mut self,
@@ -246,7 +290,7 @@ impl Contract {
         #[allow(unused_variables)] iah_proof: SBTs,
         payload: VotePayload,
     ) -> Result<(), VoteError> {
-        self.assert_iah_registry(); // must be called by registry.is_human_call()
+        self.assert_iah_registry();
         let storage_start = env::storage_usage();
         let mut prop = self.assert_proposal(payload.prop_id);
 
@@ -257,7 +301,8 @@ impl Contract {
             return Err(VoteError::NotActive);
         }
 
-        prop.add_vote(caller.clone(), payload.vote, THRESHOLD)?;
+        // TODO: use proper quorum
+        prop.add_vote(caller.clone(), payload.vote, self.simple_consent.quorum)?;
 
         if prop.status == ProposalStatus::Spam {
             self.proposals.remove(&payload.prop_id);
@@ -268,6 +313,9 @@ impl Contract {
             return Ok(());
         } else {
             self.proposals.insert(&payload.prop_id, &prop);
+            if let Err(reason) = finalize_storage_check(storage_start, 0, caller) {
+                return Err(VoteError::Storage(reason));
+            }
         }
 
         emit_vote(payload.prop_id);
@@ -280,51 +328,61 @@ impl Contract {
             }
         }
 
-        if let Err(reason) = finalize_storage_check(storage_start, 0, caller) {
-            return Err(VoteError::Storage(reason));
-        }
-
         Ok(())
     }
 
-    /// Allows anyone to execute proposal.
+    /// Allows anyone to execute or slash the proposal.
+    /// If proposal is slasheable, the user who executes gets REMOVE_REWARD.
+    ///
     #[handle_result]
-    pub fn execute(&mut self, id: u32) -> Result<PromiseOrValue<()>, ExecError> {
+    pub fn execute(&mut self, id: u32) -> Result<PromiseOrValue<ExecResponse>, ExecError> {
         let mut prop = self.assert_proposal(id);
+        prop.recompute_status(self.voting_duration);
+
+        // Check if it's a spam and we need to slash
+        if prop.status == ProposalStatus::Spam {
+            if prop.slash_bond(self.accounts.get().unwrap().community_treasury) {
+                self.proposals.insert(&id, &prop);
+                return Ok(PromiseOrValue::Value(ExecResponse::Slashed));
+            }
+            return Err(ExecError::AlreadySlashed);
+        }
+
+        // Check if execute is possible if a proposal Approved by not executed yet,
+        // or failed (previous attempt to execute failed).
         if !matches!(
             prop.status,
-            // if the previous proposal execution failed, we should be able to re-execute it
             ProposalStatus::Approved | ProposalStatus::Failed
         ) {
             return Err(ExecError::NotApproved);
         }
         let now = env::block_timestamp_ms();
         if now <= prop.start + self.voting_duration {
-            return Err(ExecError::ExecTime);
+            return Err(ExecError::Timeout);
         }
 
+        prop.refund_bond();
         prop.status = ProposalStatus::Executed;
-        let mut result = PromiseOrValue::Value(());
+        let mut out = PromiseOrValue::Value(ExecResponse::Executed);
         match &prop.kind {
             PropKind::Dismiss { dao, member } => {
-                result = ext_congress::ext(dao.clone())
+                out = ext_congress::ext(dao.clone())
                     .dismiss_hook(member.clone())
                     .into();
             }
             PropKind::Dissolve { dao } => {
-                result = ext_congress::ext(dao.clone()).dissolve_hook().into();
+                out = ext_congress::ext(dao.clone()).dissolve_hook().into();
             }
             PropKind::Veto { dao, prop_id } => {
-                result = ext_congress::ext(dao.clone())
-                    .veto_hook(prop_id.clone())
-                    .into();
+                out = ext_congress::ext(dao.clone()).veto_hook(*prop_id).into();
             }
             PropKind::ApproveBudget { .. } => (),
             PropKind::Text => (),
         };
+
         self.proposals.insert(&id, &prop);
 
-        let result = match result {
+        let out = match out {
             PromiseOrValue::Promise(promise) => promise
                 .then(
                     ext_self::ext(env::current_account_id())
@@ -334,10 +392,10 @@ impl Contract {
                 .into(),
             _ => {
                 emit_executed(id);
-                result
+                out
             }
         };
-        Ok(result)
+        Ok(out)
     }
 
     /*****************
@@ -511,6 +569,7 @@ mod unit_tests {
         context.block_timestamp = START;
         context.predecessor_account_id = iah_registry();
         context.attached_deposit = attach_deposit;
+        context.account_balance = ONE_NEAR * 2000;
         testing_env!(context.clone());
 
         let id = contract
@@ -541,6 +600,39 @@ mod unit_tests {
                 ctr.proposals.get(&id).unwrap(),
             );
         }
+    }
+
+    fn create_proposal(mut ctx: VMContext, ctr: &mut Contract, bond: Balance) -> u32 {
+        ctx.predecessor_account_id = iah_registry();
+        ctx.attached_deposit = bond;
+        testing_env!(ctx.clone());
+        ctr.create_proposal(
+            acc(1),
+            iah_proof(),
+            create_prop_payload(PropKind::Text, "Proposal unit test".to_string()),
+        )
+        .unwrap()
+    }
+
+    fn create_proposal_with_status(
+        mut ctx: VMContext,
+        ctr: &mut Contract,
+        status: ProposalStatus,
+    ) -> u32 {
+        ctx.predecessor_account_id = iah_registry();
+        ctx.attached_deposit = BOND;
+        testing_env!(ctx.clone());
+        let id = ctr
+            .create_proposal(
+                acc(1),
+                iah_proof(),
+                create_prop_payload(PropKind::Text, "Proposal unit test".to_string()),
+            )
+            .unwrap();
+        let mut prop = ctr.proposals.get(&id).unwrap();
+        prop.status = status;
+        ctr.proposals.insert(&id, &prop);
+        id
     }
 
     #[test]
@@ -607,16 +699,8 @@ mod unit_tests {
         // Create a new proposal with bond to active queue and check double vote and expire
         // Check all votes
         //
-        ctx.attached_deposit = BOND;
         ctx.account_balance = ONE_NEAR * 1000;
-        testing_env!(ctx.clone());
-        let id = ctr
-            .create_proposal(
-                acc(1),
-                iah_proof(),
-                create_prop_payload(PropKind::Text, "proposal".to_owned()),
-            )
-            .unwrap();
+        let id = create_proposal(ctx.clone(), &mut ctr, BOND);
         let mut prop2 = ctr.get_proposal(id).unwrap();
         assert_eq!(
             ctr.vote(acc(3), iah_proof(), vote_payload(id, Vote::Approve)),
@@ -669,16 +753,7 @@ mod unit_tests {
         //
         // create proposal, set timestamp past voting period, status should be rejected
         //
-        ctx.attached_deposit = BOND;
-        testing_env!(ctx.clone());
-        let id = ctr
-            .create_proposal(
-                acc(1),
-                iah_proof(),
-                create_prop_payload(PropKind::Text, "Proposal unit test query 3".to_string()),
-            )
-            .unwrap();
-
+        let id = create_proposal(ctx.clone(), &mut ctr, BOND);
         let prop = ctr.get_proposal(id).unwrap();
         ctx.block_timestamp = (prop.proposal.start + ctr.voting_duration + 1) * MSECOND;
         testing_env!(ctx);
@@ -707,12 +782,18 @@ mod unit_tests {
     }
 
     #[test]
-    fn proposal_execution_text() {
+    #[should_panic(expected = "proposal does not exist")]
+    fn execute_not_active() {
+        let (_, mut ctr, id) = setup_ctr(PRE_BOND);
+        assert!(ctr.execute(id).is_err());
+    }
+
+    #[test]
+    fn execution_text() {
         let (mut ctx, mut ctr, id) = setup_ctr(BOND);
         match ctr.execute(id) {
-            Err(ExecError::NotApproved) => (),
             Ok(_) => panic!("expected NotApproved, got: OK"),
-            Err(err) => panic!("expected NotApproved got: {:?}", err),
+            Err(err) => assert_eq!(err, ExecError::NotApproved),
         }
         vote(
             ctx.clone(),
@@ -722,22 +803,77 @@ mod unit_tests {
             Vote::Approve,
         );
 
-        let mut prop = ctr.get_proposal(id).unwrap();
-        assert_eq!(prop.proposal.status, ProposalStatus::Approved);
+        let mut p = ctr.get_proposal(id).unwrap();
+        assert_eq!(p.proposal.status, ProposalStatus::Approved);
 
         match ctr.execute(id) {
-            Err(ExecError::ExecTime) => (),
-            Ok(_) => panic!("expected ExecTime, got: OK"),
-            Err(err) => panic!("expected ExecTime got: {:?}", err),
+            Ok(_) => panic!("expected Timeout, got: OK"),
+            Err(err) => assert_eq!(err, ExecError::Timeout),
         }
 
         ctx.block_timestamp = START + (ctr.voting_duration + 1) * MSECOND;
-        testing_env!(ctx);
+        testing_env!(ctx.clone());
 
         ctr.execute(id).unwrap();
 
-        prop = ctr.get_proposal(id).unwrap();
-        assert_eq!(prop.proposal.status, ProposalStatus::Executed);
+        p = ctr.get_proposal(id).unwrap();
+        assert_eq!(p.proposal.status, ProposalStatus::Executed);
+
+        //
+        // check spam transaction
+        let id = create_proposal_with_status(ctx.clone(), &mut ctr, ProposalStatus::Spam);
+        match ctr.execute(id) {
+            Ok(PromiseOrValue::Value(ExecResponse::Slashed)) => (),
+            Ok(_) => panic!("expected Ok(ExecResponse:Slashed)"),
+            Err(err) => panic!("expected Ok(ExecResponse:Slashed) got: {:?}", err),
+        }
+        p = ctr.get_proposal(id).unwrap();
+        assert_eq!(p.proposal.bond, 0);
+        // second execute should return AlreadySlashed
+        match ctr.execute(id) {
+            Ok(_) => panic!("expected Err(ExecError::AlreadySlashed)"),
+            Err(err) => assert_eq!(err, ExecError::AlreadySlashed),
+        }
+    }
+
+    #[test]
+    fn refund_bond_test() {
+        let (mut ctx, mut ctr, id) = setup_ctr(BOND);
+        vote(
+            ctx.clone(),
+            &mut ctr,
+            vec![acc(1), acc(2), acc(3)],
+            id,
+            Vote::Approve,
+        );
+        ctx.block_timestamp = START + (ctr.voting_duration + 1) * MSECOND;
+        testing_env!(ctx.clone());
+
+        ctr.execute(id).unwrap();
+        let mut p = ctr.get_proposal(id).unwrap();
+        assert_eq!(p.proposal.status, ProposalStatus::Executed);
+
+        // try to get refund again
+        assert!(!p.proposal.refund_bond());
+
+        // Get refund for proposal with no status update
+        ctx.attached_deposit = BOND;
+        testing_env!(ctx.clone());
+        let id2 = ctr
+            .create_proposal(
+                acc(1),
+                iah_proof(),
+                create_prop_payload(PropKind::Text, "Proposal unit test".to_string()),
+            )
+            .unwrap();
+        p = ctr.get_proposal(id2).unwrap();
+
+        // Set time after voting period
+        ctx.block_timestamp = (p.proposal.start + ctr.voting_duration + 1) * MSECOND;
+        testing_env!(ctx);
+
+        // Call refund
+        assert!(p.proposal.refund_bond());
     }
 
     #[test]
@@ -818,25 +954,9 @@ mod unit_tests {
 
     #[test]
     fn get_proposals() {
-        let (mut ctx, mut ctr, id1) = setup_ctr(BOND);
-        ctx.attached_deposit = BOND;
-        testing_env!(ctx.clone());
-        let id2 = ctr
-            .create_proposal(
-                acc(1),
-                iah_proof(),
-                create_prop_payload(PropKind::Text, "Proposal unit test 2".to_string()),
-            )
-            .unwrap();
-        ctx.attached_deposit = BOND;
-        testing_env!(ctx.clone());
-        let id3 = ctr
-            .create_proposal(
-                acc(1),
-                iah_proof(),
-                create_prop_payload(PropKind::Text, "Proposal unit test 3".to_string()),
-            )
-            .unwrap();
+        let (ctx, mut ctr, id1) = setup_ctr(BOND);
+        let id2 = create_proposal(ctx.clone(), &mut ctr, BOND);
+        let id3 = create_proposal(ctx.clone(), &mut ctr, BOND);
         let prop1 = ctr.get_proposal(id1).unwrap();
         let prop2 = ctr.get_proposal(id2).unwrap();
         let prop3 = ctr.get_proposal(id3).unwrap();
@@ -943,16 +1063,7 @@ mod unit_tests {
         //
         // Should not be able to support an overdue proposal
         //
-        ctx.attached_deposit = PRE_BOND;
-        testing_env!(ctx.clone());
-
-        let id = ctr
-            .create_proposal(
-                acc(1),
-                iah_proof(),
-                create_prop_payload(PropKind::Text, "proposal".to_owned()),
-            )
-            .unwrap();
+        let id = create_proposal(ctx.clone(), &mut ctr, PRE_BOND);
         ctx.block_timestamp += (PRE_VOTE_DURATION + 1) * MSECOND;
         testing_env!(ctx.clone());
         assert_eq!(
@@ -1013,5 +1124,61 @@ mod unit_tests {
         testing_env!(ctx);
         ctr.support_proposal(acc(1), iah_proof(), support_prop_payload(id))
             .unwrap();
+    }
+
+    #[test]
+    fn support_proposal_by_congress() {
+        let (_, mut ctr, id) = setup_ctr(PRE_BOND);
+
+        match ctr.support_proposal_by_congress(id, iah_registry()) {
+            Err(PrevotePropError::NotCongress) => (),
+            _ => panic!("expected error: provided DAO must be one of the congress houses"),
+        };
+        assert!(
+            ctr.support_proposal_by_congress(id, tc()).is_ok(),
+            "must accept valid dao parameter"
+        );
+    }
+
+    #[test]
+    fn on_support_by_congress() {
+        let (mut ctx, mut ctr, id) = setup_ctr(PRE_BOND);
+
+        assert_eq!(
+            ctr.on_support_by_congress(Ok(false), id),
+            Err(PrevotePropError::NotCongressMember)
+        );
+        assert_eq!(
+            ctr.on_support_by_congress(Err(near_sdk::PromiseError::Failed), id),
+            Err(PrevotePropError::NotCongressMember)
+        );
+        assert!(
+            ctr.pre_vote_proposals.contains_key(&id),
+            "should not be moved"
+        );
+
+        //
+        // outdated proposal should be removed
+        ctx.block_timestamp += (ctr.pre_vote_duration + 1) * MSECOND;
+        testing_env!(ctx.clone());
+        assert_eq!(ctr.on_support_by_congress(Ok(true), id), Ok(false));
+        assert_eq!(ctr.get_proposal(id), None);
+
+        //
+        // check that proposal was moved
+        let id = create_proposal(ctx.clone(), &mut ctr, PRE_BOND);
+        ctx.block_timestamp += MSECOND;
+        testing_env!(ctx.clone());
+        let mut prop = ctr.get_proposal(id).unwrap();
+
+        assert_eq!(ctr.on_support_by_congress(Ok(true), id), Ok(true));
+        assert_eq!(
+            ctr.assert_pre_vote_prop(id),
+            Err(PrevotePropError::NotFound)
+        );
+        // modify prop to expected values and see if it equals the stored one
+        prop.proposal.status = ProposalStatus::InProgress;
+        prop.proposal.start += 1; // start is in miliseconds
+        assert_eq!(ctr.get_proposal(id).unwrap(), prop);
     }
 }

@@ -25,17 +25,19 @@ impl FunctionError for VoteError {
 #[serde(crate = "near_sdk::serde")]
 #[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq, Debug))]
 pub enum ExecError {
-    ExecTime,
+    Timeout,
     NotApproved,
+    AlreadySlashed,
 }
 
 impl FunctionError for ExecError {
     fn panic(&self) -> ! {
         match self {
-            ExecError::ExecTime => panic_str("can only be executed after cooldown"),
+            ExecError::Timeout => panic_str("can only be executed after cooldown"),
             ExecError::NotApproved => {
                 panic_str("can execute only approved or re-execute failed proposals")
             }
+            ExecError::AlreadySlashed => panic_str("proposal was already slashed"),
         }
     }
 }
@@ -63,6 +65,8 @@ pub enum PrevotePropError {
     MinBond,
     NotOverdue,
     DoubleSupport,
+    NotCongress,
+    NotCongressMember,
 }
 
 impl FunctionError for PrevotePropError {
@@ -72,6 +76,10 @@ impl FunctionError for PrevotePropError {
             PrevotePropError::MinBond => panic_str("min active_queue_bond is required"),
             PrevotePropError::NotOverdue => panic_str("proposal is not overdue"),
             PrevotePropError::DoubleSupport => panic_str("already supported the proposal"),
+            PrevotePropError::NotCongress => panic_str("dao is not part of the congress"),
+            PrevotePropError::NotCongressMember => {
+                panic_str("user is not part of the congress dao")
+            }
         }
     }
 }
