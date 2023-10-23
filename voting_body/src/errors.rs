@@ -47,6 +47,7 @@ pub enum CreatePropError {
     NotAuthorized,
     Storage(String),
     MinBond,
+    FunctionCall(String),
 }
 
 impl FunctionError for CreatePropError {
@@ -55,6 +56,7 @@ impl FunctionError for CreatePropError {
             CreatePropError::NotAuthorized => panic_str("not authorized"),
             CreatePropError::Storage(reason) => panic_str(reason),
             CreatePropError::MinBond => panic_str("min pre_vote_bond is required"),
+            CreatePropError::FunctionCall(reason) => panic_str(reason),
         }
     }
 }

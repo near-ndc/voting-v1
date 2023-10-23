@@ -196,6 +196,13 @@ pub enum PropKind {
     /// NewBudget, UpdateBudget are modelled using Text.
     // NOTE: In Sputnik, this variant kind is called `Vote`
     Text,
+    /// Calls `receiver_id` with list of method names in a single promise.
+    /// Allows this contract to execute any arbitrary set of actions in other contracts
+    /// except for congress contracts.
+    FunctionCall {
+        receiver_id: AccountId,
+        actions: Vec<ActionCall>,
+    },
 }
 
 impl PropKind {
@@ -207,6 +214,7 @@ impl PropKind {
             PropKind::Veto { .. } => "veto".to_string(),
             PropKind::ApproveBudget { .. } => "approve-budget".to_string(),
             PropKind::Text { .. } => "text".to_string(),
+            PropKind::FunctionCall { .. } => "function-call".to_string(),
         }
     }
 }
