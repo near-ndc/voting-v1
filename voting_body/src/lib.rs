@@ -57,7 +57,8 @@ pub struct Contract {
 #[near_bindgen]
 impl Contract {
     #[init]
-    /// * hook_auth : map of accounts authorized to call hooks
+    /// All duration arguments are in miliseconds.
+    /// * hook_auth : map of accounts authorized to call hooks.
     pub fn new(
         pre_vote_duration: u64,
         voting_duration: u64,
