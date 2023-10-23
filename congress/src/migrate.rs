@@ -1,7 +1,7 @@
 use crate::*;
 
 // congress/v0.1.0
-#[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
+#[derive(BorshDeserialize)]
 pub struct OldContract {
     pub community_fund: AccountId,
     pub registry: AccountId,
@@ -20,7 +20,7 @@ pub struct OldContract {
     pub big_funding_threshold: Balance,
 }
 
-#[derive(BorshDeserialize, BorshSerialize, PanicOnDefault)]
+#[derive(BorshDeserialize)]
 pub struct OldProposal {
     pub proposer: AccountId,
     pub description: String,
