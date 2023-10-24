@@ -31,5 +31,6 @@ pub type SBTs = Vec<(AccountId, Vec<u64>)>;
 #[serde(crate = "near_sdk::serde")]
 pub enum ExecResponse {
     Slashed,
+    Rejected,
     Executed,
 }

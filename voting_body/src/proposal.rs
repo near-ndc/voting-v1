@@ -20,7 +20,7 @@ pub struct Consent {
 }
 
 impl Consent {
-    pub fn verify(self) -> bool {
+    pub fn verify(&self) -> bool {
         self.threshold <= 100
     }
 }
@@ -102,14 +102,16 @@ impl Proposal {
         Ok(())
     }
 
+    pub fn is_active(&self, voting_duration: u64) -> bool {
+        env::block_timestamp_ms() <= self.start + voting_duration
+    }
+
     pub fn recompute_status(&mut self, voting_duration: u64, consent: Consent) {
-        if self.status != ProposalStatus::InProgress {
+        // still in progress or already finalzied
+        if self.is_active(voting_duration) || self.status != ProposalStatus::InProgress {
             return;
         }
-        if env::block_timestamp_ms() > self.start + voting_duration {
-            self.status = ProposalStatus::Rejected;
-            return;
-        }
+        self.status = ProposalStatus::Rejected;
         if self.approve + self.reject + self.abstain < consent.quorum {
             return; // we don't have quorum
         }
@@ -118,12 +120,12 @@ impl Proposal {
         if self.approve >= qualified * consent.threshold as u32 / 100 {
             self.status = ProposalStatus::Approved;
             self.approved_at = Some(env::block_timestamp_ms());
-        } else if total_no >= qualified * (100 - consent.threshold) as u32 / 100 {
-            if self.reject > self.spam {
-                self.status = ProposalStatus::Rejected;
-            } else {
-                self.status = ProposalStatus::Spam;
-            }
+        } else if self.spam > self.reject
+            && total_no >= qualified * (100 - consent.threshold) as u32 / 100
+        {
+            self.status = ProposalStatus::Spam;
+        } else {
+            self.status = ProposalStatus::Rejected;
         }
     }
 
@@ -237,7 +239,6 @@ pub enum ProposalStatus {
     /// If proposal has failed when executing. Allowed to re-finalize again to either expire or
     /// approved.
     Failed,
-    Vetoed,
 }
 
 /// Votes recorded in the proposal.

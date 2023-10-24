@@ -317,79 +317,56 @@ impl Contract {
         if !matches!(prop.status, ProposalStatus::InProgress) {
             return Err(VoteError::NotInProgress);
         }
-        if env::block_timestamp_ms() > prop.start + self.voting_duration {
-            return Err(VoteError::NotActive);
+        if !prop.is_active(self.voting_duration) {
+            return Err(VoteError::Timeout);
         }
-
-        // TODO: this have to be fixed:
-        // + threshold must not change the status. If threshold is smaller than 50% of eligible voters,
-        //   then it may happen that we reach threshold, even though the rest of the voters are able to
-        //   change the voting direction!
-        // + need to integrate quorum
 
         prop.add_vote(caller.clone(), payload.vote)?;
-        let consent = match prop.kind.required_consent() {
-            ConsentKind::Simple => self.simple_consent,
-            ConsentKind::Super => self.super_consent,
-        };
-        prop.recompute_status(self.voting_duration, consent);
+        // NOTE: we can't quickly set a status to a finalized one because we don't know the total number of
+        // voters
 
-        if prop.status == ProposalStatus::Spam {
-            self.proposals.remove(&payload.prop_id);
-            let treasury = self.accounts.get().unwrap().community_treasury;
-            Promise::new(treasury).transfer(prop.bond);
-            emit_spam(payload.prop_id);
-            emit_prop_slashed(payload.prop_id, prop.bond);
-            return Ok(());
-        } else {
-            self.proposals.insert(&payload.prop_id, &prop);
-            if let Err(reason) = finalize_storage_check(storage_start, 0, caller) {
-                return Err(VoteError::Storage(reason));
-            }
-        }
-
+        self.proposals.insert(&payload.prop_id, &prop);
         emit_vote(payload.prop_id);
 
-        if prop.status == ProposalStatus::Approved {
-            // We ignore a failure of self.execute here to assure that the vote is counted.
-            let res = self.execute(payload.prop_id);
-            if res.is_err() {
-                emit_vote_execute(payload.prop_id, res.err().unwrap());
-            }
+        if let Err(reason) = finalize_storage_check(storage_start, 0, caller) {
+            return Err(VoteError::Storage(reason));
         }
-
         Ok(())
     }
 
     /// Allows anyone to execute or slash the proposal.
     /// If proposal is slasheable, the user who executes gets REMOVE_REWARD.
-    ///
     #[handle_result]
     pub fn execute(&mut self, id: u32) -> Result<PromiseOrValue<ExecResponse>, ExecError> {
         let mut prop = self.assert_proposal(id);
-        prop.recompute_status(self.voting_duration);
-
-        // Check if it's a spam and we need to slash
-        if prop.status == ProposalStatus::Spam {
-            if prop.slash_bond(self.accounts.get().unwrap().community_treasury) {
-                self.proposals.insert(&id, &prop);
-                return Ok(PromiseOrValue::Value(ExecResponse::Slashed));
-            }
-            return Err(ExecError::AlreadySlashed);
-        }
-
-        // Check if execute is possible if a proposal Approved by not executed yet,
-        // or failed (previous attempt to execute failed).
+        // quick return, can only execute if the status was not switched yet, or it
+        // failed (previous attempt to execute failed).
         if !matches!(
             prop.status,
-            ProposalStatus::Approved | ProposalStatus::Failed
+            ProposalStatus::InProgress | ProposalStatus::Failed
         ) {
-            return Err(ExecError::NotApproved);
+            return Err(ExecError::AlreadyFinalized);
         }
-        let now = env::block_timestamp_ms();
-        if now <= prop.start + self.voting_duration {
-            return Err(ExecError::Timeout);
-        }
+
+        prop.recompute_status(self.voting_duration, self.prop_consent(&prop));
+        match prop.status {
+            ProposalStatus::InProgress | ProposalStatus::PreVote => {
+                return Err(ExecError::InProgress)
+            }
+            ProposalStatus::Executed => return Ok(PromiseOrValue::Value(ExecResponse::Executed)),
+            ProposalStatus::Rejected => {
+                self.proposals.insert(&id, &prop);
+                return Ok(PromiseOrValue::Value(ExecResponse::Rejected));
+            }
+            ProposalStatus::Spam => {
+                emit_spam(id);
+                emit_prop_slashed(id, prop.bond); // need to be called before we zero prop.bond
+                prop.slash_bond(self.accounts.get().unwrap().community_treasury);
+                self.proposals.remove(&id);
+                return Ok(PromiseOrValue::Value(ExecResponse::Slashed));
+            }
+            ProposalStatus::Approved | ProposalStatus::Failed => (), // execute below
+        };
 
         prop.refund_bond();
         prop.status = ProposalStatus::Executed;
@@ -533,6 +510,13 @@ impl Contract {
                 emit_executed(prop_id);
             }
         };
+    }
+
+    fn prop_consent(&self, prop: &Proposal) -> Consent {
+        match prop.kind.required_consent() {
+            ConsentKind::Simple => self.simple_consent.clone(),
+            ConsentKind::Super => self.super_consent.clone(),
+        }
     }
 }
 
@@ -827,7 +811,7 @@ mod unit_tests {
         testing_env!(ctx.clone());
         assert_eq!(
             ctr.vote(acc(1), iah_proof(), vote_payload(id, Vote::Approve)),
-            Err(VoteError::NotActive)
+            Err(VoteError::Timeout)
         );
     }
 
@@ -851,7 +835,7 @@ mod unit_tests {
         let (mut ctx, mut ctr, id) = setup_ctr(BOND);
         match ctr.execute(id) {
             Ok(_) => panic!("expected NotApproved, got: OK"),
-            Err(err) => assert_eq!(err, ExecError::NotApproved),
+            Err(err) => assert_eq!(err, ExecError::AlreadyFinalized),
         }
         vote(
             ctx.clone(),
