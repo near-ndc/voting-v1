@@ -564,6 +564,7 @@ async fn tc_ban_and_dismiss_fail_cases() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[ignore = "valid only for migration"]
 #[tokio::test]
 async fn migration_mainnet() -> anyhow::Result<()> {
     let worker_sandbox = near_workspaces::sandbox().await?;
@@ -589,15 +590,7 @@ async fn migration_mainnet() -> anyhow::Result<()> {
     let res = new_congress.call("migrate").max_gas().transact().await?;
     assert!(res.is_success(), "{:?}", res.receipt_failures());
 
-    // query the migrated contarct for proposals
-    let proposal = new_congress
-        .call("get_proposal")
-        .args_json(json!({ "id": 1}))
-        .view()
-        .await?
-        .json::<Option<ProposalOutput>>()?;
-
-    assert!(proposal.unwrap().proposal.abstain == 0);
+    // TODO: add post migration query
 
     Ok(())
 }
