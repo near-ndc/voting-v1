@@ -26,4 +26,15 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ### Bug Fixes
 
+## v0.2.0 (2023-10-24)
+
+### Features
+
+- Added abstain vote type.
+- new `is_member(&self, account: AccountId) -> bool` query function.
+
+### Bug Fixes
+
+- Proposal iterator to handle edge case for the limit parameter.
+
 ## v0.1.0 (2023-10-13)
