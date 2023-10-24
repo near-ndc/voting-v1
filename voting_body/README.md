@@ -21,19 +21,22 @@ When creating a proposal, the submitter must stake a bond. If `pre-vote bond` is
 
 ### Pre-voting queue
 
-Proposals in this queue are not active. VB members can't vote for proposals in the pre-vote queue and UI doesn't display them by default. Instead, members can send a _pre_vote_support_ transaction. Proposal is moved to the active queue when:
+Proposals in this queue are not active. VB members can't vote for proposals in the pre-vote queue and UI doesn't display them by default. Instead, members can send a _pre_vote_support_ transaction. There are 3 ways to move a proposal to the active queue:
 
-- reaches pre-vote support
-- is topped up with more NEAR to reach `active_queue_bond`
-- is supported by one of the Congress members
+- get pre-vote support;
+- top up with more NEAR to reach `active_queue_bond`;
+- get a support by one of the Congress members using `support_proposal_by_congress`.
 
 If a proposal doesn't meet the conditions to move to the active queue, then the proposal is removed and the bond is moved to a community fund. For overdue proposals, anyone can call `remove_pre_vote_prop` method to do the cleanup and slash. To incentivize it, `REMOVE_REWARD` is deduced from the bond and sent to the caller.
 
+Note: originally only a congress support was required to move a proposal to the active queue. However, that creates a strong subjectivity and censorship (example: VB wants to dismiss a house - obviously house may not be happy and not "support" such a proposal).
+
+
 ### Active queue
 
-This is the main set of proposals. Proposals in this queue are eligible for voting and displayed by the default in the UI. Proposals from the active queue are not removed unless they are marked as spam (see details). They are preserved and anyone can query them, even when a proposal was rejected.
+Proposals in this queue are eligible for voting and displayed by the default in the UI. Proposals from the active queue are not removed unless they are marked as spam (more about it in the voting section). They are preserved and anyone can query them, even when a proposal was rejected.
 
-When a proposal is moved from the pre-voting queue to active queue, the set of accounts that supported the proposal is cleared - it's not needed any more, and we can save the space and proposal load time.
+When a proposal is moved from the pre-voting queue to the active queue, the set of accounts that supported the proposal is cleared - it's not needed any more. We can save the space and proposal load time.
 
 ```mermaid
 ---
