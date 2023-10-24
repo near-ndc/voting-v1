@@ -17,7 +17,6 @@ mod constants;
 mod errors;
 mod events;
 mod ext;
-mod migrate;
 pub mod proposal;
 mod storage;
 pub mod view;
