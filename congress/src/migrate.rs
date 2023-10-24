@@ -1,8 +1,20 @@
 use crate::*;
+use near_sdk::serde::Serialize;
 
 // congress/v0.1.0
 
-#[derive(BorshDeserialize, BorshSerialize)]
+/// Votes recorded in the proposal.
+#[near_bindgen]
+#[derive(BorshSerialize, BorshDeserialize, Serialize)]
+#[serde(crate = "near_sdk::serde")]
+pub enum OldVote {
+    Approve = 0x0,
+    Reject = 0x1,
+}
+
+#[near_bindgen]
+#[derive(BorshDeserialize, BorshSerialize, Serialize)]
+#[serde(crate = "near_sdk::serde")]
 pub struct OldProposal {
     pub proposer: AccountId,
     pub description: String,
@@ -11,7 +23,7 @@ pub struct OldProposal {
     pub approve: u8,
     pub reject: u8,
     // abstain missing in the old state
-    pub votes: HashMap<AccountId, Vote>,
+    pub votes: HashMap<AccountId, OldVote>,
     pub submission_time: u64,
     pub approved_at: Option<u64>,
 }
@@ -43,19 +55,29 @@ impl Contract {
         let old_state: OldState = env::state_read().expect("failed");
         // New field in the contract.proposals -> Proposal :
         // + abstain: u8,
+        // New option in enum Vote:
+        // + Abstain
 
         let mut proposals: LookupMap<u32, Proposal> = LookupMap::new(StorageKey::Proposals);
         for prop_id in 1..=old_state.prop_counter {
             if let Some(old_prop) = old_state.proposals.get(&prop_id) {
+                let mut new_votes: HashMap<AccountId, Vote> = HashMap::new();
+                for (acc, old_vote) in old_prop.votes.iter() {
+                    let new_vote = match old_vote {
+                        OldVote::Approve => Vote::Approve,
+                        OldVote::Reject => Vote::Reject,
+                    };
+                    new_votes.insert(acc.clone(), new_vote);
+                }
                 let new_prop = Proposal {
-                    proposer: old_prop.proposer,
+                    proposer: old_prop.proposer.clone(),
                     description: old_prop.description,
                     kind: old_prop.kind,
                     status: old_prop.status,
                     approve: old_prop.approve,
                     reject: old_prop.reject,
                     abstain: 0.clone(), // Set all to zero
-                    votes: old_prop.votes,
+                    votes: new_votes,
                     submission_time: old_prop.submission_time,
                     approved_at: old_prop.approved_at,
                 };

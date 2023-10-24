@@ -589,7 +589,15 @@ async fn migration_mainnet() -> anyhow::Result<()> {
     let res = new_congress.call("migrate").max_gas().transact().await?;
     assert!(res.is_success(), "{:?}", res.receipt_failures());
 
-    //TODO: add queries to check the values
+    // query the migrated contarct for proposals
+    let proposal = new_congress
+        .call("get_proposal")
+        .args_json(json!({ "id": 1}))
+        .view()
+        .await?
+        .json::<Option<ProposalOutput>>()?;
+
+    assert!(proposal.unwrap().proposal.abstain == 0);
 
     Ok(())
 }
