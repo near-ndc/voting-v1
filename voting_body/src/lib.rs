@@ -69,6 +69,10 @@ impl Contract {
         simple_consent: Consent,
         super_consent: Consent,
     ) -> Self {
+        require!(
+            simple_consent.verify() && super_consent.verify(),
+            "threshold must be a value in percent, max is 100%"
+        );
         Self {
             prop_counter: 0,
             pre_vote_proposals: LookupMap::new(StorageKey::PreVoteProposals),
@@ -317,14 +321,24 @@ impl Contract {
             return Err(VoteError::NotActive);
         }
 
-        // TODO: use proper quorum
-        prop.add_vote(caller.clone(), payload.vote, self.simple_consent.quorum)?;
+        // TODO: this have to be fixed:
+        // + threshold must not change the status. If threshold is smaller than 50% of eligible voters,
+        //   then it may happen that we reach threshold, even though the rest of the voters are able to
+        //   change the voting direction!
+        // + need to integrate quorum
+
+        prop.add_vote(caller.clone(), payload.vote)?;
+        let consent = match prop.kind.required_consent() {
+            ConsentKind::Simple => self.simple_consent,
+            ConsentKind::Super => self.super_consent,
+        };
+        prop.recompute_status(self.voting_duration, consent);
 
         if prop.status == ProposalStatus::Spam {
             self.proposals.remove(&payload.prop_id);
-            emit_spam(payload.prop_id);
             let treasury = self.accounts.get().unwrap().community_treasury;
             Promise::new(treasury).transfer(prop.bond);
+            emit_spam(payload.prop_id);
             emit_prop_slashed(payload.prop_id, prop.bond);
             return Ok(());
         } else {
