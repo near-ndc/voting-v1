@@ -111,10 +111,10 @@ impl Proposal {
         if self.is_active(voting_duration) || self.status != ProposalStatus::InProgress {
             return;
         }
-        self.status = ProposalStatus::Rejected;
         if self.approve + self.reject + self.abstain < consent.quorum {
             return; // we don't have quorum
         }
+
         let total_no = self.reject + self.spam;
         let qualified = self.approve + total_no;
         if self.approve >= qualified * consent.threshold as u32 / 100 {

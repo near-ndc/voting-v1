@@ -5,7 +5,7 @@ use events::*;
 use near_sdk::{
     borsh::{self, BorshDeserialize, BorshSerialize},
     collections::{LazyOption, LookupMap},
-    env,
+    env::{self, panic_str},
     json_types::U128,
     near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseOrValue,
     PromiseResult,
@@ -350,9 +350,8 @@ impl Contract {
 
         prop.recompute_status(self.voting_duration, self.prop_consent(&prop));
         match prop.status {
-            ProposalStatus::InProgress | ProposalStatus::PreVote => {
-                return Err(ExecError::InProgress)
-            }
+            ProposalStatus::PreVote => panic_str("pre-vote proposal can't be in the active queue"),
+            ProposalStatus::InProgress => return Err(ExecError::InProgress),
             ProposalStatus::Executed => return Ok(PromiseOrValue::Value(ExecResponse::Executed)),
             ProposalStatus::Rejected => {
                 self.proposals.insert(&id, &prop);
