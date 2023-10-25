@@ -1,7 +1,7 @@
 use near_sdk::{json_types::U128, serde::Serialize, Balance};
 use serde_json::json;
 
-use crate::{proposal::PropKind, ExecError};
+use crate::proposal::PropKind;
 
 use common::{EventPayload, NearEvent};
 
@@ -49,13 +49,6 @@ pub(crate) fn emit_vote(prop_id: u32) {
     emit_event(EventPayload {
         event: "vote",
         data: json!({ "prop_id": prop_id }),
-    });
-}
-
-pub(crate) fn emit_vote_execute(prop_id: u32, err: ExecError) {
-    emit_event(EventPayload {
-        event: "vote-execute",
-        data: json!({ "prop_id": prop_id, "status": "failed", "reason": err }),
     });
 }
 

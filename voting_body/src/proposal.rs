@@ -12,7 +12,7 @@ use crate::{PrevotePropError, VoteError, REMOVE_REWARD};
 /// to pass.
 #[derive(BorshSerialize, BorshDeserialize, Deserialize, Serialize, Clone)]
 #[serde(crate = "near_sdk::serde")]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq))]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Copy))]
 pub struct Consent {
     pub quorum: u32,
     /// percentage value
