@@ -49,26 +49,16 @@ impl Contract {
         limit: u32,
         reverse: Option<bool>,
     ) -> Vec<ProposalOutput> {
-        let iter = if reverse.unwrap_or(false) {
-            let end = if from_index == 0 {
-                self.prop_counter
-            } else {
-                min(from_index, self.prop_counter)
-            };
-            let start = if end <= limit { 1 } else { end - (limit - 1) };
-            Either::Left((start..=end).rev())
-        } else {
-            let from_index = max(from_index, 1);
-            Either::Right(from_index..=min(self.prop_counter, from_index + limit - 1))
-        };
+        self._get_proposals(from_index, limit, reverse, false)
+    }
 
-        iter.filter_map(|id| {
-            self.proposals.get(&id).map(|mut proposal| {
-                proposal.recompute_status(self.voting_duration);
-                ProposalOutput { id, proposal }
-            })
-        })
-        .collect()
+    pub fn get_pre_vote_proposals(
+        &self,
+        from_index: u32,
+        limit: u32,
+        reverse: Option<bool>,
+    ) -> Vec<ProposalOutput> {
+        self._get_proposals(from_index, limit, reverse, true)
     }
 
     /// Get specific proposal.
@@ -99,5 +89,44 @@ impl Contract {
             voting_duration: self.voting_duration,
             accounts: self.accounts.get().unwrap(),
         }
+    }
+
+    fn _get_proposals(
+        &self,
+        from_index: u32,
+        limit: u32,
+        reverse: Option<bool>,
+        pre_vote: bool,
+    ) -> Vec<ProposalOutput> {
+        let iter = if reverse.unwrap_or(false) {
+            let end = if from_index == 0 {
+                self.prop_counter
+            } else {
+                min(from_index, self.prop_counter)
+            };
+            let start = if end <= limit { 1 } else { end - (limit - 1) };
+            Either::Left((start..=end).rev())
+        } else {
+            let from_index = max(from_index, 1);
+            Either::Right(from_index..=min(self.prop_counter, from_index + limit - 1))
+        };
+
+        if pre_vote {
+            return iter
+                .filter_map(|id| {
+                    self.pre_vote_proposals.get(&id).map(|mut proposal| {
+                        proposal.recompute_status(self.voting_duration);
+                        ProposalOutput { id, proposal }
+                    })
+                })
+                .collect();
+        }
+        iter.filter_map(|id| {
+            self.proposals.get(&id).map(|mut proposal| {
+                proposal.recompute_status(self.voting_duration);
+                ProposalOutput { id, proposal }
+            })
+        })
+        .collect()
     }
 }

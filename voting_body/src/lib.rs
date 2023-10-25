@@ -1250,4 +1250,14 @@ mod unit_tests {
             ),
         }
     }
+    #[test]
+    fn get_pre_vote_proposals() {
+        let (ctx, mut ctr, _) = setup_ctr(BOND);
+        create_proposal(ctx.clone(), &mut ctr, PRE_BOND);
+        create_proposal(ctx.clone(), &mut ctr, PRE_BOND);
+        let active_proposals = ctr.get_proposals(0, 10, None);
+        assert_eq!(active_proposals.len(), 1);
+        let pre_vote_proposals = ctr.get_pre_vote_proposals(0, 10, None);
+        assert_eq!(pre_vote_proposals.len(), 2);
+    }
 }
