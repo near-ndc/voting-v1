@@ -71,7 +71,7 @@ impl Contract {
     ) -> Self {
         require!(
             simple_consent.verify() && super_consent.verify(),
-            "threshold must be a value in percent, max is 100%"
+            "threshold must be a percentage (0-100%)"
         );
         Self {
             prop_counter: 0,
@@ -360,7 +360,7 @@ impl Contract {
             }
             ProposalStatus::Spam => {
                 emit_spam(id);
-                emit_prop_slashed(id, prop.bond); // need to be called before we zero prop.bond
+                emit_prop_slashed(id, prop.bond); // needs to be called before we zero prop.bond
                 prop.slash_bond(self.accounts.get().unwrap().community_treasury);
                 self.proposals.remove(&id);
                 return Ok(PromiseOrValue::Value(ExecResponse::Slashed));
