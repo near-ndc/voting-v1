@@ -191,7 +191,6 @@ impl Contract {
         self.assert_member_not_involved(&prop, &user)?;
 
         if !matches!(prop.status, ProposalStatus::InProgress) {
-            println!(">>>>> status {:?}", prop.status);
             return Err(VoteError::NotInProgress);
         }
         if env::block_timestamp_ms() > prop.submission_time + self.voting_duration {
