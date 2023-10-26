@@ -4,7 +4,7 @@ use common::finalize_storage_check;
 use events::*;
 use near_sdk::{
     borsh::{self, BorshDeserialize, BorshSerialize},
-    collections::{LazyOption, LookupMap, UnorderedMap},
+    collections::{LazyOption, UnorderedMap},
     env::{self, panic_str},
     json_types::U128,
     near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseOrValue,

@@ -1,6 +1,3 @@
-use std::cmp::{max, min};
-
-use itertools::Either;
 use near_sdk::serde::Serialize;
 
 use crate::*;
@@ -102,42 +99,41 @@ impl Contract {
         let start;
         let end;
 
-        if reverse.unwrap_or(false) {
-            end = if from_index == 0 {
-                self.prop_counter
-            } else {
-                std::cmp::min(from_index, self.prop_counter)
-            };
-            start = if end <= limit { 1 } else { end - (limit - 1) };
-
-            for id in (start..=end).rev() {
-                let proposals = if pre_vote {
-                    &self.pre_vote_proposals
+        // Determine the range based on reverse, limit and from_index values
+        match reverse {
+            Some(true) => {
+                end = if from_index == 0 {
+                    self.prop_counter
                 } else {
-                    &self.proposals
+                    std::cmp::min(from_index, self.prop_counter)
                 };
-
-                if let Some(mut proposal) = proposals.get(&id) {
-                    proposal.recompute_status(self.voting_duration, self.prop_consent(&proposal));
-                    results.push(ProposalOutput { id, proposal });
-                }
+                start = if end <= limit { 1 } else { end - (limit - 1) };
             }
+            _ => {
+                start = std::cmp::max(from_index, 1);
+                end = std::cmp::min(self.prop_counter, start + limit - 1)
+            }
+        };
+
+        // Choose the appropriate proposals
+        let proposals = if pre_vote {
+            &self.pre_vote_proposals
         } else {
-            let from_index = std::cmp::max(from_index, 1);
-            end = std::cmp::min(self.prop_counter, from_index + limit - 1);
+            &self.proposals
+        };
 
-            for id in from_index..=end {
-                let proposals = if pre_vote {
-                    &self.pre_vote_proposals
-                } else {
-                    &self.proposals
-                };
-
-                if let Some(mut proposal) = proposals.get(&id) {
-                    proposal.recompute_status(self.voting_duration, self.prop_consent(&proposal));
-                    results.push(ProposalOutput { id, proposal });
-                }
+        // Colletct the proposals
+        for (id, proposal) in proposals {
+            if id >= start && id <= end {
+                results.push(ProposalOutput { id, proposal });
             }
+        }
+
+        // Sort the results
+        if let Some(true) = reverse {
+            results.sort_by_key(|proposal| std::cmp::Reverse(proposal.id));
+        } else {
+            results.sort_by_key(|proposal| proposal.id);
         }
 
         results
