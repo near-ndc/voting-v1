@@ -111,22 +111,19 @@ impl Contract {
             Either::Right(from_index..=min(self.prop_counter, from_index + limit - 1))
         };
 
-        if pre_vote {
-            return iter
+        let proposals = if pre_vote {
+            self.pre_vote_proposals
+       } else {
+          self.proposals
+       }
+       // if we use unordered map, then we won't have `iter`
+       iter
                 .filter_map(|id| {
-                    self.pre_vote_proposals.get(&id).map(|mut proposal| {
+                    proposals.get(&id).map(|mut proposal| {
                         proposal.recompute_status(self.voting_duration);
                         ProposalOutput { id, proposal }
                     })
                 })
                 .collect();
-        }
-        iter.filter_map(|id| {
-            self.proposals.get(&id).map(|mut proposal| {
-                proposal.recompute_status(self.voting_duration);
-                ProposalOutput { id, proposal }
-            })
-        })
-        .collect()
     }
 }
