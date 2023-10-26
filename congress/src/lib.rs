@@ -186,21 +186,20 @@ impl Contract {
         if members.binary_search(&user).is_err() {
             return Err(VoteError::NotAuthorized);
         }
-        let mut prop: Proposal = self.assert_proposal(id);
+        let mut prop = self.assert_proposal(id);
 
         self.assert_member_not_involved(&prop, &user)?;
 
         if !matches!(prop.status, ProposalStatus::InProgress) {
+            println!(">>>>> status {:?}", prop.status);
             return Err(VoteError::NotInProgress);
         }
         if env::block_timestamp_ms() > prop.submission_time + self.voting_duration {
             return Err(VoteError::NotActive);
         }
 
-        prop.add_vote(user, vote, self.threshold, self.min_voting_duration)?;
-
-        // check if all votes were casted and change the status accordingly
-        prop.status_all_votes_casted(members.len(), self.threshold);
+        prop.add_vote(user, vote)?;
+        prop.finalize_status(members.len(), self.threshold, self.min_voting_duration);
 
         self.proposals.insert(&id, &prop);
         emit_vote(id);
@@ -605,8 +604,7 @@ mod unit_tests {
         for account in accounts {
             ctx.predecessor_account_id = account;
             testing_env!(ctx.clone());
-            let res = ctr.vote(id, Vote::Approve);
-            assert!(res.is_ok());
+            assert_eq!(ctr.vote(id, Vote::Approve), Ok(()));
         }
         ctr
     }
