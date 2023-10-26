@@ -10,13 +10,25 @@ use crate::{PrevotePropError, VoteError, REMOVE_REWARD};
 /// Consent sets the conditions for vote to pass. It specifies a quorum (minimum amount of
 /// accounts that have to vote and the approval threshold (% of #approve votes) for a proposal
 /// to pass.
-#[derive(BorshSerialize, BorshDeserialize, Deserialize, Serialize, Clone, Copy)]
+#[derive(BorshSerialize, BorshDeserialize, Deserialize, Serialize, Clone)]
 #[serde(crate = "near_sdk::serde")]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq))]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Copy))]
 pub struct Consent {
     pub quorum: u32,
-    /// percent value
-    pub threshold: u16,
+    /// percentage value
+    pub threshold: u8,
+}
+
+impl Consent {
+    pub fn verify(&self) -> bool {
+        self.threshold <= 100
+    }
+}
+
+#[derive(BorshSerialize, BorshDeserialize)]
+pub enum ConsentKind {
+    Simple,
+    Super,
 }
 
 /// Proposals that are sent to this DAO.
@@ -65,13 +77,7 @@ impl Proposal {
         Ok(())
     }
 
-    pub fn add_vote(
-        &mut self,
-        user: AccountId,
-        vote: Vote,
-        quorum: u32,
-        //TODO: threshold
-    ) -> Result<(), VoteError> {
+    pub fn add_vote(&mut self, user: AccountId, vote: Vote) -> Result<(), VoteError> {
         // allow to overwrite existing votes
         if let Some(old_vote) = self.votes.get(&user) {
             match old_vote {
@@ -81,54 +87,47 @@ impl Proposal {
                 Vote::Spam => self.spam -= 1,
             }
         }
-        // TODO: this have to be fixed:
-        // + threshold must not change the status. If threshold is smaller than 50% of eligible voters,
-        //   then it may happen that we reach threshold, even though the rest of the voters are able to
-        //   change the voting direction!
-        // + need to integrate quorum
 
         match vote {
-            Vote::Approve => {
-                self.approve += 1;
-                if self.approve >= quorum {
-                    self.status = ProposalStatus::Approved;
-                    self.approved_at = Some(env::block_timestamp_ms());
-                }
-            }
+            Vote::Abstain => self.abstain += 1,
+            Vote::Approve => self.approve += 1,
             Vote::Reject => {
                 self.reject += 1;
-                if self.reject + self.spam >= quorum {
-                    if self.reject > self.spam {
-                        self.status = ProposalStatus::Rejected;
-                    } else {
-                        self.status = ProposalStatus::Spam;
-                    }
-                }
-            }
-            Vote::Abstain => {
-                self.abstain += 1;
-                // TODO
             }
             Vote::Spam => {
                 self.spam += 1;
-                if self.reject + self.spam >= quorum {
-                    if self.spam > self.reject {
-                        self.status = ProposalStatus::Spam;
-                    } else {
-                        self.status = ProposalStatus::Rejected;
-                    }
-                }
-                // TODO: remove proposal and slash bond
             }
-        }
+        };
         self.votes.insert(user, vote);
         Ok(())
     }
 
-    pub fn recompute_status(&mut self, voting_duration: u64) {
-        if &self.status == &ProposalStatus::InProgress
-            && env::block_timestamp_ms() > self.start + voting_duration
+    pub fn is_active(&self, voting_duration: u64) -> bool {
+        env::block_timestamp_ms() <= self.start + voting_duration
+    }
+
+    pub fn recompute_status(&mut self, voting_duration: u64, consent: Consent) {
+        // still in progress or already finalzied
+        if self.is_active(voting_duration) || self.status != ProposalStatus::InProgress {
+            return;
+        }
+        let total_no = self.reject + self.spam;
+        let qualified = self.approve + total_no;
+
+        // check if we have quorum
+        if qualified + self.abstain < consent.quorum {
+            self.status = ProposalStatus::Rejected;
+            return;
+        }
+
+        if self.approve > qualified * consent.threshold as u32 / 100 {
+            self.status = ProposalStatus::Approved;
+            self.approved_at = Some(env::block_timestamp_ms()); // TODO: update to executed at
+        } else if self.spam > self.reject
+            && total_no >= qualified * (100 - consent.threshold) as u32 / 100
         {
+            self.status = ProposalStatus::Spam;
+        } else {
             self.status = ProposalStatus::Rejected;
         }
     }
@@ -217,6 +216,15 @@ impl PropKind {
             PropKind::FunctionCall { .. } => "function-call".to_string(),
         }
     }
+
+    pub fn required_consent(&self) -> ConsentKind {
+        match self {
+            Self::Dismiss { .. } | Self::Veto { .. } | Self::Text | Self::FunctionCall { .. } => {
+                ConsentKind::Simple
+            }
+            Self::Dissolve { .. } | Self::ApproveBudget { .. } => ConsentKind::Super,
+        }
+    }
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq)]
@@ -234,7 +242,6 @@ pub enum ProposalStatus {
     /// If proposal has failed when executing. Allowed to re-finalize again to either expire or
     /// approved.
     Failed,
-    Vetoed,
 }
 
 /// Votes recorded in the proposal.
@@ -248,7 +255,7 @@ pub enum Vote {
     /// slashed.
     Spam = 0x2,
     Abstain = 0x3,
-    // note: we don't have Remove
+    // note: we don't have Remove, we use Spam.
 }
 
 /// Function call arguments.

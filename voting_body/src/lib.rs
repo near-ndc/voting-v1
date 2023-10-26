@@ -5,7 +5,7 @@ use events::*;
 use near_sdk::{
     borsh::{self, BorshDeserialize, BorshSerialize},
     collections::{LazyOption, LookupMap},
-    env,
+    env::{self, panic_str},
     json_types::U128,
     near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseOrValue,
     PromiseResult,
@@ -69,6 +69,10 @@ impl Contract {
         simple_consent: Consent,
         super_consent: Consent,
     ) -> Self {
+        require!(
+            simple_consent.verify() && super_consent.verify(),
+            "threshold must be a percentage (0-100%)"
+        );
         Self {
             prop_counter: 0,
             pre_vote_proposals: LookupMap::new(StorageKey::PreVoteProposals),
@@ -313,69 +317,55 @@ impl Contract {
         if !matches!(prop.status, ProposalStatus::InProgress) {
             return Err(VoteError::NotInProgress);
         }
-        if env::block_timestamp_ms() > prop.start + self.voting_duration {
-            return Err(VoteError::NotActive);
+        if !prop.is_active(self.voting_duration) {
+            return Err(VoteError::Timeout);
         }
 
-        // TODO: use proper quorum
-        prop.add_vote(caller.clone(), payload.vote, self.simple_consent.quorum)?;
+        prop.add_vote(caller.clone(), payload.vote)?;
+        // NOTE: we can't quickly set a status to a finalized one because we don't know the total number of
+        // voters
 
-        if prop.status == ProposalStatus::Spam {
-            self.proposals.remove(&payload.prop_id);
-            emit_spam(payload.prop_id);
-            let treasury = self.accounts.get().unwrap().community_treasury;
-            Promise::new(treasury).transfer(prop.bond);
-            emit_prop_slashed(payload.prop_id, prop.bond);
-            return Ok(());
-        } else {
-            self.proposals.insert(&payload.prop_id, &prop);
-            if let Err(reason) = finalize_storage_check(storage_start, 0, caller) {
-                return Err(VoteError::Storage(reason));
-            }
-        }
-
+        self.proposals.insert(&payload.prop_id, &prop);
         emit_vote(payload.prop_id);
 
-        if prop.status == ProposalStatus::Approved {
-            // We ignore a failure of self.execute here to assure that the vote is counted.
-            let res = self.execute(payload.prop_id);
-            if res.is_err() {
-                emit_vote_execute(payload.prop_id, res.err().unwrap());
-            }
+        if let Err(reason) = finalize_storage_check(storage_start, 0, caller) {
+            return Err(VoteError::Storage(reason));
         }
-
         Ok(())
     }
 
     /// Allows anyone to execute or slash the proposal.
     /// If proposal is slasheable, the user who executes gets REMOVE_REWARD.
-    ///
     #[handle_result]
     pub fn execute(&mut self, id: u32) -> Result<PromiseOrValue<ExecResponse>, ExecError> {
         let mut prop = self.assert_proposal(id);
-        prop.recompute_status(self.voting_duration);
-
-        // Check if it's a spam and we need to slash
-        if prop.status == ProposalStatus::Spam {
-            if prop.slash_bond(self.accounts.get().unwrap().community_treasury) {
-                self.proposals.insert(&id, &prop);
-                return Ok(PromiseOrValue::Value(ExecResponse::Slashed));
-            }
-            return Err(ExecError::AlreadySlashed);
-        }
-
-        // Check if execute is possible if a proposal Approved by not executed yet,
-        // or failed (previous attempt to execute failed).
+        // quick return, can only execute if the status was not switched yet, or it
+        // failed (previous attempt to execute failed).
         if !matches!(
             prop.status,
-            ProposalStatus::Approved | ProposalStatus::Failed
+            ProposalStatus::InProgress | ProposalStatus::Failed
         ) {
-            return Err(ExecError::NotApproved);
+            return Err(ExecError::AlreadyFinalized);
         }
-        let now = env::block_timestamp_ms();
-        if now <= prop.start + self.voting_duration {
-            return Err(ExecError::Timeout);
-        }
+
+        prop.recompute_status(self.voting_duration, self.prop_consent(&prop));
+        match prop.status {
+            ProposalStatus::PreVote => panic_str("pre-vote proposal can't be in the active queue"),
+            ProposalStatus::InProgress => return Err(ExecError::InProgress),
+            ProposalStatus::Executed => return Ok(PromiseOrValue::Value(ExecResponse::Executed)),
+            ProposalStatus::Rejected => {
+                self.proposals.insert(&id, &prop);
+                return Ok(PromiseOrValue::Value(ExecResponse::Rejected));
+            }
+            ProposalStatus::Spam => {
+                emit_spam(id);
+                emit_prop_slashed(id, prop.bond); // needs to be called before we zero prop.bond
+                prop.slash_bond(self.accounts.get().unwrap().community_treasury);
+                self.proposals.remove(&id);
+                return Ok(PromiseOrValue::Value(ExecResponse::Slashed));
+            }
+            ProposalStatus::Approved | ProposalStatus::Failed => (), // execute below
+        };
 
         prop.refund_bond();
         prop.status = ProposalStatus::Executed;
@@ -520,6 +510,13 @@ impl Contract {
             }
         };
     }
+
+    fn prop_consent(&self, prop: &Proposal) -> Consent {
+        match prop.kind.required_consent() {
+            ConsentKind::Simple => self.simple_consent.clone(),
+            ConsentKind::Super => self.super_consent.clone(),
+        }
+    }
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
@@ -646,6 +643,21 @@ mod unit_tests {
         }
     }
 
+    fn vote_and_fast_forward_status_check(
+        ctx: &mut VMContext,
+        ctr: &mut Contract,
+        accs: Vec<AccountId>,
+        id: u32,
+        v: Vote,
+        expected_status: ProposalStatus,
+    ) {
+        vote(ctx.clone(), ctr, accs, id, v);
+        ctx.block_timestamp += (ctr.voting_duration + 1) * MSECOND;
+        testing_env!(ctx.clone());
+        let prop = ctr.get_proposal(id).unwrap();
+        assert_eq!(prop.proposal.status, expected_status);
+    }
+
     fn create_proposal(mut ctx: VMContext, ctr: &mut Contract, bond: Balance) -> u32 {
         ctx.predecessor_account_id = iah_registry();
         ctx.attached_deposit = bond;
@@ -680,7 +692,7 @@ mod unit_tests {
     }
 
     #[test]
-    fn basic_flow() {
+    fn basic_flows() {
         let (mut ctx, mut ctr, id) = setup_ctr(PRE_BOND);
         let mut prop1 = ctr.get_proposal(id).unwrap();
         assert_eq!(prop1.proposal.status, ProposalStatus::PreVote);
@@ -690,9 +702,11 @@ mod unit_tests {
             vec![],
             "should only return active proposals"
         );
+
+        // TODO: vote through the SBT coin check
+
         //
         // move proposal to an active queue and vote
-        //
         ctx.attached_deposit = BOND;
         ctx.block_timestamp += MSECOND;
         ctx.predecessor_account_id = acc(2);
@@ -704,14 +718,18 @@ mod unit_tests {
         prop1.proposal.additional_bond = Some((acc(2), BOND - PRE_BOND));
         assert_eq!(ctr.get_proposals(0, 10, None), vec![prop1.clone()]);
 
+        //
+        // Try vote with less storage
         ctx.predecessor_account_id = iah_registry();
         ctx.attached_deposit = 0;
         testing_env!(ctx.clone());
-        // Try vote with less storage
         match ctr.vote(acc(2), iah_proof(), vote_payload(id, Vote::Approve)) {
             Err(VoteError::Storage(_)) => (),
             x => panic!("expected Storage, got: {:?}", x),
         }
+
+        //
+        // Successful vote
         vote(
             ctx.clone(),
             &mut ctr,
@@ -720,14 +738,21 @@ mod unit_tests {
             Vote::Approve,
         );
 
+        //
+        // Proposal already got enough votes, but the voting time is not over yet. So, we can
+        // still vote, but we can't execute.
+        ctx.block_timestamp += VOTING_DURATION / 2 * MSECOND;
+        ctx.attached_deposit = ONE_NEAR / 10;
+        testing_env!(ctx.clone());
         prop1 = ctr.get_proposal(id).unwrap();
-        assert_eq!(prop1.proposal.status, ProposalStatus::Approved);
-
-        // Proposal already got enough votes - it's approved
+        assert_eq!(prop1.proposal.status, ProposalStatus::InProgress);
         assert_eq!(
-            ctr.vote(acc(5), iah_proof(), vote_payload(id, Vote::Approve)),
-            Err(VoteError::NotInProgress)
+            ctr.vote(acc(5), iah_proof(), vote_payload(id, Vote::Spam)),
+            Ok(())
         );
+        prop1.proposal.spam += 1;
+        prop1.proposal.votes.insert(acc(5), Vote::Spam);
+        assert!(matches!(ctr.execute(id), Err(ExecError::InProgress)));
 
         //
         // Create a new proposal, not enough bond
@@ -776,34 +801,78 @@ mod unit_tests {
         assert_eq!(ctr.get_proposals(2, 10, None), vec![prop2.clone()]);
         assert_eq!(ctr.get_proposals(3, 10, None), vec![]);
 
-        // TODO: add a test case for checking not authorized (but firstly we need to implement that)
-        // ctx.predecessor_account_id = acc(5);
-        // testing_env!(ctx.clone());
-        // match ctr.vote(id, Vote::Approve) {
-        //     Err(VoteError::NotAuthorized) => (),
-        //     x => panic!("expected NotAuthorized, got: {:?}", x),
-        // }
-
-        // TODO: test case checking automatic execution
-        // ctx.predecessor_account_id = acc(2);
-        // testing_env!(ctx.clone());
-        // let id = ctr
-        //     .create_proposal(PropKind::Text, "Proposal unit test 2".to_string())
-        //     .unwrap();
-        // vote(ctx, &mut ctr, vec![acc(1), acc(2), acc(3)], id);
-        // let prop = ctr.get_proposal(id).unwrap();
-        // assert_eq!(prop.proposal.status, ProposalStatus::Executed);
-
         //
-        // create proposal, set timestamp past voting period, status should be rejected
+        // create proposal, cast votes, but not enough to approve.
+        // set timestamp past voting period, status should be rejected
         //
         let id = create_proposal(ctx.clone(), &mut ctr, BOND);
-        let prop = ctr.get_proposal(id).unwrap();
-        ctx.block_timestamp = (prop.proposal.start + ctr.voting_duration + 1) * MSECOND;
-        testing_env!(ctx);
+        vote_and_fast_forward_status_check(
+            &mut ctx,
+            &mut ctr,
+            vec![acc(1), acc(2)],
+            id,
+            Vote::Approve,
+            ProposalStatus::Rejected,
+        );
 
-        let prop = ctr.get_proposal(id).unwrap();
-        assert_eq!(prop.proposal.status, ProposalStatus::Rejected);
+        //
+        // enough approve votes, but more reject votes.
+        let id = create_proposal(ctx.clone(), &mut ctr, BOND);
+        vote(
+            ctx.clone(),
+            &mut ctr,
+            vec![acc(1), acc(2), acc(3)],
+            id,
+            Vote::Approve,
+        );
+        vote_and_fast_forward_status_check(
+            &mut ctx,
+            &mut ctr,
+            vec![acc(10), acc(11), acc(12)],
+            id,
+            Vote::Reject,
+            ProposalStatus::Rejected,
+        );
+
+        //
+        // enough approve votes, but same amount of reject + spam votes.
+        let id = create_proposal(ctx.clone(), &mut ctr, BOND);
+        vote(
+            ctx.clone(),
+            &mut ctr,
+            vec![acc(1), acc(2), acc(3)],
+            id,
+            Vote::Approve,
+        );
+        vote(ctx.clone(), &mut ctr, vec![acc(4)], id, Vote::Spam);
+        vote_and_fast_forward_status_check(
+            &mut ctx,
+            &mut ctr,
+            vec![acc(10), acc(11)],
+            id,
+            Vote::Reject,
+            ProposalStatus::Rejected,
+        );
+
+        //
+        // enough approve votes, but more reject + spam votes.
+        let id = create_proposal(ctx.clone(), &mut ctr, BOND);
+        vote(
+            ctx.clone(),
+            &mut ctr,
+            vec![acc(1), acc(2), acc(3)],
+            id,
+            Vote::Approve,
+        );
+        vote(ctx.clone(), &mut ctr, vec![acc(4)], id, Vote::Reject);
+        vote_and_fast_forward_status_check(
+            &mut ctx,
+            &mut ctr,
+            vec![acc(10), acc(11)],
+            id,
+            Vote::Spam,
+            ProposalStatus::Spam,
+        );
     }
 
     #[test]
@@ -813,15 +882,23 @@ mod unit_tests {
         testing_env!(ctx.clone());
         assert_eq!(
             ctr.vote(acc(1), iah_proof(), vote_payload(id, Vote::Approve)),
-            Err(VoteError::NotActive)
+            Err(VoteError::Timeout)
         );
     }
 
     #[test]
     #[should_panic(expected = "proposal does not exist")]
-    fn proposal_does_not_exist() {
+    fn vote_not_exist() {
         let (_, mut ctr, _) = setup_ctr(BOND);
         ctr.vote(acc(1), iah_proof(), vote_payload(10, Vote::Approve))
+            .unwrap();
+    }
+
+    #[test]
+    #[should_panic(expected = "proposal does not exist")]
+    fn vote_not_active() {
+        let (_, mut ctr, id) = setup_ctr(PRE_BOND);
+        ctr.vote(acc(1), iah_proof(), vote_payload(id, Vote::Approve))
             .unwrap();
     }
 
@@ -836,8 +913,8 @@ mod unit_tests {
     fn execution_text() {
         let (mut ctx, mut ctr, id) = setup_ctr(BOND);
         match ctr.execute(id) {
-            Ok(_) => panic!("expected NotApproved, got: OK"),
-            Err(err) => assert_eq!(err, ExecError::NotApproved),
+            Ok(_) => panic!("expected InProgress, got: OK"),
+            Err(err) => assert_eq!(err, ExecError::InProgress),
         }
         vote(
             ctx.clone(),
@@ -847,37 +924,56 @@ mod unit_tests {
             Vote::Approve,
         );
 
+        ctx.block_timestamp = START + ctr.voting_duration / 2 * MSECOND;
+        testing_env!(ctx.clone());
         let mut p = ctr.get_proposal(id).unwrap();
-        assert_eq!(p.proposal.status, ProposalStatus::Approved);
-
+        assert_eq!(p.proposal.status, ProposalStatus::InProgress);
         match ctr.execute(id) {
-            Ok(_) => panic!("expected Timeout, got: OK"),
-            Err(err) => assert_eq!(err, ExecError::Timeout),
+            Ok(_) => panic!("expected InProgress, got: OK"),
+            Err(err) => assert_eq!(err, ExecError::InProgress),
         }
 
+        // fast forward to voting overtime
         ctx.block_timestamp = START + (ctr.voting_duration + 1) * MSECOND;
         testing_env!(ctx.clone());
-
-        ctr.execute(id).unwrap();
-
+        assert!(matches!(
+            ctr.execute(id),
+            Ok(PromiseOrValue::Value(ExecResponse::Executed))
+        ));
         p = ctr.get_proposal(id).unwrap();
         assert_eq!(p.proposal.status, ProposalStatus::Executed);
 
         //
         // check spam transaction
         let id = create_proposal_with_status(ctx.clone(), &mut ctr, ProposalStatus::Spam);
+        assert!(matches!(ctr.execute(id), Err(ExecError::AlreadyFinalized)));
+
+        //
+        // check spam transaction, part2
+        let id = create_proposal_with_status(ctx.clone(), &mut ctr, ProposalStatus::InProgress);
+        vote(
+            ctx.clone(),
+            &mut ctr,
+            vec![acc(1), acc(2), acc(3)],
+            id,
+            Vote::Spam,
+        );
+
+        ctx.block_timestamp += (ctr.voting_duration + 1) * MSECOND * 10;
+        testing_env!(ctx.clone());
         match ctr.execute(id) {
             Ok(PromiseOrValue::Value(ExecResponse::Slashed)) => (),
             Ok(_) => panic!("expected Ok(ExecResponse:Slashed)"),
-            Err(err) => panic!("expected Ok(ExecResponse:Slashed) got: {:?}", err),
+            Err(err) => panic!("expected Ok(ExecResponse:Slashed), got: Err {:?}", err),
         }
-        p = ctr.get_proposal(id).unwrap();
-        assert_eq!(p.proposal.bond, 0);
+
+        assert_eq!(ctr.get_proposal(id), None);
         // second execute should return AlreadySlashed
-        match ctr.execute(id) {
-            Ok(_) => panic!("expected Err(ExecError::AlreadySlashed)"),
-            Err(err) => assert_eq!(err, ExecError::AlreadySlashed),
-        }
+        // TODO: update to not panic on assert_porposal
+        // match ctr.execute(id) {
+        //     Ok(_) => panic!("expected Err(ExecError::AlreadyFinalized)"),
+        //     Err(err) => assert_eq!(err, ExecError::AlreadyFinalized),
+        // }
     }
 
     #[test]

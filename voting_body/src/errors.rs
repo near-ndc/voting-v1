@@ -6,7 +6,7 @@ use near_sdk::FunctionError;
 pub enum VoteError {
     NotAuthorized,
     NotInProgress,
-    NotActive,
+    Timeout,
     Storage(String),
 }
 
@@ -15,7 +15,7 @@ impl FunctionError for VoteError {
         match self {
             VoteError::NotAuthorized => panic_str("not authorized"),
             VoteError::NotInProgress => panic_str("proposal not in progress"),
-            VoteError::NotActive => panic_str("voting time is over"),
+            VoteError::Timeout => panic_str("voting time is over"),
             VoteError::Storage(reason) => panic_str(reason),
         }
     }
@@ -25,19 +25,15 @@ impl FunctionError for VoteError {
 #[serde(crate = "near_sdk::serde")]
 #[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq, Debug))]
 pub enum ExecError {
-    Timeout,
-    NotApproved,
-    AlreadySlashed,
+    AlreadyFinalized,
+    InProgress,
 }
 
 impl FunctionError for ExecError {
     fn panic(&self) -> ! {
         match self {
-            ExecError::Timeout => panic_str("can only be executed after cooldown"),
-            ExecError::NotApproved => {
-                panic_str("can execute only approved or re-execute failed proposals")
-            }
-            ExecError::AlreadySlashed => panic_str("proposal was already slashed"),
+            ExecError::AlreadyFinalized => panic_str("proposal is already successfully finalized"),
+            ExecError::InProgress => panic_str("proposal is still in progress"),
         }
     }
 }
