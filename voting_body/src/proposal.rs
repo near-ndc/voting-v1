@@ -61,7 +61,7 @@ pub struct Proposal {
     pub votes: HashMap<AccountId, Vote>,
     /// start time (for voting period).
     pub start: u64,
-    /// Unix time in miliseconds when the proposal was executed. `None` if it is not approved
+    /// Unix time in milliseconds when the proposal was executed. `None` if it is not approved
     /// or execution failed.
     pub executed_at: Option<u64>,
     /// Proposal storage cost (excluding vote)

@@ -27,10 +27,9 @@ Proposals in this queue are not active. VB members can't vote for proposals in t
 - top up with more NEAR to reach `active_queue_bond`;
 - get a support by one of the Congress members using `support_proposal_by_congress`.
 
-If a proposal doesn't meet the conditions to move to the active queue, then the proposal is removed and the bond is moved to a community fund. For overdue proposals, anyone can call `remove_pre_vote_prop` method to do the cleanup and slash. To incentivize it, `REMOVE_REWARD` is deduced from the bond and sent to the caller.
+If a proposal doesn't meet the conditions to move to the active queue, then the proposal is **removed** and the bond is **slashed** (moved to a community fund). For overdue proposals, anyone can call `remove_pre_vote_prop` method to do the cleanup and slash. To incentivize it, `REMOVE_REWARD` is deduced from the bond and sent to the caller.
 
 Note: originally only a congress support was required to move a proposal to the active queue. However, that creates a strong subjectivity and censorship (example: VB wants to dismiss a house - obviously house may not be happy and not "support" such a proposal).
-
 
 ### Active queue
 
@@ -123,3 +122,28 @@ Voting Body intentionally doesn't support optimistic execution, that is approvin
 
 - **Near Consent:** quorum=(7% of the voting body) + **simple majority**=50%.
 - **Near Supermajority Consent**: quorum=(12% of the voting body) + **super majority**=60%.
+
+## Proposal status
+
+When proposal is created, but the creator doesn't deposit `active_queue_bond` immediately, then the status of a proposal is `PRE_VOTE`.
+
+```mermaid
+---
+title: Possible Proposal Status Flows
+---
+flowchart TB
+    PreVote --> InProgress
+    InProgress --> Approved
+    InProgress --> Rejected
+    InProgress --> Spam
+    Approved --> Executed
+    Approved --> Failed
+    Failed -- re-execute --> Executed
+
+    PreVote -- slashed --> Trash
+    Spam -- slashed --> Trash
+```
+
+`Approved`, `Rejected` and `Spam` are only visible when we query a proposal and: a) voting is over b) was not executed. This gives an indication that a proposal with status `Approved` or `Spam` should be executed. In order to do that any account can call `execute()` method. When proposal is `Spam`, the executor will receive a small reward, and the proposal will be slashed: removed, and the remaining bond (including the top-up) send to the community fund.
+When the proposal is `Approved`, then the contract will try to execute it and set immediately the status to `Executed` and the `proposal.executed_at` property to the current time in milliseconds. If the executions involves a cross contract call that fails, then the status is updated to `Failed` and `proposal.executed_at = None`.
+Any user can try to re-execute a `Failed` proposal.
