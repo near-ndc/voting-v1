@@ -54,6 +54,7 @@ pub struct Contract {
     pub end_time: u64,
     pub cooldown: u64,
     pub voting_duration: u64,
+    pub min_voting_duration: u64,
 
     pub budget_spent: Balance,
     pub budget_cap: Balance,
@@ -71,6 +72,7 @@ impl Contract {
         end_time: u64,
         cooldown: u64,
         voting_duration: u64,
+        min_voting_duration: u64,
         #[allow(unused_mut)] mut members: Vec<AccountId>,
         member_perms: Vec<PropPerm>,
         hook_auth: HashMap<AccountId, Vec<HookPerm>>,
@@ -95,6 +97,7 @@ impl Contract {
             end_time,
             cooldown,
             voting_duration,
+            min_voting_duration,
             budget_spent: 0,
             budget_cap: budget_cap.0,
             big_funding_threshold: big_funding_threshold.0,
@@ -183,7 +186,7 @@ impl Contract {
         if members.binary_search(&user).is_err() {
             return Err(VoteError::NotAuthorized);
         }
-        let mut prop = self.assert_proposal(id);
+        let mut prop: Proposal = self.assert_proposal(id);
 
         self.assert_member_not_involved(&prop, &user)?;
 
@@ -194,7 +197,11 @@ impl Contract {
             return Err(VoteError::NotActive);
         }
 
-        prop.add_vote(user, vote, self.threshold)?;
+        prop.add_vote(user, vote, self.threshold, self.min_voting_duration)?;
+
+        // check if all votes were casted and change the status accordingly
+        prop.status_all_votes_casted(members.len(), self.threshold);
+
         self.proposals.insert(&id, &prop);
         emit_vote(id);
 
@@ -526,6 +533,7 @@ mod unit_tests {
     const START: u64 = 60 * 5 * 1000;
     const TERM: u64 = 60 * 15 * 1000;
     const VOTING_DURATION: u64 = 60 * 5 * 1000;
+    const MIN_VOTING_DURATION: u64 = 30 * 5 * 1000;
     const COOLDOWN_DURATION: u64 = 60 * 5 * 1000;
 
     fn acc(idx: u8) -> AccountId {
@@ -568,6 +576,7 @@ mod unit_tests {
             end_time,
             COOLDOWN_DURATION,
             VOTING_DURATION,
+            MIN_VOTING_DURATION,
             vec![acc(1), acc(2), acc(3), acc(4)],
             vec![
                 PropPerm::Text,

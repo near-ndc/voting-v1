@@ -42,6 +42,7 @@ impl Proposal {
         user: AccountId,
         vote: Vote,
         threshold: u8,
+        min_voting_duration: u64,
     ) -> Result<(), VoteError> {
         if self.votes.contains_key(&user) {
             return Err(VoteError::DoubleVote);
@@ -49,18 +50,24 @@ impl Proposal {
         match vote {
             Vote::Approve => {
                 self.approve += 1;
-                if self.approve >= threshold {
+                if self.approve >= threshold && self.is_min_voting_duration(min_voting_duration) {
                     self.status = ProposalStatus::Approved;
                     self.approved_at = Some(env::block_timestamp_ms());
                 }
             }
             Vote::Reject => {
                 self.reject += 1;
-                if self.reject >= threshold {
+                if self.reject >= threshold && self.is_min_voting_duration(min_voting_duration) {
                     self.status = ProposalStatus::Rejected;
                 }
             }
             Vote::Abstain => {
+                if self.approve >= threshold && self.is_min_voting_duration(min_voting_duration) {
+                    self.status = ProposalStatus::Approved
+                }
+                if self.reject >= threshold && self.is_min_voting_duration(min_voting_duration) {
+                    self.status = ProposalStatus::Rejected
+                }
                 self.abstain += 1;
             }
         }
@@ -74,6 +81,24 @@ impl Proposal {
         {
             self.status = ProposalStatus::Rejected;
         }
+    }
+
+    pub fn status_all_votes_casted(&mut self, num_of_members: usize, threshold: u8) {
+        if self.votes.len() == num_of_members {
+            // all votes casted
+            if self.approve >= threshold {
+                self.status = ProposalStatus::Approved;
+            } else {
+                self.status = ProposalStatus::Rejected;
+            }
+        }
+    }
+
+    fn is_min_voting_duration(&self, min_voting_duration: u64) -> bool {
+        if self.submission_time + min_voting_duration > env::block_timestamp_ms() {
+            return true;
+        }
+        false
     }
 }
 
