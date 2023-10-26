@@ -4,6 +4,7 @@ use near_sdk::FunctionError;
 
 #[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq, Debug))]
 pub enum VoteError {
+    PropNotFound,
     NotAuthorized,
     NotInProgress,
     Timeout,
@@ -13,6 +14,7 @@ pub enum VoteError {
 impl FunctionError for VoteError {
     fn panic(&self) -> ! {
         match self {
+            VoteError::PropNotFound => panic_str("proposal doesn't exist"),
             VoteError::NotAuthorized => panic_str("not authorized"),
             VoteError::NotInProgress => panic_str("proposal not in progress"),
             VoteError::Timeout => panic_str("voting time is over"),
@@ -25,6 +27,7 @@ impl FunctionError for VoteError {
 #[serde(crate = "near_sdk::serde")]
 #[cfg_attr(not(target_arch = "wasm32"), derive(PartialEq, Debug))]
 pub enum ExecError {
+    PropNotFound,
     AlreadyFinalized,
     InProgress,
 }
@@ -32,6 +35,7 @@ pub enum ExecError {
 impl FunctionError for ExecError {
     fn panic(&self) -> ! {
         match self {
+            ExecError::PropNotFound => panic_str("proposal doesn't exist"),
             ExecError::AlreadyFinalized => panic_str("proposal is already successfully finalized"),
             ExecError::InProgress => panic_str("proposal is still in progress"),
         }
