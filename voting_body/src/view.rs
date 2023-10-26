@@ -98,32 +98,48 @@ impl Contract {
         reverse: Option<bool>,
         pre_vote: bool,
     ) -> Vec<ProposalOutput> {
-        let iter = if reverse.unwrap_or(false) {
-            let end = if from_index == 0 {
+        let mut results = Vec::new();
+        let start;
+        let end;
+
+        if reverse.unwrap_or(false) {
+            end = if from_index == 0 {
                 self.prop_counter
             } else {
-                min(from_index, self.prop_counter)
+                std::cmp::min(from_index, self.prop_counter)
             };
-            let start = if end <= limit { 1 } else { end - (limit - 1) };
-            Either::Left((start..=end).rev())
-        } else {
-            let from_index = max(from_index, 1);
-            Either::Right(from_index..=min(self.prop_counter, from_index + limit - 1))
-        };
+            start = if end <= limit { 1 } else { end - (limit - 1) };
 
-        let proposals = if pre_vote {
-            self.pre_vote_proposals
-       } else {
-          self.proposals
-       }
-       // if we use unordered map, then we won't have `iter`
-       iter
-                .filter_map(|id| {
-                    proposals.get(&id).map(|mut proposal| {
-                        proposal.recompute_status(self.voting_duration);
-                        ProposalOutput { id, proposal }
-                    })
-                })
-                .collect();
+            for id in (start..=end).rev() {
+                let proposals = if pre_vote {
+                    &self.pre_vote_proposals
+                } else {
+                    &self.proposals
+                };
+
+                if let Some(mut proposal) = proposals.get(&id) {
+                    proposal.recompute_status(self.voting_duration);
+                    results.push(ProposalOutput { id, proposal });
+                }
+            }
+        } else {
+            let from_index = std::cmp::max(from_index, 1);
+            end = std::cmp::min(self.prop_counter, from_index + limit - 1);
+
+            for id in from_index..=end {
+                let proposals = if pre_vote {
+                    &self.pre_vote_proposals
+                } else {
+                    &self.proposals
+                };
+
+                if let Some(mut proposal) = proposals.get(&id) {
+                    proposal.recompute_status(self.voting_duration);
+                    results.push(ProposalOutput { id, proposal });
+                }
+            }
+        }
+
+        results
     }
 }

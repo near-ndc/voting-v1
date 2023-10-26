@@ -4,7 +4,7 @@ use common::finalize_storage_check;
 use events::*;
 use near_sdk::{
     borsh::{self, BorshDeserialize, BorshSerialize},
-    collections::{LazyOption, LookupMap},
+    collections::{LazyOption, LookupMap, UnorderedMap},
     env,
     json_types::U128,
     near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseOrValue,
@@ -32,9 +32,9 @@ use crate::storage::*;
 pub struct Contract {
     pub prop_counter: u32,
     /// Set of proposals in the pre-vote queue.
-    pub pre_vote_proposals: LookupMap<u32, Proposal>,
+    pub pre_vote_proposals: UnorderedMap<u32, Proposal>,
     /// Set of active proposals.
-    pub proposals: LookupMap<u32, Proposal>,
+    pub proposals: UnorderedMap<u32, Proposal>,
 
     /// Near amount required to create a proposal. Will be slashed if the proposal is marked as
     /// spam.
@@ -71,8 +71,8 @@ impl Contract {
     ) -> Self {
         Self {
             prop_counter: 0,
-            pre_vote_proposals: LookupMap::new(StorageKey::PreVoteProposals),
-            proposals: LookupMap::new(StorageKey::Proposals),
+            pre_vote_proposals: UnorderedMap::new(StorageKey::PreVoteProposals),
+            proposals: UnorderedMap::new(StorageKey::Proposals),
             pre_vote_duration,
             voting_duration,
             pre_vote_bond: pre_vote_bond.0,
@@ -1197,7 +1197,7 @@ mod unit_tests {
             Err(PrevotePropError::NotCongressMember)
         );
         assert!(
-            ctr.pre_vote_proposals.contains_key(&id),
+            ctr.pre_vote_proposals.get(&id).is_some(),
             "should not be moved"
         );
 
