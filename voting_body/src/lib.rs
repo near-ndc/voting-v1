@@ -312,8 +312,10 @@ impl Contract {
     ) -> Result<(), VoteError> {
         self.assert_iah_registry();
         let storage_start = env::storage_usage();
-        let mut prop = self.assert_proposal(payload.prop_id);
-
+        let mut prop = self
+            .proposals
+            .get(&payload.prop_id)
+            .ok_or(VoteError::PropNotFound)?;
         if !matches!(prop.status, ProposalStatus::InProgress) {
             return Err(VoteError::NotInProgress);
         }
@@ -338,7 +340,7 @@ impl Contract {
     /// If proposal is slasheable, the user who executes gets REMOVE_REWARD.
     #[handle_result]
     pub fn execute(&mut self, id: u32) -> Result<PromiseOrValue<ExecResponse>, ExecError> {
-        let mut prop = self.assert_proposal(id);
+        let mut prop = self.proposals.get(&id).ok_or(ExecError::PropNotFound)?;
         // quick return, can only execute if the status was not switched yet, or it
         // failed (previous attempt to execute failed).
         if !matches!(
@@ -461,22 +463,16 @@ impl Contract {
         );
     }
 
-    fn assert_proposal(&self, id: u32) -> Proposal {
-        self.proposals.get(&id).expect("proposal does not exist")
-    }
-
     fn remove_pre_vote_prop(&mut self, id: u32) -> Result<Proposal, PrevotePropError> {
-        match self.pre_vote_proposals.remove(&id) {
-            Some(p) => Ok(p),
-            None => Err(PrevotePropError::NotFound),
-        }
+        self.pre_vote_proposals
+            .remove(&id)
+            .ok_or(PrevotePropError::NotFound)
     }
 
     fn assert_pre_vote_prop(&mut self, id: u32) -> Result<Proposal, PrevotePropError> {
-        match self.pre_vote_proposals.get(&id) {
-            Some(p) => Ok(p),
-            None => Err(PrevotePropError::NotFound),
-        }
+        self.pre_vote_proposals
+            .get(&id)
+            .ok_or(PrevotePropError::NotFound)
     }
 
     fn insert_prop_to_active(&mut self, prop_id: u32, p: &mut Proposal) {
@@ -504,7 +500,7 @@ impl Contract {
             PromiseResult::NotReady => unreachable!(),
             PromiseResult::Successful(_) => (),
             PromiseResult::Failed => {
-                let mut prop = self.assert_proposal(prop_id);
+                let mut prop = self.proposals.get(&prop_id).expect("proposal not found");
                 prop.status = ProposalStatus::Failed;
                 prop.executed_at = None;
                 self.proposals.insert(&prop_id, &prop);
@@ -889,26 +885,28 @@ mod unit_tests {
     }
 
     #[test]
-    #[should_panic(expected = "proposal does not exist")]
-    fn vote_not_exist() {
-        let (_, mut ctr, _) = setup_ctr(BOND);
-        ctr.vote(acc(1), iah_proof(), vote_payload(10, Vote::Approve))
-            .unwrap();
-    }
-
-    #[test]
-    #[should_panic(expected = "proposal does not exist")]
-    fn vote_not_active() {
+    fn vote_not_found() {
         let (_, mut ctr, id) = setup_ctr(PRE_BOND);
-        ctr.vote(acc(1), iah_proof(), vote_payload(id, Vote::Approve))
-            .unwrap();
+        // proposal is in pre-vote queue, so should not be found in the active queue
+        match ctr.vote(acc(1), iah_proof(), vote_payload(id, Vote::Approve)) {
+            Err(err) => assert_eq!(err, VoteError::PropNotFound),
+            Ok(_) => panic!("expect PropNotFound, got: Ok"),
+        }
+
+        match ctr.vote(acc(1), iah_proof(), vote_payload(999, Vote::Approve)) {
+            Err(err) => assert_eq!(err, VoteError::PropNotFound),
+            Ok(_) => panic!("expect PropNotFound, got: Ok"),
+        }
     }
 
     #[test]
-    #[should_panic(expected = "proposal does not exist")]
     fn execute_not_active() {
         let (_, mut ctr, id) = setup_ctr(PRE_BOND);
-        assert!(ctr.execute(id).is_err());
+        match ctr.execute(id) {
+            Err(ExecError::PropNotFound) => (),
+            Err(err) => panic!("expect PropNotFound, got: {:?}", err),
+            Ok(_) => panic!("expect PropNotFound, got: Ok"),
+        }
     }
 
     #[test]
@@ -972,11 +970,10 @@ mod unit_tests {
 
         assert_eq!(ctr.get_proposal(id), None);
         // second execute should return AlreadySlashed
-        // TODO: update to not panic on assert_porposal
-        // match ctr.execute(id) {
-        //     Ok(_) => panic!("expected Err(ExecError::AlreadyFinalized)"),
-        //     Err(err) => assert_eq!(err, ExecError::AlreadyFinalized),
-        // }
+        match ctr.execute(id) {
+            Ok(_) => panic!("expected Err(ExecError::PropNotFound)"),
+            Err(err) => assert_eq!(err, ExecError::PropNotFound),
+        }
     }
 
     #[test]
@@ -1191,7 +1188,7 @@ mod unit_tests {
             ctr.assert_pre_vote_prop(id),
             Err(PrevotePropError::NotFound)
         );
-        let p = ctr.assert_proposal(id);
+        let p = ctr.proposals.get(&id).unwrap();
         assert_eq!(p.status, ProposalStatus::InProgress);
         assert_eq!(p.support, PRE_VOTE_SUPPORT);
         assert_eq!(p.start, ctx.block_timestamp / MSECOND);
