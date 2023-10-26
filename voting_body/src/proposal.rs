@@ -61,8 +61,9 @@ pub struct Proposal {
     pub votes: HashMap<AccountId, Vote>,
     /// start time (for voting period).
     pub start: u64,
-    /// Unix time in miliseconds when the proposal reached approval threshold. `None` if it is not approved.
-    pub approved_at: Option<u64>,
+    /// Unix time in miliseconds when the proposal was executed. `None` if it is not approved
+    /// or execution failed.
+    pub executed_at: Option<u64>,
     /// Proposal storage cost (excluding vote)
     pub proposal_storage: u128,
 }
@@ -122,7 +123,6 @@ impl Proposal {
 
         if self.approve > qualified * consent.threshold as u32 / 100 {
             self.status = ProposalStatus::Approved;
-            self.approved_at = Some(env::block_timestamp_ms()); // TODO: update to executed at
         } else if self.spam > self.reject
             && total_no >= qualified * (100 - consent.threshold) as u32 / 100
         {
