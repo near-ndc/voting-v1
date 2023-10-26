@@ -111,15 +111,18 @@ impl Proposal {
         if self.is_active(voting_duration) || self.status != ProposalStatus::InProgress {
             return;
         }
-        if self.approve + self.reject + self.abstain < consent.quorum {
-            return; // we don't have quorum
-        }
-
         let total_no = self.reject + self.spam;
         let qualified = self.approve + total_no;
-        if self.approve >= qualified * consent.threshold as u32 / 100 {
+
+        // check if we have quorum
+        if qualified + self.abstain < consent.quorum {
+            self.status = ProposalStatus::Rejected;
+            return;
+        }
+
+        if self.approve > qualified * consent.threshold as u32 / 100 {
             self.status = ProposalStatus::Approved;
-            self.approved_at = Some(env::block_timestamp_ms());
+            self.approved_at = Some(env::block_timestamp_ms()); // TODO: update to executed at
         } else if self.spam > self.reject
             && total_no >= qualified * (100 - consent.threshold) as u32 / 100
         {
