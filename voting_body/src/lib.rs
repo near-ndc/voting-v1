@@ -157,7 +157,7 @@ impl Contract {
             supported: HashSet::new(),
             votes: HashMap::new(),
             start: now,
-            approved_at: None,
+            executed_at: None,
             proposal_storage: 0,
         };
         if active {
@@ -369,6 +369,7 @@ impl Contract {
 
         prop.refund_bond();
         prop.status = ProposalStatus::Executed;
+        prop.executed_at = Some(env::block_timestamp_ms());
         let mut out = PromiseOrValue::Value(ExecResponse::Executed);
         match &prop.kind {
             PropKind::Dismiss { dao, member } => {
@@ -505,6 +506,7 @@ impl Contract {
             PromiseResult::Failed => {
                 let mut prop = self.assert_proposal(prop_id);
                 prop.status = ProposalStatus::Failed;
+                prop.executed_at = None;
                 self.proposals.insert(&prop_id, &prop);
                 emit_executed(prop_id);
             }
@@ -942,6 +944,7 @@ mod unit_tests {
         ));
         p = ctr.get_proposal(id).unwrap();
         assert_eq!(p.proposal.status, ProposalStatus::Executed);
+        assert_eq!(p.proposal.executed_at, Some(ctx.block_timestamp / MSECOND));
 
         //
         // check spam transaction
