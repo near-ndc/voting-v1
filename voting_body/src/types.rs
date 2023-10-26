@@ -29,7 +29,9 @@ pub type SBTs = Vec<(AccountId, Vec<u64>)>;
 
 #[derive(Serialize)]
 #[serde(crate = "near_sdk::serde")]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Clone, PartialEq))]
 pub enum ExecResponse {
     Slashed,
+    Rejected,
     Executed,
 }

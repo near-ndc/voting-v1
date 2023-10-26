@@ -68,7 +68,7 @@ impl Contract {
             p = self.pre_vote_proposals.get(&id);
         }
         p.map(|mut proposal| {
-            proposal.recompute_status(self.voting_duration);
+            proposal.recompute_status(self.voting_duration, self.prop_consent(&proposal));
             ProposalOutput { id, proposal }
         })
     }
@@ -83,8 +83,8 @@ impl Contract {
             pre_vote_bond: U128(self.pre_vote_bond),
             active_queue_bond: U128(self.active_queue_bond),
             pre_vote_support: self.pre_vote_support,
-            simple_consent: self.simple_consent,
-            super_consent: self.super_consent,
+            simple_consent: self.simple_consent.clone(),
+            super_consent: self.super_consent.clone(),
             pre_vote_duration: self.pre_vote_duration,
             voting_duration: self.voting_duration,
             accounts: self.accounts.get().unwrap(),
@@ -134,7 +134,7 @@ impl Contract {
                 };
 
                 if let Some(mut proposal) = proposals.get(&id) {
-                    proposal.recompute_status(self.voting_duration);
+                    proposal.recompute_status(self.voting_duration, self.prop_consent(&proposal));
                     results.push(ProposalOutput { id, proposal });
                 }
             }

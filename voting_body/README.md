@@ -106,13 +106,15 @@ A proposal is **approved** when:
 
 A proposal is marked as **spam** when:
 
-- simple near consent quorum is reached;
+- voting time is over;
 - `#spam > #reject`;
 - AND `#reject + #spam >= (1-threshold) * (#approve + #reject + #spam)`.
 
 Spam proposals are removed, and the bond is slashed (sent to the community treasury).
 
 A proposal is **rejected** if voting time is over (proposal is not in progress anymore), and it was not approved nor marked as spam.
+
+Voting Body intentionally doesn't support optimistic execution, that is approving or rejecting a proposal once sufficient amount of votes are cast. We want to give a chance to every member vote and express their opinion providing more clear outcome of the voting.
 
 ### Quorums and Thresholds
 
