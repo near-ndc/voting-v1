@@ -118,7 +118,7 @@ impl Contract {
                 };
 
                 if let Some(mut proposal) = proposals.get(&id) {
-                    proposal.recompute_status(self.voting_duration);
+                    proposal.recompute_status(self.voting_duration, self.prop_consent(&proposal));
                     results.push(ProposalOutput { id, proposal });
                 }
             }
