@@ -659,6 +659,9 @@ mod unit_tests {
         let res = ctr.get_proposals(3, 1, Some(true));
         assert_eq!(res, vec![ctr.get_proposal(id3).unwrap(),]);
 
+        ctx.block_timestamp = (START + MIN_VOTING_DURATION + 10) * MSECOND;
+        testing_env!(ctx.clone());
+
         ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
 
         prop = ctr.get_proposal(id);
@@ -671,7 +674,9 @@ mod unit_tests {
             Err(VoteError::NotInProgress) => (),
             x => panic!("expected NotInProgress, got: {:?}", x),
         }
-        //let (mut ctx, mut contract, id) = setup_ctr(100);
+
+        ctx.block_timestamp = START * MSECOND;
+        testing_env!(ctx.clone());
         let id = ctr
             .create_proposal(PropKind::Text, "proposal".to_owned())
             .unwrap();
@@ -699,12 +704,15 @@ mod unit_tests {
         }
 
         ctx.predecessor_account_id = acc(2);
+        ctx.block_timestamp = START * MSECOND;
         testing_env!(ctx.clone());
         // set cooldown=0 and test for immediate execution
         ctr.cooldown = 0;
         let id = ctr
             .create_proposal(PropKind::Text, "Proposal unit test 2".to_string())
             .unwrap();
+        ctx.block_timestamp = (START + MIN_VOTING_DURATION + 10) * MSECOND;
+        testing_env!(ctx.clone());
         ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
         let prop = ctr.get_proposal(id).unwrap();
         assert_eq!(prop.proposal.status, ProposalStatus::Executed);
@@ -714,6 +722,7 @@ mod unit_tests {
             .create_proposal(PropKind::Text, "Proposal unit test query 3".to_string())
             .unwrap();
 
+        let prop = ctr.get_proposal(id).unwrap();
         ctx.block_timestamp = (prop.proposal.submission_time + ctr.voting_duration + 1) * MSECOND;
         testing_env!(ctx);
 
@@ -794,6 +803,8 @@ mod unit_tests {
             Ok(_) => panic!("expected NotApproved, got: OK"),
             Err(err) => panic!("expected NotApproved got: {:?}", err),
         }
+        ctx.block_timestamp = (START + MIN_VOTING_DURATION + 10) * MSECOND;
+        testing_env!(ctx.clone());
         ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
 
         let mut prop = ctr.get_proposal(id).unwrap();
@@ -824,6 +835,9 @@ mod unit_tests {
                 "Funding req".to_owned(),
             )
             .unwrap();
+
+        ctx.block_timestamp = (START + MIN_VOTING_DURATION + 10) * MSECOND;
+        testing_env!(ctx.clone());
         ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
 
         ctx.block_timestamp = (ctr.start_time + ctr.cooldown + ctr.voting_duration + 1) * MSECOND;
@@ -853,6 +867,9 @@ mod unit_tests {
                 "Rec Funding req".to_owned(),
             )
             .unwrap();
+
+        ctx.block_timestamp = (START + MIN_VOTING_DURATION + 10) * MSECOND;
+        testing_env!(ctx.clone());
         ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
 
         // update to more than two months
@@ -927,13 +944,16 @@ mod unit_tests {
             x => panic!("expected ProposalFinalized, got: {:?}", x),
         }
 
-        ctx.block_timestamp = ctr.start_time;
+        ctx.block_timestamp = START * MSECOND;
         ctx.predecessor_account_id = acc(1);
         testing_env!(ctx.clone());
 
         let id = ctr
             .create_proposal(PropKind::Text, "Proposal unit test 2".to_string())
             .unwrap();
+
+        ctx.block_timestamp = (START + MIN_VOTING_DURATION + 10) * MSECOND;
+        testing_env!(ctx.clone());
         ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
 
         prop = ctr.get_proposal(id).unwrap();
@@ -1142,6 +1162,7 @@ mod unit_tests {
             )
             .unwrap();
 
+        ctx.block_timestamp = (START + MIN_VOTING_DURATION + 10) * MSECOND;
         ctr = vote(
             ctx.clone(),
             ctr,
@@ -1238,5 +1259,21 @@ mod unit_tests {
         let (_, ctr, _) = setup_ctr(100);
         assert!(ctr.is_member(acc(2)));
         assert!(!ctr.is_member(acc(10)))
+    }
+
+    #[test]
+    fn all_votes_casted() {
+        let (ctx, mut ctr, id) = setup_ctr(100);
+        let mut prop = ctr.get_proposal(id);
+        assert_eq!(prop.unwrap().proposal.status, ProposalStatus::InProgress);
+
+        ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
+
+        prop = ctr.get_proposal(id);
+        assert_eq!(prop.unwrap().proposal.status, ProposalStatus::InProgress);
+        ctr = vote(ctx.clone(), ctr, [acc(4)].to_vec(), id);
+
+        prop = ctr.get_proposal(id);
+        assert_eq!(prop.unwrap().proposal.status, ProposalStatus::Approved);
     }
 }
