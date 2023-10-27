@@ -183,7 +183,7 @@ impl Contract {
     /// User who calls the function to receives REMOVE_REWARD.
     /// Fails if proposal is not overdue or not in pre-vote queue.
     #[handle_result]
-    pub fn remove_overdue_proposal(&mut self, id: u32) -> Result<(), PrevotePropError> {
+    pub fn slash_prevote_proposal(&mut self, id: u32) -> Result<(), PrevotePropError> {
         let p = self.remove_pre_vote_prop(id)?;
         if env::block_timestamp_ms() - p.start <= self.pre_vote_duration {
             return Err(PrevotePropError::NotOverdue);
