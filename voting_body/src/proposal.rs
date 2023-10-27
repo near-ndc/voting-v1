@@ -202,6 +202,10 @@ pub enum PropKind {
         receiver_id: AccountId,
         actions: Vec<ActionCall>,
     },
+    UpdateBonds {
+        pre_vote_bond: U128,
+        active_queue_bond: U128,
+    },
 }
 
 impl PropKind {
@@ -214,14 +218,17 @@ impl PropKind {
             PropKind::ApproveBudget { .. } => "approve-budget".to_string(),
             PropKind::Text { .. } => "text".to_string(),
             PropKind::FunctionCall { .. } => "function-call".to_string(),
+            PropKind::UpdateBonds { .. } => "config: update-bonds".to_string(),
         }
     }
 
     pub fn required_consent(&self) -> ConsentKind {
         match self {
-            Self::Dismiss { .. } | Self::Veto { .. } | Self::Text | Self::FunctionCall { .. } => {
-                ConsentKind::Simple
-            }
+            Self::Dismiss { .. }
+            | Self::Veto { .. }
+            | Self::Text
+            | Self::FunctionCall { .. }
+            | Self::UpdateBonds { .. } => ConsentKind::Simple,
             Self::Dissolve { .. } | Self::ApproveBudget { .. } => ConsentKind::Super,
         }
     }
