@@ -31,7 +31,6 @@ If a proposal doesn't meet the conditions to move to the active queue, then the 
 
 Note: originally only a congress support was required to move a proposal to the active queue. However, that creates a strong subjectivity and censorship (example: VB wants to dismiss a house - obviously house may not be happy and not "support" such a proposal).
 
-
 ### Active queue
 
 Proposals in this queue are eligible for voting and displayed by the default in the UI. Proposals from the active queue are not removed unless they are marked as spam (more about it in the voting section). They are preserved and anyone can query them, even when a proposal was rejected.
@@ -61,31 +60,37 @@ There are several types of proposals with specific functionalities and limitatio
 
 1. **Dismiss Proposal**
 
-   - **Arguments:** `dao`: `AccountId`, `member`: `AccountId`
-   - **Description:** This proposal calls the `Dismiss` hook in the provided DAO when executed, resulting in the removal of the specified member.
+   - Arguments: `dao`: `AccountId`, `member`: `AccountId`
+   - Description: This proposal calls the `Dismiss` hook in the provided DAO when executed, resulting in the removal of the specified member.
 
 2. **Dissolve Proposal**
 
-   - **Arguments:** `dao`: `AccountId`
-   - **Description:** Executing this proposal triggers the `Dissolve` hook in the provided DAO, dissolving the DAO itself.
+   - Arguments: `dao`: `AccountId`
+   - Description: Executing this proposal triggers the `Dissolve` hook in the provided DAO, dissolving the DAO itself.
 
 3. **Veto Proposal**
 
-   - **Arguments:** `dao`: `AccountId`, `prop_id`: `u32`
-   - **Description:** When executed, this proposal invokes the `Veto` hook in the provided DAO and vetoes the proposal identified by the specified `prop_id`.
+   - Arguments: `dao`: `AccountId`, `prop_id`: `u32`
+   - Description: When executed, this proposal invokes the `Veto` hook in the provided DAO and vetoes the proposal identified by the specified `prop_id`.
 
 4. **Approve Budget Proposal**
 
-   - **Arguments:** `dao`: `AccountId`, `prop_id`: `u32`
-   - **Description:** This type of proposal serves as an approval mechanism for budget proposals without making any method calls.
+   - Arguments: `dao`: `AccountId`, `prop_id`: `u32`
+   - Description: This type of proposal serves as an approval mechanism for budget proposals without making any method calls.
 
 5. **Text Proposal**
 
-   - **Description:** A text proposal for general purposes, without specific arguments. It doesn't involve any method calls.
+   - Description: A text proposal for general purposes, without specific arguments. It doesn't involve any method calls.
 
 6. **FunctionCall Proposal**
-   - **Arguments:** `receiver_id`: `AccountId`, `actions`: `Vec<ActionCall>`
-   - **Description:** This proposal enables you to call the `receiver_id` with a list of method names in a single promise. It allows your contract to execute various actions in other contracts, excluding congress contracts. Attempting to create a proposal that calls any congress DAOs will result in an error, preventing the proposal from being created.
+
+   - Arguments: `receiver_id`: `AccountId`, `actions`: `Vec<ActionCall>`
+   - Description: This proposal enables you to call the `receiver_id` with a list of method names in a single promise. It allows your contract to execute various actions in other contracts, excluding congress contracts. Attempting to create a proposal that calls any congress DAOs will result in an error, preventing the proposal from being created.
+
+7. **UpdateBonds**
+
+   - Arguments: `pre_vote_bond: U128`, `active_queue_bond: U128`
+   - Description: allows VB to update contract configuration.
 
 ## Voting
 
