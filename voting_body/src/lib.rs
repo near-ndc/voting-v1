@@ -402,6 +402,13 @@ impl Contract {
                 }
                 out = promise.into();
             }
+            PropKind::UpdateBonds {
+                pre_vote_bond,
+                active_queue_bond,
+            } => {
+                self.pre_vote_bond = pre_vote_bond.0;
+                self.active_queue_bond = active_queue_bond.0;
+            }
         };
 
         self.proposals.insert(&id, &prop);
@@ -974,6 +981,45 @@ mod unit_tests {
             Ok(_) => panic!("expected Err(ExecError::PropNotFound)"),
             Err(err) => assert_eq!(err, ExecError::PropNotFound),
         }
+    }
+
+    #[test]
+    fn execution_() {
+        let (mut ctx, mut ctr, _) = setup_ctr(PRE_BOND);
+        ctx.attached_deposit = BOND;
+        testing_env!(ctx.clone());
+        let id = ctr
+            .create_proposal(
+                acc(1),
+                iah_proof(),
+                CreatePropPayload {
+                    kind: PropKind::UpdateBonds {
+                        pre_vote_bond: (PRE_BOND * 2).into(),
+                        active_queue_bond: (BOND * 5).into(),
+                    },
+                    description: "updating bonds".to_owned(),
+                },
+            )
+            .unwrap();
+        vote(
+            ctx.clone(),
+            &mut ctr,
+            vec![acc(1), acc(2), acc(3)],
+            id,
+            Vote::Approve,
+        );
+
+        ctx.predecessor_account_id = acc(10);
+        ctx.block_timestamp += ctr.voting_duration * 10 * MSECOND;
+        testing_env!(ctx.clone());
+
+        match ctr.execute(id) {
+            Ok(_) => (),
+            Err(err) => panic!("expected OK, got: {:?}", err),
+        }
+        let p = ctr.get_proposal(id).unwrap();
+        assert_eq!(p.proposal.status, ProposalStatus::Executed);
+        assert_eq!(p.proposal.executed_at, Some(ctx.block_timestamp / MSECOND));
     }
 
     #[test]
