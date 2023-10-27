@@ -29,7 +29,7 @@ pub struct Proposal {
     /// Abstain votes don't count into the final tally.
     pub abstain: u8,
     /// Map of who voted and how.
-    pub votes: HashMap<AccountId, Vote>,
+    pub votes: HashMap<AccountId, VoteRecord>,
     /// Submission time (for voting period).
     pub submission_time: u64,
     /// Unix time in miliseconds when the proposal reached approval threshold. `None` if it is not approved.
@@ -43,6 +43,7 @@ impl Proposal {
         vote: Vote,
         threshold: u8,
     ) -> Result<(), VoteError> {
+        let now = env::block_timestamp_ms();
         if self.votes.contains_key(&user) {
             return Err(VoteError::DoubleVote);
         }
@@ -51,7 +52,7 @@ impl Proposal {
                 self.approve += 1;
                 if self.approve >= threshold {
                     self.status = ProposalStatus::Approved;
-                    self.approved_at = Some(env::block_timestamp_ms());
+                    self.approved_at = Some(now);
                 }
             }
             Vote::Reject => {
@@ -64,7 +65,13 @@ impl Proposal {
                 self.abstain += 1;
             }
         }
-        self.votes.insert(user, vote);
+        self.votes.insert(
+            user,
+            VoteRecord {
+                timestamp: now,
+                vote,
+            },
+        );
         Ok(())
     }
 
@@ -152,6 +159,14 @@ pub enum Vote {
     Reject = 0x1,
     Abstain = 0x2,
     // note: we don't have Remove
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq))]
+pub struct VoteRecord {
+    pub timestamp: u64, // unix time of when this vote was submitted
+    pub vote: Vote,
 }
 
 /// Function call arguments.
