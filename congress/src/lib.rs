@@ -661,7 +661,6 @@ mod unit_tests {
 
         ctx.block_timestamp = (START + MIN_VOTING_DURATION + 10) * MSECOND;
         testing_env!(ctx.clone());
-
         ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
 
         prop = ctr.get_proposal(id);
