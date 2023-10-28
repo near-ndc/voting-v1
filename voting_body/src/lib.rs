@@ -48,7 +48,7 @@ pub struct Contract {
     pub simple_consent: Consent,
     pub super_consent: Consent,
 
-    /// all times below are in miliseconds
+    /// all times below are in milliseconds
     pub voting_duration: u64,
     pub pre_vote_duration: u64,
     pub accounts: LazyOption<Accounts>,
@@ -57,7 +57,7 @@ pub struct Contract {
 #[near_bindgen]
 impl Contract {
     #[init]
-    /// All duration arguments are in miliseconds.
+    /// All duration arguments are in milliseconds.
     /// * hook_auth : map of accounts authorized to call hooks.
     pub fn new(
         pre_vote_duration: u64,
@@ -183,7 +183,7 @@ impl Contract {
     /// User who calls the function to receives REMOVE_REWARD.
     /// Fails if proposal is not overdue or not in pre-vote queue.
     #[handle_result]
-    pub fn remove_overdue_proposal(&mut self, id: u32) -> Result<(), PrevotePropError> {
+    pub fn slash_prevote_proposal(&mut self, id: u32) -> Result<(), PrevotePropError> {
         let p = self.remove_pre_vote_prop(id)?;
         if env::block_timestamp_ms() - p.start <= self.pre_vote_duration {
             return Err(PrevotePropError::NotOverdue);
@@ -1364,7 +1364,7 @@ mod unit_tests {
         );
         // modify prop to expected values and see if it equals the stored one
         prop.proposal.status = ProposalStatus::InProgress;
-        prop.proposal.start += 1; // start is in miliseconds
+        prop.proposal.start += 1; // start is in milliseconds
         assert_eq!(ctr.get_proposal(id).unwrap(), prop);
     }
 

@@ -27,8 +27,6 @@ Proposals in this queue are not active. VB members can't vote for proposals in t
 - top up with more NEAR to reach `active_queue_bond`;
 - get a support by one of the Congress members using `support_proposal_by_congress`.
 
-If a proposal doesn't meet the conditions to move to the active queue, then the proposal is removed and the bond is moved to a community fund. For overdue proposals, anyone can call `remove_pre_vote_prop` method to do the cleanup and slash. To incentivize it, `REMOVE_REWARD` is deduced from the bond and sent to the caller.
-
 Note: originally only a congress support was required to move a proposal to the active queue. However, that creates a strong subjectivity and censorship (example: VB wants to dismiss a house - obviously house may not be happy and not "support" such a proposal).
 
 ### Active queue
@@ -91,6 +89,37 @@ There are several types of proposals with specific functionalities and limitatio
 
    - Arguments: `pre_vote_bond: U128`, `active_queue_bond: U128`
    - Description: allows VB to update contract configuration.
+
+## Proposal Lifecycle
+
+```mermaid
+---
+title: Possible Proposal Status Flows
+---
+flowchart TB
+    PreVote --> InProgress
+    InProgress --> Approved
+    InProgress --> Rejected
+    InProgress --> Spam
+    Approved --> Executed
+    Approved --> Failed
+    Failed -- re-execute --> Executed
+
+    PreVote -- slashed --> Trash
+    Spam -- slashed --> Trash
+```
+
+When proposal is created, but the creator doesn't deposit `active_queue_bond` immediately, then the status of a proposal is `PreVote`.
+A proposal that doesn't advance to the active queue by the `pre_vote_duration` is eligible for slashing. In such case, any account can call `slash_prevote_proposal(id)` method: the proposal will be removed, `SLASH_REWARD` will be transferred (as in incentive) to the caller and the remainder bond will be sent to the community fund.
+
+Proposal, that is moved to the active queue has status `InProgress` and keeps that status until the voting period is over (`proposal.start_time + voting_duration`). During that time all Members can vote for the proposal.
+
+Once the voting period is over, a proposal will have `Approved`, `Rejected` or `Spam` status, based on the voting result.
+During this time, anyone can call `execute(id)`. Note these statuses are only visible when we query a proposal and: a) voting is over b) and was not executed. Executing a proposal will set the `proposal.executed_at` property to the current time in milliseconds and will have the following effects:
+
+- Approved: bonds are returned. If a proposal involves a function call, then the call is scheduled. If the call fails, the proposal will have status `Failed` and anyone will be able to re-execute it again.
+- Rejected: bonds are removed, and proposal won't be able to be re-executed.
+- Spam: executor will receive a `SLASH_REWARD`, and the proposal will be slashed: removed, and the remaining bond (including the top-up) send to the community fund.
 
 ## Voting
 
