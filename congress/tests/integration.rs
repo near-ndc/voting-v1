@@ -52,7 +52,7 @@ async fn instantiate_congress(
     let start_time = now + 20 * 1000;
     let end_time: u64 = now + 100 * 1000;
     let voting_duration = 20 * 1000;
-    let min_voting_duration = 10 * 1000;
+    let min_voting_duration = 0;
     // initialize contract
     let res = congress_contract
         .call("new")
@@ -367,7 +367,7 @@ async fn tc_ban_and_dismiss() -> anyhow::Result<()> {
     let setup = init(&worker).await?;
 
     let res2 = setup
-        .alice
+        .bob
         .call(setup.tc_contract.id(), "create_proposal")
         .args_json(json!({
             "kind": PropKind::DismissAndBan { member: to_near_account(setup.alice.id()), house:  to_near_account(setup.coa_contract.id())
@@ -380,7 +380,7 @@ async fn tc_ban_and_dismiss() -> anyhow::Result<()> {
     let proposal_id: u32 = res2.await?.json()?;
 
     let res = setup
-        .alice
+        .bob
         .call(setup.tc_contract.id(), "vote")
         .args_json(json!({"id": proposal_id, "vote": Vote::Approve,}))
         .max_gas()
@@ -433,7 +433,7 @@ async fn tc_ban_and_dismiss_fail_cases() -> anyhow::Result<()> {
     let setup = init(&worker).await?;
 
     let res2 = setup
-        .alice
+        .bob
         .call(setup.tc_contract.id(), "create_proposal")
         .args_json(json!({
             "kind": PropKind::DismissAndBan { member: to_near_account(setup.alice.id()), house:  to_near_account(setup.coa_contract.id())
@@ -461,7 +461,7 @@ async fn tc_ban_and_dismiss_fail_cases() -> anyhow::Result<()> {
     assert!(res.is_success());
 
     vote(
-        vec![setup.john.clone(), setup.alice.clone()],
+        vec![setup.john.clone(), setup.bob.clone()],
         &setup.tc_contract,
         proposal_id,
     )
