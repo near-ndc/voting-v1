@@ -37,29 +37,17 @@ pub struct Proposal {
 }
 
 impl Proposal {
-    pub fn add_vote(
-        &mut self,
-        user: AccountId,
-        vote: Vote,
-        threshold: u8,
-    ) -> Result<(), VoteError> {
-        let now = env::block_timestamp_ms();
+
+    pub fn add_vote(&mut self, user: AccountId, vote: Vote) -> Result<(), VoteError> {
         if self.votes.contains_key(&user) {
             return Err(VoteError::DoubleVote);
         }
         match vote {
             Vote::Approve => {
                 self.approve += 1;
-                if self.approve >= threshold {
-                    self.status = ProposalStatus::Approved;
-                    self.approved_at = Some(now);
-                }
             }
             Vote::Reject => {
                 self.reject += 1;
-                if self.reject >= threshold {
-                    self.status = ProposalStatus::Rejected;
-                }
             }
             Vote::Abstain => {
                 self.abstain += 1;
@@ -72,6 +60,7 @@ impl Proposal {
                 vote,
             },
         );
+        self.votes.insert(user, vote);
         Ok(())
     }
 
@@ -81,6 +70,24 @@ impl Proposal {
         {
             self.status = ProposalStatus::Rejected;
         }
+    }
+
+    pub fn finalize_status(&mut self, members_num: usize, threshold: u8, min_voting_duration: u64) {
+        let past_min_voting_duration = self.past_min_voting_duration(min_voting_duration);
+        let all_voted = self.votes.len() == members_num;
+        if self.approve >= threshold && (past_min_voting_duration || all_voted) {
+            self.approved_at = Some(env::block_timestamp_ms());
+            self.status = ProposalStatus::Approved;
+        } else if self.reject + self.abstain > members_num as u8 - threshold {
+            self.status = ProposalStatus::Rejected;
+        }
+    }
+
+    pub fn past_min_voting_duration(&self, min_voting_duration: u64) -> bool {
+        if self.submission_time + min_voting_duration < env::block_timestamp_ms() {
+            return true;
+        }
+        false
     }
 }
 

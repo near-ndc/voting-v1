@@ -54,6 +54,7 @@ pub struct Contract {
     pub end_time: u64,
     pub cooldown: u64,
     pub voting_duration: u64,
+    pub min_voting_duration: u64,
 
     pub budget_spent: Balance,
     pub budget_cap: Balance,
@@ -71,6 +72,7 @@ impl Contract {
         end_time: u64,
         cooldown: u64,
         voting_duration: u64,
+        min_voting_duration: u64,
         #[allow(unused_mut)] mut members: Vec<AccountId>,
         member_perms: Vec<PropPerm>,
         hook_auth: HashMap<AccountId, Vec<HookPerm>>,
@@ -95,6 +97,7 @@ impl Contract {
             end_time,
             cooldown,
             voting_duration,
+            min_voting_duration,
             budget_spent: 0,
             budget_cap: budget_cap.0,
             big_funding_threshold: big_funding_threshold.0,
@@ -194,7 +197,9 @@ impl Contract {
             return Err(VoteError::NotActive);
         }
 
-        prop.add_vote(user, vote, self.threshold)?;
+        prop.add_vote(user, vote)?;
+        prop.finalize_status(members.len(), self.threshold, self.min_voting_duration);
+
         self.proposals.insert(&id, &prop);
         emit_vote(id);
 
@@ -526,6 +531,7 @@ mod unit_tests {
     const START: u64 = 60 * 5 * 1000;
     const TERM: u64 = 60 * 15 * 1000;
     const VOTING_DURATION: u64 = 60 * 5 * 1000;
+    const MIN_VOTING_DURATION: u64 = 30 * 5 * 1000;
     const COOLDOWN_DURATION: u64 = 60 * 5 * 1000;
 
     fn acc(idx: u8) -> AccountId {
@@ -568,6 +574,7 @@ mod unit_tests {
             end_time,
             COOLDOWN_DURATION,
             VOTING_DURATION,
+            MIN_VOTING_DURATION,
             vec![acc(1), acc(2), acc(3), acc(4)],
             vec![
                 PropPerm::Text,
@@ -596,8 +603,7 @@ mod unit_tests {
         for account in accounts {
             ctx.predecessor_account_id = account;
             testing_env!(ctx.clone());
-            let res = ctr.vote(id, Vote::Approve);
-            assert!(res.is_ok());
+            assert_eq!(ctr.vote(id, Vote::Approve), Ok(()));
         }
         ctr
     }
@@ -653,6 +659,8 @@ mod unit_tests {
         let res = ctr.get_proposals(3, 1, Some(true));
         assert_eq!(res, vec![ctr.get_proposal(id3).unwrap(),]);
 
+        ctx.block_timestamp = (START + MIN_VOTING_DURATION + 10) * MSECOND;
+        testing_env!(ctx.clone());
         ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
 
         prop = ctr.get_proposal(id);
@@ -665,7 +673,9 @@ mod unit_tests {
             Err(VoteError::NotInProgress) => (),
             x => panic!("expected NotInProgress, got: {:?}", x),
         }
-        //let (mut ctx, mut contract, id) = setup_ctr(100);
+
+        ctx.block_timestamp = START * MSECOND;
+        testing_env!(ctx.clone());
         let id = ctr
             .create_proposal(PropKind::Text, "proposal".to_owned())
             .unwrap();
@@ -693,12 +703,15 @@ mod unit_tests {
         }
 
         ctx.predecessor_account_id = acc(2);
+        ctx.block_timestamp = START * MSECOND;
         testing_env!(ctx.clone());
         // set cooldown=0 and test for immediate execution
         ctr.cooldown = 0;
         let id = ctr
             .create_proposal(PropKind::Text, "Proposal unit test 2".to_string())
             .unwrap();
+        ctx.block_timestamp = (START + MIN_VOTING_DURATION + 10) * MSECOND;
+        testing_env!(ctx.clone());
         ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
         let prop = ctr.get_proposal(id).unwrap();
         assert_eq!(prop.proposal.status, ProposalStatus::Executed);
@@ -708,6 +721,7 @@ mod unit_tests {
             .create_proposal(PropKind::Text, "Proposal unit test query 3".to_string())
             .unwrap();
 
+        let prop = ctr.get_proposal(id).unwrap();
         ctx.block_timestamp = (prop.proposal.submission_time + ctr.voting_duration + 1) * MSECOND;
         testing_env!(ctx);
 
@@ -788,6 +802,8 @@ mod unit_tests {
             Ok(_) => panic!("expected NotApproved, got: OK"),
             Err(err) => panic!("expected NotApproved got: {:?}", err),
         }
+        ctx.block_timestamp = (START + MIN_VOTING_DURATION + 10) * MSECOND;
+        testing_env!(ctx.clone());
         ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
 
         let mut prop = ctr.get_proposal(id).unwrap();
@@ -818,6 +834,9 @@ mod unit_tests {
                 "Funding req".to_owned(),
             )
             .unwrap();
+
+        ctx.block_timestamp = (START + MIN_VOTING_DURATION + 10) * MSECOND;
+        testing_env!(ctx.clone());
         ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
 
         ctx.block_timestamp = (ctr.start_time + ctr.cooldown + ctr.voting_duration + 1) * MSECOND;
@@ -847,6 +866,9 @@ mod unit_tests {
                 "Rec Funding req".to_owned(),
             )
             .unwrap();
+
+        ctx.block_timestamp = (START + MIN_VOTING_DURATION + 10) * MSECOND;
+        testing_env!(ctx.clone());
         ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
 
         // update to more than two months
@@ -921,13 +943,16 @@ mod unit_tests {
             x => panic!("expected ProposalFinalized, got: {:?}", x),
         }
 
-        ctx.block_timestamp = ctr.start_time;
+        ctx.block_timestamp = START * MSECOND;
         ctx.predecessor_account_id = acc(1);
         testing_env!(ctx.clone());
 
         let id = ctr
             .create_proposal(PropKind::Text, "Proposal unit test 2".to_string())
             .unwrap();
+
+        ctx.block_timestamp = (START + MIN_VOTING_DURATION + 10) * MSECOND;
+        testing_env!(ctx.clone());
         ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
 
         prop = ctr.get_proposal(id).unwrap();
@@ -1136,6 +1161,7 @@ mod unit_tests {
             )
             .unwrap();
 
+        ctx.block_timestamp = (START + MIN_VOTING_DURATION + 10) * MSECOND;
         ctr = vote(
             ctx.clone(),
             ctr,
@@ -1254,5 +1280,21 @@ mod unit_tests {
             prop.proposal.votes.get(&acc(2)).unwrap().timestamp,
             START + 100
         );
+  }
+  
+  #[test]
+  fn all_votes_casted() {
+        let (ctx, mut ctr, id) = setup_ctr(100);
+        let mut prop = ctr.get_proposal(id);
+        assert_eq!(prop.unwrap().proposal.status, ProposalStatus::InProgress);
+
+        ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
+
+        prop = ctr.get_proposal(id);
+        assert_eq!(prop.unwrap().proposal.status, ProposalStatus::InProgress);
+        ctr = vote(ctx.clone(), ctr, [acc(4)].to_vec(), id);
+
+        prop = ctr.get_proposal(id);
+        assert_eq!(prop.unwrap().proposal.status, ProposalStatus::Approved);
     }
 }
