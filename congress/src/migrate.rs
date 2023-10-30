@@ -42,7 +42,7 @@ impl Contract {
     #[init(ignore_state)]
     /* pub  */
     pub fn migrate(min_voting_duration: u64) -> Self {
-        let old_state: OldState = env::state_read().expect("failed");
+        let mut old_state: OldState = env::state_read().expect("failed");
         // new field in the smart contract :
         // + min_voting_duration: u64,
         // new field field in proposal
