@@ -55,19 +55,10 @@ impl Contract {
 
         for id in 1..=old_state.prop_counter.clone() {
             if let Some(proposal) = old_state.proposals.get(&id) {
-                let new_votes: HashMap<AccountId, VoteRecord> = proposal
-                    .votes
-                    .iter()
-                    .map(|(account_id, vote)| {
-                        (
-                            account_id.clone(),
-                            VoteRecord {
-                                timestamp: 0,
-                                vote: vote.clone(),
-                            },
-                        )
-                    })
-                    .collect();
+                let mut new_votes: HashMap<AccountId, VoteRecord> = HashMap::new();
+                for (account_id, vote) in proposal.votes {
+                    new_votes.insert(account_id, VoteRecord { timestamp: 0, vote });
+                }
 
                 new_proposals.insert(
                     &id,
