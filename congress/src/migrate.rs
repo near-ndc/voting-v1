@@ -47,21 +47,20 @@ impl Contract {
         // + min_voting_duration: u64,
         // new field field in proposal
         // votes HashMap<AccountId, Vote> -> HashMap<AccountId, VoteRecord>, where
-        // pub struct VoteRecord {
-        //     pub timestamp: u64,
-        //     pub vote: Vote,
-        // }
-        let mut new_proposals: LookupMap<u32, Proposal> = LookupMap::new(b"p");
+        //    pub struct VoteRecord {
+        //        pub timestamp: u64,
+        //        pub vote: Vote,
+        //    }
 
-        for id in 1..=old_state.prop_counter.clone() {
+        for id in 1..=old_state.prop_counter {
             if let Some(proposal) = old_state.proposals.get(&id) {
                 let mut new_votes: HashMap<AccountId, VoteRecord> = HashMap::new();
                 for (account_id, vote) in proposal.votes {
                     new_votes.insert(account_id, VoteRecord { timestamp: 0, vote });
                 }
 
-                new_proposals.insert(
-                    &id,
+                old_state.proposals.insert_raw(
+                    &id.try_to_vec().unwrap(),
                     &Proposal {
                         proposer: proposal.proposer,
                         description: proposal.description,
@@ -73,7 +72,9 @@ impl Contract {
                         votes: new_votes,
                         submission_time: proposal.submission_time,
                         approved_at: proposal.approved_at,
-                    },
+                    }
+                    .try_to_vec()
+                    .unwrap(),
                 );
             }
         }
@@ -83,7 +84,7 @@ impl Contract {
             registry: old_state.registry,
             dissolved: old_state.dissolved,
             prop_counter: old_state.prop_counter,
-            proposals: new_proposals,
+            proposals: LookupMap::new(StorageKey::Proposals),
             members: old_state.members,
             threshold: old_state.threshold,
             hook_auth: old_state.hook_auth,
