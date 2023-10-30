@@ -567,7 +567,6 @@ async fn tc_ban_and_dismiss_fail_cases() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[ignore = "valid only for migration"]
 #[tokio::test]
 async fn migration_mainnet() -> anyhow::Result<()> {
     let worker_sandbox = near_workspaces::sandbox().await?;
@@ -580,20 +579,47 @@ async fn migration_mainnet() -> anyhow::Result<()> {
         .transact()
         .await?;
 
+    // query the pre-migrated contract
+    let num_of_proposals: u64 = congress
+        .call("number_of_proposals")
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+
     // deploy the new contract
-    let res = congress
+    let new_congress = congress
         .as_account()
         .deploy(include_bytes!("../../res/congress.wasm"))
-        .await?;
-    assert!(res.is_success());
-
-    let new_congress = res.into_result()?;
+        .await?
+        .into_result()?;
 
     // call the migrate method
-    let res = new_congress.call("migrate").max_gas().transact().await?;
+    let res = new_congress
+        .call("migrate")
+        .args_json(json!({"min_voting_duration": 0}))
+        .max_gas()
+        .transact()
+        .await?;
     assert!(res.is_success(), "{:?}", res.receipt_failures());
 
-    // TODO: add post migration query
+    let res: u64 = new_congress
+        .call("number_of_proposals")
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+    assert_eq!(res, num_of_proposals);
+
+    let prop: Option<ProposalOutput> = new_congress
+        .call("get_proposal")
+        .args_json(json!({"id": 1}))
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+
+    print!("{:?}", prop.unwrap().proposal);
 
     Ok(())
 }
