@@ -577,20 +577,38 @@ async fn migration_mainnet() -> anyhow::Result<()> {
         .transact()
         .await?;
 
+    // query the pre-migrated contract
+    let res: u64 = congress
+        .call("number_of_proposals")
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+    assert_eq!(res, 1);
+
     // deploy the new contract
-    let res = congress
+    let new_congress = congress
         .as_account()
         .deploy(include_bytes!("../../res/congress.wasm"))
-        .await?;
-    assert!(res.is_success());
-
-    let new_congress = res.into_result()?;
+        .await?
+        .into_result()?;
 
     // call the migrate method
-    let res = new_congress.call("migrate").max_gas().transact().await?;
+    let res = new_congress
+        .call("migrate")
+        .args_json(json!({"min_voting_duration": 0}))
+        .max_gas()
+        .transact()
+        .await?;
     assert!(res.is_success(), "{:?}", res.receipt_failures());
 
-    // TODO: add post migration query
+    let res: u64 = new_congress
+        .call("number_of_proposals")
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+    assert_eq!(res, 1);
 
     Ok(())
 }

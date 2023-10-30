@@ -17,6 +17,7 @@ mod constants;
 mod errors;
 mod events;
 mod ext;
+mod migrate;
 pub mod proposal;
 mod storage;
 pub mod view;
@@ -1280,10 +1281,10 @@ mod unit_tests {
             prop.proposal.votes.get(&acc(2)).unwrap().timestamp,
             START + 100
         );
-  }
-  
-  #[test]
-  fn all_votes_casted() {
+    }
+
+    #[test]
+    fn all_votes_casted() {
         let (ctx, mut ctr, id) = setup_ctr(100);
         let mut prop = ctr.get_proposal(id);
         assert_eq!(prop.unwrap().proposal.status, ProposalStatus::InProgress);
