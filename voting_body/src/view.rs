@@ -49,6 +49,16 @@ impl Contract {
         limit: u32,
         reverse: Option<bool>,
     ) -> Vec<ProposalOutput> {
+        self._get_proposals(from_index, limit, reverse, false)
+    }
+
+    fn _get_proposals(
+        &self,
+        from_index: u32,
+        limit: u32,
+        reverse: Option<bool>,
+        pre_vote: bool,
+    ) -> Vec<ProposalOutput> {
         let iter = if reverse.unwrap_or(false) {
             let end = if from_index == 0 {
                 self.prop_counter
@@ -62,8 +72,14 @@ impl Contract {
             Either::Right(from_index..=min(self.prop_counter, from_index + limit - 1))
         };
 
+        let proposals = if pre_vote {
+            &self.pre_vote_proposals
+        } else {
+            &self.proposals
+        };
+
         iter.filter_map(|id| {
-            self.proposals.get(&id).map(|mut proposal| {
+            proposals.get(&id).map(|mut proposal| {
                 proposal.recompute_status(self.voting_duration, self.prop_consent(&proposal));
                 ProposalOutput { id, proposal }
             })
@@ -99,5 +115,15 @@ impl Contract {
             voting_duration: self.voting_duration,
             accounts: self.accounts.get().unwrap(),
         }
+    }
+
+    // Returns proposals from the pre-vote queue
+    pub fn get_pre_vote_proposals(
+        &self,
+        from_index: u32,
+        limit: u32,
+        reverse: Option<bool>,
+    ) -> Vec<ProposalOutput> {
+        self._get_proposals(from_index, limit, reverse, true)
     }
 }
