@@ -48,7 +48,7 @@ pub struct Contract {
     pub simple_consent: Consent,
     pub super_consent: Consent,
 
-    /// all times below are in miliseconds
+    /// all times below are in milliseconds
     pub voting_duration: u64,
     pub pre_vote_duration: u64,
     pub accounts: LazyOption<Accounts>,
@@ -57,7 +57,7 @@ pub struct Contract {
 #[near_bindgen]
 impl Contract {
     #[init]
-    /// All duration arguments are in miliseconds.
+    /// All duration arguments are in milliseconds.
     /// * hook_auth : map of accounts authorized to call hooks.
     pub fn new(
         pre_vote_duration: u64,
@@ -183,7 +183,7 @@ impl Contract {
     /// User who calls the function to receives REMOVE_REWARD.
     /// Fails if proposal is not overdue or not in pre-vote queue.
     #[handle_result]
-    pub fn remove_overdue_proposal(&mut self, id: u32) -> Result<(), PrevotePropError> {
+    pub fn slash_prevote_proposal(&mut self, id: u32) -> Result<(), PrevotePropError> {
         let p = self.remove_pre_vote_prop(id)?;
         if env::block_timestamp_ms() - p.start <= self.pre_vote_duration {
             return Err(PrevotePropError::NotOverdue);
@@ -401,6 +401,13 @@ impl Contract {
                     );
                 }
                 out = promise.into();
+            }
+            PropKind::UpdateBonds {
+                pre_vote_bond,
+                active_queue_bond,
+            } => {
+                self.pre_vote_bond = pre_vote_bond.0;
+                self.active_queue_bond = active_queue_bond.0;
             }
         };
 
@@ -977,6 +984,45 @@ mod unit_tests {
     }
 
     #[test]
+    fn execution_() {
+        let (mut ctx, mut ctr, _) = setup_ctr(PRE_BOND);
+        ctx.attached_deposit = BOND;
+        testing_env!(ctx.clone());
+        let id = ctr
+            .create_proposal(
+                acc(1),
+                iah_proof(),
+                CreatePropPayload {
+                    kind: PropKind::UpdateBonds {
+                        pre_vote_bond: (PRE_BOND * 2).into(),
+                        active_queue_bond: (BOND * 5).into(),
+                    },
+                    description: "updating bonds".to_owned(),
+                },
+            )
+            .unwrap();
+        vote(
+            ctx.clone(),
+            &mut ctr,
+            vec![acc(1), acc(2), acc(3)],
+            id,
+            Vote::Approve,
+        );
+
+        ctx.predecessor_account_id = acc(10);
+        ctx.block_timestamp += ctr.voting_duration * 10 * MSECOND;
+        testing_env!(ctx.clone());
+
+        match ctr.execute(id) {
+            Ok(_) => (),
+            Err(err) => panic!("expected OK, got: {:?}", err),
+        }
+        let p = ctr.get_proposal(id).unwrap();
+        assert_eq!(p.proposal.status, ProposalStatus::Executed);
+        assert_eq!(p.proposal.executed_at, Some(ctx.block_timestamp / MSECOND));
+    }
+
+    #[test]
     fn refund_bond_test() {
         let (mut ctx, mut ctr, id) = setup_ctr(BOND);
         vote(
@@ -1318,7 +1364,7 @@ mod unit_tests {
         );
         // modify prop to expected values and see if it equals the stored one
         prop.proposal.status = ProposalStatus::InProgress;
-        prop.proposal.start += 1; // start is in miliseconds
+        prop.proposal.start += 1; // start is in milliseconds
         assert_eq!(ctr.get_proposal(id).unwrap(), prop);
     }
 

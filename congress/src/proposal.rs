@@ -29,7 +29,7 @@ pub struct Proposal {
     /// Abstain votes don't count into the final tally.
     pub abstain: u8,
     /// Map of who voted and how.
-    pub votes: HashMap<AccountId, Vote>,
+    pub votes: HashMap<AccountId, VoteRecord>,
     /// Submission time (for voting period).
     pub submission_time: u64,
     /// Unix time in miliseconds when the proposal reached approval threshold. `None` if it is not approved.
@@ -37,34 +37,29 @@ pub struct Proposal {
 }
 
 impl Proposal {
-    pub fn add_vote(
-        &mut self,
-        user: AccountId,
-        vote: Vote,
-        threshold: u8,
-    ) -> Result<(), VoteError> {
+    pub fn add_vote(&mut self, user: AccountId, vote: Vote) -> Result<(), VoteError> {
         if self.votes.contains_key(&user) {
             return Err(VoteError::DoubleVote);
         }
         match vote {
             Vote::Approve => {
                 self.approve += 1;
-                if self.approve >= threshold {
-                    self.status = ProposalStatus::Approved;
-                    self.approved_at = Some(env::block_timestamp_ms());
-                }
             }
             Vote::Reject => {
                 self.reject += 1;
-                if self.reject >= threshold {
-                    self.status = ProposalStatus::Rejected;
-                }
             }
             Vote::Abstain => {
                 self.abstain += 1;
             }
         }
-        self.votes.insert(user, vote);
+        self.votes.insert(
+            user,
+            VoteRecord {
+                timestamp: env::block_timestamp_ms(),
+                vote,
+            },
+        );
+
         Ok(())
     }
 
@@ -74,6 +69,24 @@ impl Proposal {
         {
             self.status = ProposalStatus::Rejected;
         }
+    }
+
+    pub fn finalize_status(&mut self, members_num: usize, threshold: u8, min_voting_duration: u64) {
+        let past_min_voting_duration = self.past_min_voting_duration(min_voting_duration);
+        let all_voted = self.votes.len() == members_num;
+        if self.approve >= threshold && (past_min_voting_duration || all_voted) {
+            self.approved_at = Some(env::block_timestamp_ms());
+            self.status = ProposalStatus::Approved;
+        } else if self.reject + self.abstain > members_num as u8 - threshold {
+            self.status = ProposalStatus::Rejected;
+        }
+    }
+
+    pub fn past_min_voting_duration(&self, min_voting_duration: u64) -> bool {
+        if self.submission_time + min_voting_duration < env::block_timestamp_ms() {
+            return true;
+        }
+        false
     }
 }
 
@@ -152,6 +165,14 @@ pub enum Vote {
     Reject = 0x1,
     Abstain = 0x2,
     // note: we don't have Remove
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq))]
+pub struct VoteRecord {
+    pub timestamp: u64, // unix time of when this vote was submitted
+    pub vote: Vote,
 }
 
 /// Function call arguments.
