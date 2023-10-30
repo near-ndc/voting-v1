@@ -8,6 +8,7 @@ pub enum StorageKey {
     PreVoteProposals,
     Proposals,
     Accounts,
+    Votes,
 }
 
 /// External account required for the Voting Body.

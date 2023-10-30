@@ -1,9 +1,10 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
+use near_sdk::collections::LookupMap;
 use near_sdk::json_types::{Base64VecU8, U128, U64};
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{env, AccountId, Balance, Promise};
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use crate::{PrevotePropError, VoteError, REMOVE_REWARD};
 
@@ -58,7 +59,7 @@ pub struct Proposal {
     pub supported: HashSet<AccountId>,
     /// Map of who voted and how.
     // TODO: must not be a hashmap
-    pub votes: HashMap<AccountId, Vote>,
+    pub votes: LookupMap<AccountId, Vote>,
     /// start time (for voting period).
     pub start: u64,
     /// Unix time in milliseconds when the proposal was executed. `None` if it is not approved
@@ -80,7 +81,7 @@ impl Proposal {
 
     pub fn add_vote(&mut self, user: AccountId, vote: Vote) -> Result<(), VoteError> {
         // allow to overwrite existing votes
-        if let Some(old_vote) = self.votes.get(&user) {
+        if let Some(old_vote) = self.votes.insert(&user, &vote) {
             match old_vote {
                 Vote::Approve => self.approve -= 1,
                 Vote::Reject => self.reject -= 1,
@@ -92,14 +93,9 @@ impl Proposal {
         match vote {
             Vote::Abstain => self.abstain += 1,
             Vote::Approve => self.approve += 1,
-            Vote::Reject => {
-                self.reject += 1;
-            }
-            Vote::Spam => {
-                self.spam += 1;
-            }
+            Vote::Reject => self.reject += 1,
+            Vote::Spam => self.spam += 1,
         };
-        self.votes.insert(user, vote);
         Ok(())
     }
 

@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use common::finalize_storage_check;
 use events::*;
@@ -155,7 +155,7 @@ impl Contract {
             spam: 0,
             support: 0,
             supported: HashSet::new(),
-            votes: HashMap::new(),
+            votes: LookupMap::new(StorageKey::Votes),
             start: now,
             executed_at: None,
             proposal_storage: 0,
