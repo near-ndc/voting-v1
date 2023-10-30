@@ -1410,7 +1410,8 @@ mod unit_tests {
         let (ctx, mut ctr, id1) = setup_ctr(BOND);
         let ids = (2..=10).map(|_| create_proposal(ctx.clone(), &mut ctr, BOND));
 
-        ctr.proposals.remove(&id2);
+        ctr.proposals.remove(&ids[0]);
+        assert_eq!(ctr.get_proposal(ids[0]), None);
 
         let prop1 = ctr.get_proposal(id1).unwrap();
         let prop3 = ctr.get_proposal(id3).unwrap();
