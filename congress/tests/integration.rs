@@ -52,8 +52,9 @@ async fn instantiate_congress(
     let start_time = now + 20 * 1000;
     let end_time: u64 = now + 100 * 1000;
     let voting_duration = 20 * 1000;
+    let min_voting_duration = 10 * 1000;
     // initialize contract
-    let res1 = congress_contract
+    let res = congress_contract
         .call("new")
         .args_json(json!({
             "community_fund": community_fund.id(),
@@ -61,6 +62,7 @@ async fn instantiate_congress(
             "end_time": end_time,
             "cooldown": cooldown,
             "voting_duration": voting_duration,
+            "min_voting_duration": min_voting_duration,
             "members": members,
             "member_perms": member_perms,
             "hook_auth": hook_auth,
@@ -69,9 +71,10 @@ async fn instantiate_congress(
             "registry": registry
         }))
         .max_gas()
-        .transact();
+        .transact()
+        .await?;
 
-    assert!(res1.await?.is_success());
+    assert!(res.is_success(), "{:?}", res);
 
     Ok(congress_contract)
 }
