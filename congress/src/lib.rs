@@ -1261,7 +1261,29 @@ mod unit_tests {
     }
 
     #[test]
-    fn all_votes_casted() {
+    fn vote_timestamp() {
+        let (mut ctx, mut ctr, id) = setup_ctr(100);
+
+        ctx.predecessor_account_id = acc(1);
+        ctx.block_timestamp = START * MSECOND;
+        testing_env!(ctx.clone());
+        ctr.vote(id, Vote::Approve).unwrap();
+        let prop = ctr.get_proposal(id).unwrap();
+        assert_eq!(prop.proposal.votes.get(&acc(1)).unwrap().timestamp, START);
+
+        ctx.predecessor_account_id = acc(2);
+        ctx.block_timestamp = (START + 100) * MSECOND;
+        testing_env!(ctx.clone());
+        ctr.vote(id, Vote::Approve).unwrap();
+        let prop = ctr.get_proposal(id).unwrap();
+        assert_eq!(
+            prop.proposal.votes.get(&acc(2)).unwrap().timestamp,
+            START + 100
+        );
+  }
+  
+  #[test]
+  fn all_votes_casted() {
         let (ctx, mut ctr, id) = setup_ctr(100);
         let mut prop = ctr.get_proposal(id);
         assert_eq!(prop.unwrap().proposal.status, ProposalStatus::InProgress);
