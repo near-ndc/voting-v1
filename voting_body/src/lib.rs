@@ -526,7 +526,9 @@ impl Contract {
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod unit_tests {
-    use near_sdk::{test_utils::VMContextBuilder, testing_env, AccountId, VMContext, ONE_NEAR};
+    use near_sdk::{
+        store::vec, test_utils::VMContextBuilder, testing_env, AccountId, VMContext, ONE_NEAR,
+    };
 
     use crate::{view::ConfigOutput, *};
 
@@ -1401,5 +1403,34 @@ mod unit_tests {
         assert_eq!(active_proposals.len(), 1);
         let pre_vote_proposals = ctr.get_pre_vote_proposals(0, 10, None);
         assert_eq!(pre_vote_proposals.len(), 2);
+    }
+
+    #[test]
+    fn get_proposals_bug() {
+        let (ctx, mut ctr, id1) = setup_ctr(BOND);
+        let id2 = create_proposal(ctx.clone(), &mut ctr, BOND);
+        let id3 = create_proposal(ctx.clone(), &mut ctr, BOND);
+        let _ = create_proposal(ctx.clone(), &mut ctr, BOND);
+        let _ = create_proposal(ctx.clone(), &mut ctr, BOND);
+        let _ = create_proposal(ctx.clone(), &mut ctr, BOND);
+        let _ = create_proposal(ctx.clone(), &mut ctr, BOND);
+        let id8 = create_proposal(ctx.clone(), &mut ctr, BOND);
+        let id9 = create_proposal(ctx.clone(), &mut ctr, BOND);
+        let id10 = create_proposal(ctx.clone(), &mut ctr, BOND);
+
+        ctr.proposals.remove(&id2);
+
+        let prop1 = ctr.get_proposal(id1).unwrap();
+        let prop3 = ctr.get_proposal(id3).unwrap();
+        let prop8 = ctr.get_proposal(id8).unwrap();
+        let prop9 = ctr.get_proposal(id9).unwrap();
+        let prop10 = ctr.get_proposal(id10).unwrap();
+
+        assert_eq!(ctr.proposals.len(), 9);
+
+        let res = ctr.get_proposals(10, 3, Some(true));
+        assert_eq!(res, vec![prop10, prop9, prop8]);
+        let res = ctr.get_proposals(3, 3, Some(true));
+        assert_eq!(res, vec![prop3, prop1]);
     }
 }
