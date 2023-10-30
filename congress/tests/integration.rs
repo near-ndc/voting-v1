@@ -564,7 +564,6 @@ async fn tc_ban_and_dismiss_fail_cases() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[ignore = "valid only for migration"]
 #[tokio::test]
 async fn migration_mainnet() -> anyhow::Result<()> {
     let worker_sandbox = near_workspaces::sandbox().await?;
@@ -578,13 +577,12 @@ async fn migration_mainnet() -> anyhow::Result<()> {
         .await?;
 
     // query the pre-migrated contract
-    let res: u64 = congress
+    let num_of_proposals: u64 = congress
         .call("number_of_proposals")
         .max_gas()
         .transact()
         .await?
         .json()?;
-    assert_eq!(res, 1);
 
     // deploy the new contract
     let new_congress = congress
@@ -608,7 +606,17 @@ async fn migration_mainnet() -> anyhow::Result<()> {
         .transact()
         .await?
         .json()?;
-    assert_eq!(res, 1);
+    assert_eq!(res, num_of_proposals);
+
+    let prop: Option<ProposalOutput> = new_congress
+        .call("get_proposal")
+        .args_json(json!({"id": 1}))
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+
+    print!("{:?}", prop.unwrap().proposal);
 
     Ok(())
 }

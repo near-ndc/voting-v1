@@ -51,7 +51,7 @@ impl Contract {
         //     pub timestamp: u64,
         //     pub vote: Vote,
         // }
-        let mut new_proposals: LookupMap<u32, Proposal> = LookupMap::new(StorageKey::Proposals);
+        let mut new_proposals: LookupMap<u32, Proposal> = LookupMap::new(b"p");
 
         for id in 1..=old_state.prop_counter.clone() {
             if let Some(proposal) = old_state.proposals.get(&id) {
@@ -99,7 +99,7 @@ impl Contract {
             start_time: old_state.start_time,
             end_time: old_state.end_time,
             cooldown: old_state.cooldown,
-            voting_duration: old_state.cooldown,
+            voting_duration: old_state.voting_duration,
             min_voting_duration,
             budget_spent: old_state.budget_spent,
             budget_cap: old_state.budget_cap,
