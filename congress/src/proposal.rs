@@ -37,7 +37,6 @@ pub struct Proposal {
 }
 
 impl Proposal {
-
     pub fn add_vote(&mut self, user: AccountId, vote: Vote) -> Result<(), VoteError> {
         if self.votes.contains_key(&user) {
             return Err(VoteError::DoubleVote);
@@ -56,11 +55,11 @@ impl Proposal {
         self.votes.insert(
             user,
             VoteRecord {
-                timestamp: now,
+                timestamp: env::block_timestamp_ms(),
                 vote,
             },
         );
-        self.votes.insert(user, vote);
+
         Ok(())
     }
 
