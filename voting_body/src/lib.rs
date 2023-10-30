@@ -1408,15 +1408,7 @@ mod unit_tests {
     #[test]
     fn get_proposals_bug() {
         let (ctx, mut ctr, id1) = setup_ctr(BOND);
-        let id2 = create_proposal(ctx.clone(), &mut ctr, BOND);
-        let id3 = create_proposal(ctx.clone(), &mut ctr, BOND);
-        let _ = create_proposal(ctx.clone(), &mut ctr, BOND);
-        let _ = create_proposal(ctx.clone(), &mut ctr, BOND);
-        let _ = create_proposal(ctx.clone(), &mut ctr, BOND);
-        let _ = create_proposal(ctx.clone(), &mut ctr, BOND);
-        let id8 = create_proposal(ctx.clone(), &mut ctr, BOND);
-        let id9 = create_proposal(ctx.clone(), &mut ctr, BOND);
-        let id10 = create_proposal(ctx.clone(), &mut ctr, BOND);
+        let ids = (2..=10).map(|_| create_proposal(ctx.clone(), &mut ctr, BOND));
 
         ctr.proposals.remove(&id2);
 
