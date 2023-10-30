@@ -99,7 +99,6 @@ impl Contract {
         let start;
         let end;
 
-        // Determine the range based on reverse, limit and from_index values
         match reverse {
             Some(true) => {
                 end = if from_index == 0 {
@@ -115,7 +114,6 @@ impl Contract {
             }
         };
 
-        // Choose the appropriate proposals
         let proposals = if pre_vote {
             &self.pre_vote_proposals
         } else {
