@@ -84,7 +84,7 @@ impl Contract {
         // we can support up to 255 with the limitation of the proposal type, but setting 100
         // here because this is more than enough for what we need to test for Congress.
         near_sdk::require!(members.len() <= 100, "max amount of members is 100");
-        let threshold = (members.len() / 2) as u8 + 1;
+        let threshold = ((members.len() + 1) / 2) as u8;
         members.sort();
         Self {
             community_fund,
