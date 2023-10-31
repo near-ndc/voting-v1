@@ -938,7 +938,7 @@ mod unit_tests {
         testing_env!(ctx.clone());
         assert_exec_ok(ctr.execute(id1));
 
-        // execution second proposal should work, but the proposal should be rejected
+        // execution of the second proposal should work, but the proposal should be rejected
         ctx.block_timestamp += (time_diff + 1) * MSECOND;
         testing_env!(ctx.clone());
         match ctr.execute(id2) {
