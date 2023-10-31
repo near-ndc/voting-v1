@@ -219,3 +219,10 @@ pub enum HookPerm {
     Dismiss,
     Dissolve,
 }
+
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Clone))]
+#[serde(crate = "near_sdk::serde")]
+pub enum ExecRespErr {
+    BudgetOverflow,
+}
