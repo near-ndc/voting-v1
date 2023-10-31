@@ -220,7 +220,10 @@ impl Contract {
     /// If `contract.cooldown` is set, then a proposal can be only executed after the cooldown:
     /// (submission_time + voting_duration + cooldown).
     #[handle_result]
-    pub fn execute(&mut self, id: u32) -> Result<PromiseOrValue<()>, ExecError> {
+    pub fn execute(
+        &mut self,
+        id: u32,
+    ) -> Result<PromiseOrValue<Result<(), ExecRespErr>>, ExecError> {
         self.assert_active();
         let mut prop = self.assert_proposal(id);
         // check if we can finalize the proposal status due to having enough votes during min_voting_duration
@@ -249,7 +252,7 @@ impl Contract {
         }
 
         prop.status = ProposalStatus::Executed;
-        let mut result = PromiseOrValue::Value(());
+        let mut result = PromiseOrValue::Value(Ok(()));
         let mut budget = 0;
         match &prop.kind {
             PropKind::FunctionCall {
@@ -307,10 +310,9 @@ impl Contract {
         if budget != 0 {
             self.budget_spent += budget;
             if self.budget_spent > self.budget_cap {
-                // TODO
-                // prop.status = ProposalStatus::Rejected;
-                // self.proposals.insert(&id, &prop);
-                return Err(ExecError::BudgetOverflow);
+                prop.status = ProposalStatus::Rejected;
+                self.proposals.insert(&id, &prop);
+                return Ok(PromiseOrValue::Value(Err(ExecRespErr::BudgetOverflow)));
             }
         }
         self.proposals.insert(&id, &prop);
