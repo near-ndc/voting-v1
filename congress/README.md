@@ -3,7 +3,6 @@
 - [Diagrams](https://miro.com/app/board/uXjVMqJRr_U=/)
 - [Framework Specification](https://near-ndc.notion.site/NDC-V1-Framework-V3-1-Updated-1af84fe7cc204087be70ea7ffee4d23f?pvs=4)
 
-
 ## Creating a Proposal
 
 Each Congress house specifies which proposal kinds are allowed to be created. It is a subset of:
@@ -11,10 +10,10 @@ Each Congress house specifies which proposal kinds are allowed to be created. It
 - `FunctionCall`: if approved, proposal execution will create a cross contract call.
 - `Text`: text based proposal, no automated action is performed.
 - `FundingRequest(Balance)`: request to fund a specific project. Balance is the amount of Near provided as funding. If Balance is bigger or equal than `big_funding_threshold` then it is eligible for `VetoBigOrReccurentFundingReq`. Proposal execution will fail if the total budget spend (including the one from the proposal) goes above the `contract.budget_cap`.
-   NOTE: The contract doesn't track the monthly budget limit. That should be tracked off-chain. 
-- `RecurrentFundingRequest(Balance)`: funding request that will renew every month until the end of the terms. The balance parameter is the size of the single month spending for this funding request. The proposal is eligible for 
-`VetoBigOrReccurentFundingReq`. Proposal execution will fail if the total budget spend (including the one from the proposal multiplied by the amount of remaining months) goes above the `contract.budget_cap`.
-- `DismissAndBan(member, house)`: requests I Am Human registry to ban the member account (set `GovBan` flag in the IAH registry) and calls the dismiss hook on the house. 
+  NOTE: The contract doesn't track the monthly budget limit. That should be tracked off-chain.
+- `RecurrentFundingRequest(Balance)`: funding request that will renew every month until the end of the terms. The balance parameter is the size of the single month spending for this funding request. The proposal is eligible for
+  `VetoBigOrReccurentFundingReq`. Proposal execution will fail if the total budget spend (including the one from the proposal multiplied by the amount of remaining months) goes above the `contract.budget_cap`.
+- `DismissAndBan(member, house)`: requests I Am Human registry to ban the member account (set `GovBan` flag in the IAH registry) and calls the dismiss hook on the house.
 
 Each proposal comes with a description, which should provide motivation and a background.
 
@@ -23,11 +22,11 @@ Each proposal comes with a description, which should provide motivation and a ba
 Below we present how to make a proposal for every possible Congress motion:
 
 TODO:
+
 - Veto
 - Dismiss
 - Dismiss and Ban
 - ...
-
 
 ## Proposal Lifecycle
 
@@ -79,6 +78,7 @@ A proposal is **approved** when:
 
 Proposal reaches _failed_ status when it was approved, but the execution failed. In that can be re-executed again.
 
+If proposal execution breaks an invariant check (eg: crossing the budget cap), then the transaction will succeed and a composed error will be returned: the `Ok(Err(ExecRespErr::**))` of `Result<PromiseOrValue<Result<(), ExecRespErr>>, ExecError>` type.
 
 ## Queries
 

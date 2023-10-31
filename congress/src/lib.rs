@@ -220,9 +220,16 @@ impl Contract {
     /// If `contract.cooldown` is set, then a proposal can be only executed after the cooldown:
     /// (submission_time + voting_duration + cooldown).
     #[handle_result]
-    pub fn execute(&mut self, id: u32) -> Result<PromiseOrValue<()>, ExecError> {
+    pub fn execute(
+        &mut self,
+        id: u32,
+    ) -> Result<PromiseOrValue<Result<(), ExecRespErr>>, ExecError> {
         self.assert_active();
         let mut prop = self.assert_proposal(id);
+        if prop.status == ProposalStatus::Executed {
+            // More fine-grained errors
+            return Err(ExecError::AlreadyExecuted);
+        }
         // check if we can finalize the proposal status due to having enough votes during min_voting_duration
         if prop.status == ProposalStatus::InProgress {
             let (members, _) = self.members.get().unwrap();
@@ -249,7 +256,7 @@ impl Contract {
         }
 
         prop.status = ProposalStatus::Executed;
-        let mut result = PromiseOrValue::Value(());
+        let mut result = PromiseOrValue::Value(Ok(()));
         let mut budget = 0;
         match &prop.kind {
             PropKind::FunctionCall {
@@ -307,7 +314,9 @@ impl Contract {
         if budget != 0 {
             self.budget_spent += budget;
             if self.budget_spent > self.budget_cap {
-                return Err(ExecError::BudgetOverflow);
+                prop.status = ProposalStatus::Rejected;
+                self.proposals.insert(&id, &prop);
+                return Ok(PromiseOrValue::Value(Err(ExecRespErr::BudgetOverflow)));
             }
         }
         self.proposals.insert(&id, &prop);
@@ -639,7 +648,7 @@ mod unit_tests {
         );
     }
 
-    fn assert_exec_ok(res: Result<PromiseOrValue<()>, ExecError>) {
+    fn assert_exec_ok(res: Result<PromiseOrValue<Result<(), ExecRespErr>>, ExecError>) {
         match res {
             Ok(_) => (),
             Err(err) => panic!("expecting Ok, got {:?}", err),
@@ -718,6 +727,7 @@ mod unit_tests {
         let id = ctr
             .create_proposal(PropKind::Text, "Proposal unit test 2".to_string())
             .unwrap();
+        // TODO: no need to change timestamp
         ctx.block_timestamp = (START + MIN_VOTING_DURATION + 10) * MSECOND;
         testing_env!(ctx.clone());
         ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
@@ -826,6 +836,13 @@ mod unit_tests {
 
         prop = ctr.get_proposal(id).unwrap();
         assert_eq!(prop.proposal.status, ProposalStatus::Executed);
+
+        //
+        // check double execution
+        match ctr.execute(id) {
+            Ok(_) => panic!("expecting Err"),
+            Err(err) => assert_eq!(err, ExecError::AlreadyExecuted),
+        };
     }
 
     #[test]
@@ -886,6 +903,54 @@ mod unit_tests {
 
         // budget spent * remaining months
         assert_eq!(ctr.budget_spent, 20);
+    }
+
+    #[test]
+    fn proposal_execution_budget_overflow() {
+        let (mut ctx, mut ctr, _) = setup_ctr(100);
+        ctr.min_voting_duration = 0;
+
+        // create and approve a funding requst that will fill up the budget.
+        let id1 = ctr
+            .create_proposal(
+                PropKind::FundingRequest((ctr.budget_cap).into()),
+                "Funding req".to_owned(),
+            )
+            .unwrap();
+        ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id1);
+
+        // create a second proposal, that will go over the budget if proposal id1 is executed
+        let time_diff = 10;
+        ctx.block_timestamp += time_diff * MSECOND;
+        testing_env!(ctx.clone());
+        let id2 = ctr
+            .create_proposal(
+                PropKind::FundingRequest(10.into()),
+                "Funding req".to_owned(),
+            )
+            .unwrap();
+        ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id2);
+        let p2 = ctr.get_proposal(id2).unwrap();
+        assert_eq!(p2.proposal.status, ProposalStatus::Approved);
+
+        // execute the first proposal - it should work.
+        ctx.block_timestamp += (VOTING_DURATION + COOLDOWN) * MSECOND;
+        testing_env!(ctx.clone());
+        assert_exec_ok(ctr.execute(id1));
+
+        // execution of the second proposal should work, but the proposal should be rejected
+        ctx.block_timestamp += (time_diff + 1) * MSECOND;
+        testing_env!(ctx.clone());
+        match ctr.execute(id2) {
+            Ok(PromiseOrValue::Value(resp)) => assert_eq!(resp, Err(ExecRespErr::BudgetOverflow)),
+            Ok(PromiseOrValue::Promise(_)) => {
+                panic!("expecting Ok ExecRespErr::BudgetOverflow, got Ok Promise");
+            }
+            Err(err) => panic!(
+                "expecting Ok ExecRespErr::BudgetOverflow, got: Err: {:?}",
+                err
+            ),
+        }
     }
 
     #[test]

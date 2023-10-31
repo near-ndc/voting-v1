@@ -91,16 +91,17 @@ impl Proposal {
     }
 
     pub fn past_min_voting_duration(&self, min_voting_duration: u64) -> bool {
-        if self.submission_time + min_voting_duration < env::block_timestamp_ms() {
+        if min_voting_duration == 0 {
             return true;
         }
-        false
+        self.submission_time + min_voting_duration < env::block_timestamp_ms()
     }
 }
 
 /// Kinds of proposals, doing different action.
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq))]
 pub enum PropKind {
     /// Calls `receiver_id` with list of method names in a single promise.
     /// Allows this contract to execute any arbitrary set of actions in other contracts.
@@ -184,8 +185,9 @@ pub struct VoteRecord {
 }
 
 /// Function call arguments.
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Clone))]
 pub struct ActionCall {
     pub method_name: String,
     pub args: Base64VecU8,
@@ -206,8 +208,8 @@ pub enum PropPerm {
 }
 
 /// Permissions for calling hooks
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq, Clone)]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Clone))]
 #[serde(crate = "near_sdk::serde")]
 pub enum HookPerm {
     /// Allows to veto any proposal kind
@@ -216,4 +218,11 @@ pub enum HookPerm {
     VetoBigOrReccurentFundingReq,
     Dismiss,
     Dissolve,
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Clone))]
+#[serde(crate = "near_sdk::serde")]
+pub enum ExecRespErr {
+    BudgetOverflow,
 }
