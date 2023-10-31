@@ -28,6 +28,7 @@ pub struct ConfigOutput {
     pub budget_spent: U128,
     pub budget_cap: U128,
     pub big_funding_threshold: U128,
+    pub min_voting_duration: u64,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -137,6 +138,7 @@ impl Contract {
             budget_spent: U128(self.budget_spent),
             budget_cap: U128(self.budget_cap),
             big_funding_threshold: U128(self.big_funding_threshold),
+            min_voting_duration: self.min_voting_duration,
         }
     }
 }
