@@ -120,12 +120,8 @@ impl Contract {
     /// Returns hook permissions for given account
     /// Returns empty vector `[]` if not a hook.
     pub fn hook_permissions(&self, user: AccountId) -> Vec<HookPerm> {
-        let hooks = self.hook_auth.get().unwrap();
-        let res = hooks.get(&user).cloned();
-        if res.is_none() {
-            return vec![];
-        }
-        res.unwrap()
+        let mut hooks = self.hook_auth.get().unwrap();
+        hooks.remove(&user).unwrap_or(vec![])
     }
 
     pub fn config(&self) -> ConfigOutput {

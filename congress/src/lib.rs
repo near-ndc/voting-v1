@@ -307,6 +307,9 @@ impl Contract {
         if budget != 0 {
             self.budget_spent += budget;
             if self.budget_spent > self.budget_cap {
+                // TODO
+                // prop.status = ProposalStatus::Rejected;
+                // self.proposals.insert(&id, &prop);
                 return Err(ExecError::BudgetOverflow);
             }
         }
