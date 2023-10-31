@@ -199,8 +199,13 @@ impl Contract {
             return Err(VoteError::NotActive);
         }
 
-        prop.add_vote(user, vote)?;
-        prop.finalize_status(members.len(), self.threshold, self.min_voting_duration, now);
+        prop.add_vote(user, vote, self.threshold)?;
+        prop.finalize_status(
+            members.len(),
+            self.threshold,
+            self.min_voting_duration,
+            self.voting_duration,
+        );
 
         self.proposals.insert(&id, &prop);
         emit_vote(id);
@@ -237,7 +242,7 @@ impl Contract {
                 members.len(),
                 self.threshold,
                 self.min_voting_duration,
-                prop.submission_time + self.min_voting_duration,
+                self.voting_duration,
             ) {
                 return Err(ExecError::MinVotingDuration);
             }
@@ -1341,6 +1346,10 @@ mod unit_tests {
 
         ctx.block_timestamp = (START + MIN_VOTING_DURATION + 10) * MSECOND;
         testing_env!(ctx.clone());
+        // proposal should be handled correctly
+        let p = ctr.get_proposal(id).unwrap();
+        assert_eq!(p.proposal.status, ProposalStatus::Approved);
+
         match ctr.execute(id) {
             Ok(_) => panic!("expecting Err"),
             Err(err) => assert_eq!(err, ExecError::ExecTime),
@@ -1349,6 +1358,8 @@ mod unit_tests {
         // we should be able to execute proposal after min_voting_duration + cooldown
         ctx.block_timestamp = (START + MIN_VOTING_DURATION + COOLDOWN + 1) * MSECOND;
         testing_env!(ctx.clone());
+        let p = ctr.get_proposal(id).unwrap();
+        assert_eq!(p.proposal.status, ProposalStatus::Approved);
         assert_exec_ok(ctr.execute(id))
     }
 
