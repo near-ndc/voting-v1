@@ -644,7 +644,7 @@ mod unit_tests {
         );
     }
 
-    fn assert_exec_ok(res: Result<PromiseOrValue<()>, ExecError>) {
+    fn assert_exec_ok(res: Result<PromiseOrValue<Result<(), ExecRespErr>>, ExecError>) {
         match res {
             Ok(_) => (),
             Err(err) => panic!("expecting Ok, got {:?}", err),
@@ -891,6 +891,55 @@ mod unit_tests {
 
         // budget spent * remaining months
         assert_eq!(ctr.budget_spent, 20);
+    }
+
+    #[test]
+    fn proposal_execution_budget_overflow() {
+        let (mut ctx, mut ctr, _) = setup_ctr(100);
+        ctr.min_voting_duration = 0;
+
+        // create and approve a funding requst that will fill up the budget.
+        let id1 = ctr
+            .create_proposal(
+                PropKind::FundingRequest((ctr.budget_cap).into()),
+                "Funding req".to_owned(),
+            )
+            .unwrap();
+        ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id1);
+
+        // create a second proposal, that will go over the budget if proposal id1 is executed
+        let time_diff = 10;
+        ctx.block_timestamp += time_diff * MSECOND;
+        testing_env!(ctx.clone());
+        let id2 = ctr
+            .create_proposal(
+                PropKind::FundingRequest(10.into()),
+                "Funding req".to_owned(),
+            )
+            .unwrap();
+        ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id2);
+        let p2 = ctr.get_proposal(id2).unwrap();
+        println!(">> proposal {}", p2);
+        assert_eq!(p2.proposal.status, ProposalStatus::Approved);
+
+        // execute the first proposal - it should work.
+        ctx.block_timestamp += (VOTING_DURATION + COOLDOWN) * MSECOND;
+        testing_env!(ctx.clone());
+        assert_exec_ok(ctr.execute(id1));
+
+        // execution second proposal should work, but the proposal should be rejected
+        ctx.block_timestamp += (time_diff + 1) * MSECOND;
+        testing_env!(ctx.clone());
+        match ctr.execute(id1) {
+            Ok(PromiseOrValue::Value(resp)) => assert_eq!(resp, Err(ExecRespErr::BudgetOverflow)),
+            Ok(PromiseOrValue::Promise(_)) => {
+                panic!("expecting Ok ExecRespErr::BudgetOverflow, got Ok Promise");
+            }
+            Err(err) => panic!(
+                "expecting Ok ExecRespErr::BudgetOverflow, got: Err: {:?}",
+                err
+            ),
+        }
     }
 
     #[test]
