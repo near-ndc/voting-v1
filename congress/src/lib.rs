@@ -919,7 +919,6 @@ mod unit_tests {
             .unwrap();
         ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id2);
         let p2 = ctr.get_proposal(id2).unwrap();
-        println!(">> proposal {}", p2);
         assert_eq!(p2.proposal.status, ProposalStatus::Approved);
 
         // execute the first proposal - it should work.
@@ -930,7 +929,7 @@ mod unit_tests {
         // execution second proposal should work, but the proposal should be rejected
         ctx.block_timestamp += (time_diff + 1) * MSECOND;
         testing_env!(ctx.clone());
-        match ctr.execute(id1) {
+        match ctr.execute(id2) {
             Ok(PromiseOrValue::Value(resp)) => assert_eq!(resp, Err(ExecRespErr::BudgetOverflow)),
             Ok(PromiseOrValue::Promise(_)) => {
                 panic!("expecting Ok ExecRespErr::BudgetOverflow, got Ok Promise");

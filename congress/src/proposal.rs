@@ -91,10 +91,10 @@ impl Proposal {
     }
 
     pub fn past_min_voting_duration(&self, min_voting_duration: u64) -> bool {
-        if self.submission_time + min_voting_duration < env::block_timestamp_ms() {
+        if min_voting_duration == 0 {
             return true;
         }
-        false
+        self.submission_time + min_voting_duration < env::block_timestamp_ms()
     }
 }
 
