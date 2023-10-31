@@ -49,7 +49,7 @@ impl Proposal {
         match vote {
             Vote::Approve => {
                 self.approve += 1;
-                if self.approve > threshold {
+                if self.approve >= threshold {
                     self.approved_at = Some(env::block_timestamp_ms());
                 }
             }
