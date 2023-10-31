@@ -71,15 +71,23 @@ impl Proposal {
         }
     }
 
-    pub fn finalize_status(&mut self, members_num: usize, threshold: u8, min_voting_duration: u64) {
+    /// Returns true if it's past min voting duration
+    pub fn finalize_status(
+        &mut self,
+        members_num: usize,
+        threshold: u8,
+        min_voting_duration: u64,
+        approved_at: u64,
+    ) -> bool {
         let past_min_voting_duration = self.past_min_voting_duration(min_voting_duration);
         let all_voted = self.votes.len() == members_num;
         if self.approve >= threshold && (past_min_voting_duration || all_voted) {
-            self.approved_at = Some(env::block_timestamp_ms());
+            self.approved_at = Some(approved_at);
             self.status = ProposalStatus::Approved;
         } else if self.reject + self.abstain > members_num as u8 - threshold {
             self.status = ProposalStatus::Rejected;
         }
+        past_min_voting_duration
     }
 
     pub fn past_min_voting_duration(&self, min_voting_duration: u64) -> bool {
