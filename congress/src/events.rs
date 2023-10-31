@@ -28,7 +28,7 @@ pub(crate) fn emit_vote(prop_id: u32) {
     });
 }
 
-pub(crate) fn emit_vote_execute(prop_id: u32, err: ExecError) {
+pub(crate) fn emit_vote_execute_fail(prop_id: u32, err: ExecError) {
     emit_event(EventPayload {
         event: "vote-execute",
         data: json!({ "prop_id": prop_id, "status": "failed", "reason": err }),

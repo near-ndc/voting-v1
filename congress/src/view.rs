@@ -67,9 +67,17 @@ impl Contract {
             Either::Right(from_index..=min(self.prop_counter, from_index + limit - 1))
         };
 
+        let (members, _) = self.members.get().unwrap();
+        let ml = members.len();
+
         iter.filter_map(|id| {
             self.proposals.get(&id).map(|mut proposal| {
-                proposal.recompute_status(self.voting_duration);
+                proposal.finalize_status(
+                    ml,
+                    self.threshold,
+                    self.min_voting_duration,
+                    self.voting_duration,
+                );
                 ProposalOutput { id, proposal }
             })
         })
@@ -78,8 +86,15 @@ impl Contract {
 
     /// Get specific proposal.
     pub fn get_proposal(&self, id: u32) -> Option<ProposalOutput> {
+        let (members, _) = self.members.get().unwrap();
+        let ml = members.len();
         self.proposals.get(&id).map(|mut proposal| {
-            proposal.recompute_status(self.voting_duration);
+            proposal.finalize_status(
+                ml,
+                self.threshold,
+                self.min_voting_duration,
+                self.voting_duration,
+            );
             ProposalOutput { id, proposal }
         })
     }
