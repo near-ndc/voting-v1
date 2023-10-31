@@ -210,11 +210,12 @@ impl Contract {
         self.proposals.insert(&id, &prop);
         emit_vote(id);
 
+        // automatic execution
         if prop.status == ProposalStatus::Approved && self.cooldown == 0 {
             // We ignore a failure of self.execute here to assure that the vote is counted.
             let res = self.execute(id);
             if res.is_err() {
-                emit_vote_execute(id, res.err().unwrap());
+                emit_vote_execute_fail(id, res.err().unwrap());
             }
         }
 
@@ -727,14 +728,13 @@ mod unit_tests {
         ctx.predecessor_account_id = acc(2);
         ctx.block_timestamp = START * MSECOND;
         testing_env!(ctx.clone());
-        // set cooldown=0 and test for immediate execution
+
+        // set cooldown=0 and min_voting_duration=0 and test for immediate execution
         ctr.cooldown = 0;
+        ctr.min_voting_duration = 0;
         let id = ctr
             .create_proposal(PropKind::Text, "Proposal unit test 2".to_string())
             .unwrap();
-        // TODO: no need to change timestamp
-        ctx.block_timestamp = (START + MIN_VOTING_DURATION + 10) * MSECOND;
-        testing_env!(ctx.clone());
         ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
         let prop = ctr.get_proposal(id).unwrap();
         assert_eq!(prop.proposal.status, ProposalStatus::Executed);
@@ -743,7 +743,6 @@ mod unit_tests {
         let id = ctr
             .create_proposal(PropKind::Text, "Proposal unit test query 3".to_string())
             .unwrap();
-
         let prop = ctr.get_proposal(id).unwrap();
         ctx.block_timestamp = (prop.proposal.submission_time + ctr.voting_duration + 1) * MSECOND;
         testing_env!(ctx);

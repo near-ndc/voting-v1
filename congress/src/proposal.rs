@@ -79,16 +79,19 @@ impl Proposal {
         min_voting_duration: u64,
         voting_duration: u64,
     ) -> bool {
+        if self.status != ProposalStatus::InProgress {
+            return true;
+        }
         let past_min_voting_duration = self.past_min_voting_duration(min_voting_duration);
         let all_voted = self.votes.len() == members_num;
-        if self.approve >= threshold && (past_min_voting_duration || all_voted) {
-            self.status = ProposalStatus::Approved;
-        } else if self.reject + self.abstain > members_num as u8 - threshold {
-            self.status = ProposalStatus::Rejected;
-        } else if self.status == ProposalStatus::InProgress
-            && env::block_timestamp_ms() > self.submission_time + voting_duration
-        {
-            self.status = ProposalStatus::Rejected;
+        if past_min_voting_duration || all_voted {
+            if self.approve >= threshold {
+                self.status = ProposalStatus::Approved;
+            } else if self.reject + self.abstain > members_num as u8 - threshold
+                || env::block_timestamp_ms() > self.submission_time + voting_duration
+            {
+                self.status = ProposalStatus::Rejected;
+            }
         }
         past_min_voting_duration
     }
