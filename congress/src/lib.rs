@@ -1346,7 +1346,7 @@ mod unit_tests {
 
         ctx.block_timestamp = (START + MIN_VOTING_DURATION + 10) * MSECOND;
         testing_env!(ctx.clone());
-        // proposal should be handled correctly
+        // proposal status should be reported correctly
         let p = ctr.get_proposal(id).unwrap();
         assert_eq!(p.proposal.status, ProposalStatus::Approved);
 
