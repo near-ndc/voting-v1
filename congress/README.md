@@ -79,6 +79,7 @@ A proposal is **approved** when:
 
 Proposal reaches _failed_ status when it was approved, but the execution failed. In that can be re-executed again.
 
+If proposal execution breaks an invariant check (eg: crossing the budget cap), then the transaction will succeed and a composed error will be returned: the `Ok(Err(ExecRespErr::**))` of `Result<PromiseOrValue<Result<(), ExecRespErr>>, ExecError>` type.
 
 ## Queries
 
