@@ -670,38 +670,24 @@ mod unit_tests {
 
         ctx.predecessor_account_id = acc(4);
         testing_env!(ctx.clone());
-        match ctr.vote(id, Vote::Approve) {
-            Err(VoteError::NotInProgress) => (),
-            x => panic!("expected NotInProgress, got: {:?}", x),
-        }
+        assert_eq!(ctr.vote(id, Vote::Approve), Err(VoteError::NotInProgress));
 
         ctx.block_timestamp = START * MSECOND;
         testing_env!(ctx.clone());
         let id = ctr
             .create_proposal(PropKind::Text, "proposal".to_owned())
             .unwrap();
-
-        let res = ctr.vote(id, Vote::Approve);
-        assert!(res.is_ok());
-
-        match ctr.vote(id, Vote::Approve) {
-            Err(VoteError::DoubleVote) => (),
-            x => panic!("expected DoubleVoted, got: {:?}", x),
-        }
+        assert_eq!(ctr.vote(id, Vote::Approve), Ok(()));
+        assert_eq!(ctr.vote(id, Vote::Reject), Err(VoteError::DoubleVote));
+        assert_eq!(ctr.vote(id, Vote::Approve), Err(VoteError::DoubleVote));
 
         ctx.block_timestamp = (ctr.start_time + ctr.voting_duration + 1) * MSECOND;
         testing_env!(ctx.clone());
-        match ctr.vote(id, Vote::Approve) {
-            Err(VoteError::NotActive) => (),
-            x => panic!("expected NotActive, got: {:?}", x),
-        }
+        assert_eq!(ctr.vote(id, Vote::Approve), Err(VoteError::NotActive));
 
         ctx.predecessor_account_id = acc(5);
         testing_env!(ctx.clone());
-        match ctr.vote(id, Vote::Approve) {
-            Err(VoteError::NotAuthorized) => (),
-            x => panic!("expected NotAuthorized, got: {:?}", x),
-        }
+        assert_eq!(ctr.vote(id, Vote::Approve), Err(VoteError::NotAuthorized));
 
         ctx.predecessor_account_id = acc(2);
         ctx.block_timestamp = START * MSECOND;
@@ -761,21 +747,18 @@ mod unit_tests {
 
         ctx.attached_deposit = 1;
         testing_env!(ctx.clone());
-
-        match ctr.create_proposal(PropKind::FundingRequest(U128(1)), "".to_string()) {
-            Err(CreatePropError::Storage(_)) => (),
-            Ok(_) => panic!("expected Storage, got: OK"),
-            Err(err) => panic!("expected Storage got: {:?}", err),
-        }
+        assert!(matches!(
+            ctr.create_proposal(PropKind::FundingRequest(U128(1)), "".to_string()),
+            Err(CreatePropError::Storage(_))
+        ));
 
         ctx.predecessor_account_id = acc(6);
         ctx.attached_deposit = 10 * MILI_NEAR;
         testing_env!(ctx.clone());
-        match ctr.create_proposal(PropKind::Text, "".to_string()) {
-            Err(CreatePropError::NotAuthorized) => (),
-            Ok(_) => panic!("expected NotAuthorized, got: OK"),
-            Err(err) => panic!("expected NotAuthorized got: {:?}", err),
-        }
+        assert_eq!(
+            ctr.create_proposal(PropKind::Text, "".to_string()),
+            Err(CreatePropError::NotAuthorized)
+        );
 
         // set remaining months to 2
         let (members, _) = ctr.members.get().unwrap();
@@ -784,24 +767,21 @@ mod unit_tests {
         ctr.end_time = ctr.start_time + START * 12 * 24 * 61;
         ctx.predecessor_account_id = acc(2);
         testing_env!(ctx);
-
-        match ctr.create_proposal(
-            PropKind::RecurrentFundingRequest(U128((ctr.budget_cap / 2) + 1)),
-            "".to_string(),
-        ) {
-            Err(CreatePropError::BudgetOverflow) => (),
-            Ok(_) => panic!("expected BudgetOverflow, got: OK"),
-            Err(err) => panic!("expected BudgetOverflow got: {:?}", err),
-        }
+        assert_eq!(
+            ctr.create_proposal(
+                PropKind::RecurrentFundingRequest(U128((ctr.budget_cap / 2) + 1)),
+                "".to_string(),
+            ),
+            Err(CreatePropError::BudgetOverflow)
+        );
     }
 
     #[test]
     fn proposal_execution_text() {
         let (mut ctx, mut ctr, id) = setup_ctr(100);
         match ctr.execute(id) {
-            Err(ExecError::NotApproved) => (),
             Ok(_) => panic!("expected NotApproved, got: OK"),
-            Err(err) => panic!("expected NotApproved got: {:?}", err),
+            Err(err) => assert_eq!(err, ExecError::NotApproved),
         }
         ctx.block_timestamp = (START + MIN_VOTING_DURATION + 10) * MSECOND;
         testing_env!(ctx.clone());
@@ -811,9 +791,8 @@ mod unit_tests {
         assert_eq!(prop.proposal.status, ProposalStatus::Approved);
 
         match ctr.execute(id) {
-            Err(ExecError::ExecTime) => (),
+            Err(err) => assert_eq!(err, ExecError::ExecTime),
             Ok(_) => panic!("expected ExecTime, got: OK"),
-            Err(err) => panic!("expected ExecTime got: {:?}", err),
         }
 
         ctx.block_timestamp = (ctr.start_time + ctr.cooldown + ctr.voting_duration + 1) * MSECOND;
@@ -937,17 +916,12 @@ mod unit_tests {
         testing_env!(ctx.clone());
 
         ctr.veto_hook(id).unwrap();
-
         // veto vetoed prop
-        match ctr.veto_hook(id) {
-            Err(HookError::ProposalFinalized) => (),
-            x => panic!("expected ProposalFinalized, got: {:?}", x),
-        }
+        assert_eq!(ctr.veto_hook(id), Err(HookError::ProposalFinalized));
 
         ctx.block_timestamp = START * MSECOND;
         ctx.predecessor_account_id = acc(1);
         testing_env!(ctx.clone());
-
         let id = ctr
             .create_proposal(PropKind::Text, "Proposal unit test 2".to_string())
             .unwrap();
@@ -966,26 +940,17 @@ mod unit_tests {
         testing_env!(ctx);
 
         // Can execute past cooldown but not veto proposal
-        match ctr.veto_hook(id) {
-            Err(HookError::CooldownOver) => (),
-            x => panic!("expected CooldownOver, got: {:?}", x),
-        }
+        assert_eq!(ctr.veto_hook(id), Err(HookError::CooldownOver));
 
         ctr.execute(id).unwrap();
 
         // Cannot veto executed or failed proposal
-        match ctr.veto_hook(id) {
-            Err(HookError::ProposalFinalized) => (),
-            x => panic!("expected ProposalFinalized, got: {:?}", x),
-        }
+        assert_eq!(ctr.veto_hook(id), Err(HookError::ProposalFinalized));
 
         let mut prop = ctr.proposals.get(&id).unwrap();
         prop.status = ProposalStatus::Failed;
         ctr.proposals.insert(&id, &prop);
-        match ctr.veto_hook(id) {
-            Err(HookError::ProposalFinalized) => (),
-            x => panic!("expected ProposalFinalized, got: {:?}", x),
-        }
+        assert_eq!(ctr.veto_hook(id), Err(HookError::ProposalFinalized));
     }
 
     fn create_all_props(ctr: &mut Contract) -> (u32, u32, u32, u32, u32) {
@@ -1067,7 +1032,6 @@ mod unit_tests {
         ctr.dissolve_hook().unwrap();
         let expected = r#"EVENT_JSON:{"standard":"ndc-congress","version":"1.0.0","event":"dissolve","data":""}"#;
         assert_eq!(vec![expected], get_logs());
-
         assert!(ctr.dissolved);
 
         ctr.create_proposal(
@@ -1081,21 +1045,15 @@ mod unit_tests {
     fn dismiss_hook() {
         let (mut ctx, mut ctr, id) = setup_ctr(100);
 
-        match ctr.dismiss_hook(acc(2)) {
-            Err(HookError::NotAuthorized) => (),
-            x => panic!("expected NotAuthorized, got: {:?}", x),
-        }
+        assert_eq!(ctr.dismiss_hook(acc(2)), Err(HookError::NotAuthorized));
 
         ctx.predecessor_account_id = voting_body();
         testing_env!(ctx.clone());
-
         assert_eq!(ctr.dismiss_hook(acc(10)), Ok(()));
-
         ctr.dismiss_hook(acc(2)).unwrap();
 
         let expected = r#"EVENT_JSON:{"standard":"ndc-congress","version":"1.0.0","event":"dismiss","data":{"member":"user-2.near"}}"#;
         assert_eq!(vec![expected], get_logs());
-
         assert_eq!(ctr.member_permissions(acc(2)), vec![]);
 
         // Proposal should not pass with only 2 votes
@@ -1240,10 +1198,7 @@ mod unit_tests {
 
         ctx.predecessor_account_id = acc(2);
         testing_env!(ctx.clone());
-        match ctr.vote(prop, Vote::Approve) {
-            Err(VoteError::NoSelfVote) => (),
-            x => panic!("expected NotAllowedAgainst, got: {:?}", x),
-        }
+        assert_eq!(ctr.vote(prop, Vote::Approve), Err(VoteError::NoSelfVote));
     }
 
     #[test]
