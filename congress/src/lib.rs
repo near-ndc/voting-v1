@@ -226,6 +226,10 @@ impl Contract {
     ) -> Result<PromiseOrValue<Result<(), ExecRespErr>>, ExecError> {
         self.assert_active();
         let mut prop = self.assert_proposal(id);
+        if prop.status == ProposalStatus::Executed {
+            // More fine-grained errors
+            return Err(ExecError::AlreadyExecuted);
+        }
         // check if we can finalize the proposal status due to having enough votes during min_voting_duration
         if prop.status == ProposalStatus::InProgress {
             let (members, _) = self.members.get().unwrap();
@@ -723,6 +727,7 @@ mod unit_tests {
         let id = ctr
             .create_proposal(PropKind::Text, "Proposal unit test 2".to_string())
             .unwrap();
+        // TODO: no need to change timestamp
         ctx.block_timestamp = (START + MIN_VOTING_DURATION + 10) * MSECOND;
         testing_env!(ctx.clone());
         ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
@@ -831,6 +836,13 @@ mod unit_tests {
 
         prop = ctr.get_proposal(id).unwrap();
         assert_eq!(prop.proposal.status, ProposalStatus::Executed);
+
+        //
+        // check double execution
+        match ctr.execute(id) {
+            Ok(_) => panic!("expecting Err"),
+            Err(err) => assert_eq!(err, ExecError::AlreadyExecuted),
+        };
     }
 
     #[test]
