@@ -26,6 +26,27 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ### Bug Fixes
 
+## v1.0.0 (2023-11-01)
+
+### Features
+
+- Store vote timestamps.
+- Added `min_voting_duration`. With non zero `min_voting_duration`, a proposal is in progress until:
+  - all votes were cast
+  - OR voting_duration passed
+  - OR `min_voting_duration` passed and the tally can be finalized (proposal reached min amount of approval votes or have enough abstain + reject votes to block the approval).
+- Extended `ConfigOutput` to include all contract parameters.
+
+### Breaking changes
+
+- `proposal.votes` map type has changed. The values are `VoteRecord` (vote and the timestamp) instead of `Vote`.
+- `execute` method return type changed: from `Result<PromiseOrValue<()>, ExecError>` to `Result<PromiseOrValue<Result<(), ExecRespErr>>, ExecError>`. Note the inner result. If the result is `Ok(PromiseOrValue::Value(Err(..)))` then the transaction will pass (state change will be properly recorded), but the proposal fails to execute due to error reported through `ExecRespError`.
+
+### Bug Fixes
+
+- Proposal status calculation in when querying proposals.
+- Proposal: handle budget overflow, when there are two competing proposals.
+
 ## v0.2.0 (2023-10-24)
 
 ### Features

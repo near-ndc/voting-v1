@@ -562,7 +562,7 @@ mod unit_tests {
     const TERM: u64 = 60 * 15 * 1000;
     const VOTING_DURATION: u64 = 60 * 5 * 1000;
     const MIN_VOTING_DURATION: u64 = 30 * 5 * 1000;
-    const COOLDOWN: u64 = 60 * 5 * 1000;
+    const COOLDOWN: u64 = 40 * 5 * 1000;
 
     fn acc(idx: u8) -> AccountId {
         AccountId::new_unchecked(format!("user-{}.near", idx))
@@ -1337,6 +1337,8 @@ mod unit_tests {
 
         // should not be able to exeucte a proposal while in min_voting_duration
         ctx.block_timestamp = (START + MIN_VOTING_DURATION - 10) * MSECOND;
+        let p = ctr.get_proposal(id).unwrap();
+        assert_eq!(p.proposal.status, ProposalStatus::InProgress);
         testing_env!(ctx.clone());
         match ctr.execute(id) {
             Ok(_) => panic!("expecting Err"),
@@ -1345,17 +1347,19 @@ mod unit_tests {
 
         ctx.block_timestamp = (START + MIN_VOTING_DURATION + 10) * MSECOND;
         testing_env!(ctx.clone());
-        // proposal status should be reported correctly
+        // proposal status should be reported correctly, however we need to wait for cooldow
+        // to execute
         let p = ctr.get_proposal(id).unwrap();
         assert_eq!(p.proposal.status, ProposalStatus::Approved);
-
         match ctr.execute(id) {
             Ok(_) => panic!("expecting Err"),
             Err(err) => assert_eq!(err, ExecError::ExecTime),
         };
 
-        // we should be able to execute proposal after min_voting_duration + cooldown
-        ctx.block_timestamp = (START + MIN_VOTING_DURATION + COOLDOWN + 1) * MSECOND;
+        // cooldown starts when the proposal is "virtually approved" -> that is when it received
+        // enough approve votes. In this test case, the propoosal was virtually approved
+        // at START, so we should be able to execute proposal right after the cooldown.
+        ctx.block_timestamp = (START + COOLDOWN + 1) * MSECOND;
         testing_env!(ctx.clone());
         let p = ctr.get_proposal(id).unwrap();
         assert_eq!(p.proposal.status, ProposalStatus::Approved);
