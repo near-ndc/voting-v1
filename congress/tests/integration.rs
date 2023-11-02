@@ -587,6 +587,13 @@ async fn migration_mainnet() -> anyhow::Result<()> {
         .await?
         .json()?;
 
+    let members: MembersOutput = congress
+        .call("get_members")
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+
     // deploy the new contract
     let new_congress = congress
         .as_account()
@@ -595,12 +602,7 @@ async fn migration_mainnet() -> anyhow::Result<()> {
         .into_result()?;
 
     // call the migrate method
-    let res = new_congress
-        .call("migrate")
-        .args_json(json!({"min_voting_duration": 0}))
-        .max_gas()
-        .transact()
-        .await?;
+    let res = new_congress.call("migrate").max_gas().transact().await?;
     assert!(res.is_success(), "{:?}", res.receipt_failures());
 
     let res: u64 = new_congress
@@ -618,6 +620,15 @@ async fn migration_mainnet() -> anyhow::Result<()> {
         .transact()
         .await?
         .json()?;
+
+    let members_len: u8 = new_congress
+        .call("members_len")
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+
+    assert_eq!(members.members.len() as u8, members_len);
 
     print!("{:?}", prop.unwrap().proposal);
 

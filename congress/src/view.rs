@@ -107,6 +107,10 @@ impl Contract {
         self.dissolved
     }
 
+    pub fn members_len(&self) -> u8 {
+        self.members_len
+    }
+
     /// Returns all members with permissions
     pub fn get_members(&self) -> MembersOutput {
         let (members, permissions) = self.members.get().unwrap();
