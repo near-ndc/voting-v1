@@ -22,7 +22,11 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ### Features
 
+- `members_len` view method
+
 ### Breaking changes
+
+- added `members_len` field to smart contract
 
 ### Bug Fixes
 

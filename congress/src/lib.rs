@@ -44,6 +44,8 @@ pub struct Contract {
     // We can use single object rather than LookupMap because the maximum amount of members
     // is 17 (for HoM: 15 + 2)
     pub members: LazyOption<(Vec<AccountId>, Vec<PropPerm>)>,
+    /// length of members
+    pub members_len: u8,
     /// minimum amount of members to approve the proposal
     pub threshold: u8,
 
@@ -83,8 +85,9 @@ impl Contract {
     ) -> Self {
         // we can support up to 255 with the limitation of the proposal type, but setting 100
         // here because this is more than enough for what we need to test for Congress.
-        near_sdk::require!(members.len() <= 100, "max amount of members is 100");
-        let threshold = (members.len() / 2) as u8 + 1;
+        let members_len = members.len() as u8;
+        near_sdk::require!(members_len <= 100, "max amount of members is 100");
+        let threshold = (members_len / 2) + 1;
         members.sort();
         Self {
             community_fund,
@@ -92,6 +95,7 @@ impl Contract {
             prop_counter: 0,
             proposals: LookupMap::new(StorageKey::Proposals),
             members: LazyOption::new(StorageKey::Members, Some(&(members, member_perms))),
+            members_len,
             threshold,
             hook_auth: LazyOption::new(StorageKey::HookAuth, Some(&hook_auth)),
             start_time,
@@ -1380,5 +1384,11 @@ mod unit_tests {
 
         prop = ctr.get_proposal(id);
         assert_eq!(prop.unwrap().proposal.status, ProposalStatus::Approved);
+    }
+
+    #[test]
+    fn members_len() {
+        let (_, ctr, _) = setup_ctr(100);
+        assert_eq!(ctr.members_len(), 4);
     }
 }
