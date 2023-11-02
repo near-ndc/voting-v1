@@ -29,7 +29,7 @@ pub struct Proposal {
     /// Abstain votes don't count into the final tally.
     pub abstain: u8,
     /// Map of who voted and how.
-    pub votes: HashMap<AccountId, Vote>,
+    pub votes: HashMap<AccountId, VoteRecord>,
     /// Submission time (for voting period).
     pub submission_time: u64,
     /// Unix time in miliseconds when the proposal reached approval threshold. `None` if it is not approved.
@@ -37,13 +37,21 @@ pub struct Proposal {
 }
 
 impl Proposal {
-    pub fn add_vote(&mut self, user: AccountId, vote: Vote) -> Result<(), VoteError> {
+    pub fn add_vote(
+        &mut self,
+        user: AccountId,
+        vote: Vote,
+        threshold: u8,
+    ) -> Result<(), VoteError> {
         if self.votes.contains_key(&user) {
             return Err(VoteError::DoubleVote);
         }
         match vote {
             Vote::Approve => {
                 self.approve += 1;
+                if self.approve >= threshold {
+                    self.approved_at = Some(env::block_timestamp_ms());
+                }
             }
             Vote::Reject => {
                 self.reject += 1;
@@ -52,41 +60,54 @@ impl Proposal {
                 self.abstain += 1;
             }
         }
-        self.votes.insert(user, vote);
+        self.votes.insert(
+            user,
+            VoteRecord {
+                timestamp: env::block_timestamp_ms(),
+                vote,
+            },
+        );
 
         Ok(())
     }
 
-    pub fn recompute_status(&mut self, voting_duration: u64) {
-        if &self.status == &ProposalStatus::InProgress
-            && env::block_timestamp_ms() > self.submission_time + voting_duration
-        {
-            self.status = ProposalStatus::Rejected;
+    /// Returns true if it's past min voting duration
+    pub fn finalize_status(
+        &mut self,
+        members_num: usize,
+        threshold: u8,
+        min_voting_duration: u64,
+        voting_duration: u64,
+    ) -> bool {
+        if self.status != ProposalStatus::InProgress {
+            return true;
         }
-    }
-
-    pub fn finalize_status(&mut self, members_num: usize, threshold: u8, min_voting_duration: u64) {
         let past_min_voting_duration = self.past_min_voting_duration(min_voting_duration);
         let all_voted = self.votes.len() == members_num;
-        if self.approve >= threshold && (past_min_voting_duration || all_voted) {
-            self.approved_at = Some(env::block_timestamp_ms());
-            self.status = ProposalStatus::Approved;
-        } else if self.reject + self.abstain > members_num as u8 - threshold {
-            self.status = ProposalStatus::Rejected;
+        if past_min_voting_duration || all_voted {
+            if self.approve >= threshold {
+                self.status = ProposalStatus::Approved;
+            } else if self.reject + self.abstain > members_num as u8 - threshold
+                || env::block_timestamp_ms() > self.submission_time + voting_duration
+            {
+                self.status = ProposalStatus::Rejected;
+            }
         }
+        past_min_voting_duration
     }
 
     pub fn past_min_voting_duration(&self, min_voting_duration: u64) -> bool {
-        if self.submission_time + min_voting_duration < env::block_timestamp_ms() {
+        if min_voting_duration == 0 {
             return true;
         }
-        false
+        self.submission_time + min_voting_duration < env::block_timestamp_ms()
     }
 }
 
 /// Kinds of proposals, doing different action.
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq))]
 pub enum PropKind {
     /// Calls `receiver_id` with list of method names in a single promise.
     /// Allows this contract to execute any arbitrary set of actions in other contracts.
@@ -161,9 +182,18 @@ pub enum Vote {
     // note: we don't have Remove
 }
 
-/// Function call arguments.
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Debug, PartialEq, Clone)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[serde(crate = "near_sdk::serde")]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq))]
+pub struct VoteRecord {
+    pub timestamp: u64, // unix time of when this vote was submitted
+    pub vote: Vote,
+}
+
+/// Function call arguments.
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq, Clone))]
 pub struct ActionCall {
     pub method_name: String,
     pub args: Base64VecU8,
@@ -184,8 +214,8 @@ pub enum PropPerm {
 }
 
 /// Permissions for calling hooks
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq, Clone)]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Clone))]
 #[serde(crate = "near_sdk::serde")]
 pub enum HookPerm {
     /// Allows to veto any proposal kind
@@ -194,4 +224,11 @@ pub enum HookPerm {
     VetoBigOrReccurentFundingReq,
     Dismiss,
     Dissolve,
+}
+
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Clone))]
+#[serde(crate = "near_sdk::serde")]
+pub enum ExecRespErr {
+    BudgetOverflow,
 }

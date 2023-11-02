@@ -17,6 +17,7 @@ mod constants;
 mod errors;
 mod events;
 mod ext;
+mod migrate;
 pub mod proposal;
 mod storage;
 pub mod view;
@@ -43,6 +44,8 @@ pub struct Contract {
     // We can use single object rather than LookupMap because the maximum amount of members
     // is 17 (for HoM: 15 + 2)
     pub members: LazyOption<(Vec<AccountId>, Vec<PropPerm>)>,
+    /// length of members
+    pub members_len: u8,
     /// minimum amount of members to approve the proposal
     pub threshold: u8,
 
@@ -82,8 +85,9 @@ impl Contract {
     ) -> Self {
         // we can support up to 255 with the limitation of the proposal type, but setting 100
         // here because this is more than enough for what we need to test for Congress.
-        near_sdk::require!(members.len() <= 100, "max amount of members is 100");
-        let threshold = (members.len() / 2) as u8 + 1;
+        let members_len = members.len() as u8;
+        near_sdk::require!(members_len <= 100, "max amount of members is 100");
+        let threshold = (members_len / 2) + 1;
         members.sort();
         Self {
             community_fund,
@@ -91,6 +95,7 @@ impl Contract {
             prop_counter: 0,
             proposals: LookupMap::new(StorageKey::Proposals),
             members: LazyOption::new(StorageKey::Members, Some(&(members, member_perms))),
+            members_len,
             threshold,
             hook_auth: LazyOption::new(StorageKey::HookAuth, Some(&hook_auth)),
             start_time,
@@ -193,21 +198,28 @@ impl Contract {
         if !matches!(prop.status, ProposalStatus::InProgress) {
             return Err(VoteError::NotInProgress);
         }
-        if env::block_timestamp_ms() > prop.submission_time + self.voting_duration {
+        let now = env::block_timestamp_ms();
+        if now > prop.submission_time + self.voting_duration {
             return Err(VoteError::NotActive);
         }
 
-        prop.add_vote(user, vote)?;
-        prop.finalize_status(members.len(), self.threshold, self.min_voting_duration);
+        prop.add_vote(user, vote, self.threshold)?;
+        prop.finalize_status(
+            members.len(),
+            self.threshold,
+            self.min_voting_duration,
+            self.voting_duration,
+        );
 
         self.proposals.insert(&id, &prop);
         emit_vote(id);
 
+        // automatic execution
         if prop.status == ProposalStatus::Approved && self.cooldown == 0 {
             // We ignore a failure of self.execute here to assure that the vote is counted.
             let res = self.execute(id);
             if res.is_err() {
-                emit_vote_execute(id, res.err().unwrap());
+                emit_vote_execute_fail(id, res.err().unwrap());
             }
         }
 
@@ -218,9 +230,28 @@ impl Contract {
     /// If `contract.cooldown` is set, then a proposal can be only executed after the cooldown:
     /// (submission_time + voting_duration + cooldown).
     #[handle_result]
-    pub fn execute(&mut self, id: u32) -> Result<PromiseOrValue<()>, ExecError> {
+    pub fn execute(
+        &mut self,
+        id: u32,
+    ) -> Result<PromiseOrValue<Result<(), ExecRespErr>>, ExecError> {
         self.assert_active();
         let mut prop = self.assert_proposal(id);
+        if prop.status == ProposalStatus::Executed {
+            // More fine-grained errors
+            return Err(ExecError::AlreadyExecuted);
+        }
+        // check if we can finalize the proposal status due to having enough votes during min_voting_duration
+        if prop.status == ProposalStatus::InProgress {
+            let (members, _) = self.members.get().unwrap();
+            if !prop.finalize_status(
+                members.len(),
+                self.threshold,
+                self.min_voting_duration,
+                self.voting_duration,
+            ) {
+                return Err(ExecError::MinVotingDuration);
+            }
+        }
         if !matches!(
             prop.status,
             // if the previous proposal execution failed, we should be able to re-execute it
@@ -228,13 +259,14 @@ impl Contract {
         ) {
             return Err(ExecError::NotApproved);
         }
+
         let now = env::block_timestamp_ms();
-        if self.cooldown > 0 && now <= prop.submission_time + self.voting_duration + self.cooldown {
+        if self.cooldown > 0 && now <= prop.approved_at.unwrap() + self.cooldown {
             return Err(ExecError::ExecTime);
         }
 
         prop.status = ProposalStatus::Executed;
-        let mut result = PromiseOrValue::Value(());
+        let mut result = PromiseOrValue::Value(Ok(()));
         let mut budget = 0;
         match &prop.kind {
             PropKind::FunctionCall {
@@ -292,7 +324,9 @@ impl Contract {
         if budget != 0 {
             self.budget_spent += budget;
             if self.budget_spent > self.budget_cap {
-                return Err(ExecError::BudgetOverflow);
+                prop.status = ProposalStatus::Rejected;
+                self.proposals.insert(&id, &prop);
+                return Ok(PromiseOrValue::Value(Err(ExecRespErr::BudgetOverflow)));
             }
         }
         self.proposals.insert(&id, &prop);
@@ -532,7 +566,7 @@ mod unit_tests {
     const TERM: u64 = 60 * 15 * 1000;
     const VOTING_DURATION: u64 = 60 * 5 * 1000;
     const MIN_VOTING_DURATION: u64 = 30 * 5 * 1000;
-    const COOLDOWN_DURATION: u64 = 60 * 5 * 1000;
+    const COOLDOWN: u64 = 40 * 5 * 1000;
 
     fn acc(idx: u8) -> AccountId {
         AccountId::new_unchecked(format!("user-{}.near", idx))
@@ -572,7 +606,7 @@ mod unit_tests {
             community_fund(),
             START,
             end_time,
-            COOLDOWN_DURATION,
+            COOLDOWN,
             VOTING_DURATION,
             MIN_VOTING_DURATION,
             vec![acc(1), acc(2), acc(3), acc(4)],
@@ -624,6 +658,13 @@ mod unit_tests {
         );
     }
 
+    fn assert_exec_ok(res: Result<PromiseOrValue<Result<(), ExecRespErr>>, ExecError>) {
+        match res {
+            Ok(_) => (),
+            Err(err) => panic!("expecting Ok, got {:?}", err),
+        };
+    }
+
     #[test]
     fn basic_flow() {
         let (mut ctx, mut ctr, id) = setup_ctr(100);
@@ -669,49 +710,35 @@ mod unit_tests {
 
         ctx.predecessor_account_id = acc(4);
         testing_env!(ctx.clone());
-        match ctr.vote(id, Vote::Approve) {
-            Err(VoteError::NotInProgress) => (),
-            x => panic!("expected NotInProgress, got: {:?}", x),
-        }
+        assert_eq!(ctr.vote(id, Vote::Approve), Err(VoteError::NotInProgress));
 
         ctx.block_timestamp = START * MSECOND;
         testing_env!(ctx.clone());
         let id = ctr
             .create_proposal(PropKind::Text, "proposal".to_owned())
             .unwrap();
-
-        let res = ctr.vote(id, Vote::Approve);
-        assert!(res.is_ok());
-
-        match ctr.vote(id, Vote::Approve) {
-            Err(VoteError::DoubleVote) => (),
-            x => panic!("expected DoubleVoted, got: {:?}", x),
-        }
+        assert_eq!(ctr.vote(id, Vote::Approve), Ok(()));
+        assert_eq!(ctr.vote(id, Vote::Reject), Err(VoteError::DoubleVote));
+        assert_eq!(ctr.vote(id, Vote::Approve), Err(VoteError::DoubleVote));
 
         ctx.block_timestamp = (ctr.start_time + ctr.voting_duration + 1) * MSECOND;
         testing_env!(ctx.clone());
-        match ctr.vote(id, Vote::Approve) {
-            Err(VoteError::NotActive) => (),
-            x => panic!("expected NotActive, got: {:?}", x),
-        }
+        assert_eq!(ctr.vote(id, Vote::Approve), Err(VoteError::NotActive));
 
         ctx.predecessor_account_id = acc(5);
         testing_env!(ctx.clone());
-        match ctr.vote(id, Vote::Approve) {
-            Err(VoteError::NotAuthorized) => (),
-            x => panic!("expected NotAuthorized, got: {:?}", x),
-        }
+        assert_eq!(ctr.vote(id, Vote::Approve), Err(VoteError::NotAuthorized));
 
         ctx.predecessor_account_id = acc(2);
         ctx.block_timestamp = START * MSECOND;
         testing_env!(ctx.clone());
-        // set cooldown=0 and test for immediate execution
+
+        // set cooldown=0 and min_voting_duration=0 and test for immediate execution
         ctr.cooldown = 0;
+        ctr.min_voting_duration = 0;
         let id = ctr
             .create_proposal(PropKind::Text, "Proposal unit test 2".to_string())
             .unwrap();
-        ctx.block_timestamp = (START + MIN_VOTING_DURATION + 10) * MSECOND;
-        testing_env!(ctx.clone());
         ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
         let prop = ctr.get_proposal(id).unwrap();
         assert_eq!(prop.proposal.status, ProposalStatus::Executed);
@@ -720,7 +747,6 @@ mod unit_tests {
         let id = ctr
             .create_proposal(PropKind::Text, "Proposal unit test query 3".to_string())
             .unwrap();
-
         let prop = ctr.get_proposal(id).unwrap();
         ctx.block_timestamp = (prop.proposal.submission_time + ctr.voting_duration + 1) * MSECOND;
         testing_env!(ctx);
@@ -760,21 +786,18 @@ mod unit_tests {
 
         ctx.attached_deposit = 1;
         testing_env!(ctx.clone());
-
-        match ctr.create_proposal(PropKind::FundingRequest(U128(1)), "".to_string()) {
-            Err(CreatePropError::Storage(_)) => (),
-            Ok(_) => panic!("expected Storage, got: OK"),
-            Err(err) => panic!("expected Storage got: {:?}", err),
-        }
+        assert!(matches!(
+            ctr.create_proposal(PropKind::FundingRequest(U128(1)), "".to_string()),
+            Err(CreatePropError::Storage(_))
+        ));
 
         ctx.predecessor_account_id = acc(6);
         ctx.attached_deposit = 10 * MILI_NEAR;
         testing_env!(ctx.clone());
-        match ctr.create_proposal(PropKind::Text, "".to_string()) {
-            Err(CreatePropError::NotAuthorized) => (),
-            Ok(_) => panic!("expected NotAuthorized, got: OK"),
-            Err(err) => panic!("expected NotAuthorized got: {:?}", err),
-        }
+        assert_eq!(
+            ctr.create_proposal(PropKind::Text, "".to_string()),
+            Err(CreatePropError::NotAuthorized)
+        );
 
         // set remaining months to 2
         let (members, _) = ctr.members.get().unwrap();
@@ -783,45 +806,51 @@ mod unit_tests {
         ctr.end_time = ctr.start_time + START * 12 * 24 * 61;
         ctx.predecessor_account_id = acc(2);
         testing_env!(ctx);
-
-        match ctr.create_proposal(
-            PropKind::RecurrentFundingRequest(U128((ctr.budget_cap / 2) + 1)),
-            "".to_string(),
-        ) {
-            Err(CreatePropError::BudgetOverflow) => (),
-            Ok(_) => panic!("expected BudgetOverflow, got: OK"),
-            Err(err) => panic!("expected BudgetOverflow got: {:?}", err),
-        }
+        assert_eq!(
+            ctr.create_proposal(
+                PropKind::RecurrentFundingRequest(U128((ctr.budget_cap / 2) + 1)),
+                "".to_string(),
+            ),
+            Err(CreatePropError::BudgetOverflow)
+        );
     }
 
     #[test]
     fn proposal_execution_text() {
         let (mut ctx, mut ctr, id) = setup_ctr(100);
         match ctr.execute(id) {
-            Err(ExecError::NotApproved) => (),
             Ok(_) => panic!("expected NotApproved, got: OK"),
-            Err(err) => panic!("expected NotApproved got: {:?}", err),
+            Err(err) => assert_eq!(err, ExecError::MinVotingDuration),
         }
         ctx.block_timestamp = (START + MIN_VOTING_DURATION + 10) * MSECOND;
         testing_env!(ctx.clone());
+        match ctr.execute(id) {
+            Ok(_) => panic!("expected NotApproved, got: OK"),
+            Err(err) => assert_eq!(err, ExecError::NotApproved),
+        }
         ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
 
         let mut prop = ctr.get_proposal(id).unwrap();
         assert_eq!(prop.proposal.status, ProposalStatus::Approved);
 
         match ctr.execute(id) {
-            Err(ExecError::ExecTime) => (),
+            Err(err) => assert_eq!(err, ExecError::ExecTime),
             Ok(_) => panic!("expected ExecTime, got: OK"),
-            Err(err) => panic!("expected ExecTime got: {:?}", err),
         }
 
         ctx.block_timestamp = (ctr.start_time + ctr.cooldown + ctr.voting_duration + 1) * MSECOND;
         testing_env!(ctx);
-
-        ctr.execute(id).unwrap();
+        assert_exec_ok(ctr.execute(id));
 
         prop = ctr.get_proposal(id).unwrap();
         assert_eq!(prop.proposal.status, ProposalStatus::Executed);
+
+        //
+        // check double execution
+        match ctr.execute(id) {
+            Ok(_) => panic!("expecting Err"),
+            Err(err) => assert_eq!(err, ExecError::AlreadyExecuted),
+        };
     }
 
     #[test]
@@ -843,7 +872,7 @@ mod unit_tests {
         testing_env!(ctx);
 
         assert_eq!(ctr.budget_spent, 0);
-        ctr.execute(id).unwrap();
+        assert_exec_ok(ctr.execute(id));
         assert_eq!(ctr.budget_spent, 1000);
 
         let res = ctr.create_proposal(
@@ -878,11 +907,58 @@ mod unit_tests {
 
         // proposal isn't executed so budget spent is 0
         assert_eq!(ctr.budget_spent, 0);
-
-        ctr.execute(id).unwrap();
+        assert_exec_ok(ctr.execute(id));
 
         // budget spent * remaining months
         assert_eq!(ctr.budget_spent, 20);
+    }
+
+    #[test]
+    fn proposal_execution_budget_overflow() {
+        let (mut ctx, mut ctr, _) = setup_ctr(100);
+        ctr.min_voting_duration = 0;
+
+        // create and approve a funding requst that will fill up the budget.
+        let id1 = ctr
+            .create_proposal(
+                PropKind::FundingRequest((ctr.budget_cap).into()),
+                "Funding req".to_owned(),
+            )
+            .unwrap();
+        ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id1);
+
+        // create a second proposal, that will go over the budget if proposal id1 is executed
+        let time_diff = 10;
+        ctx.block_timestamp += time_diff * MSECOND;
+        testing_env!(ctx.clone());
+        let id2 = ctr
+            .create_proposal(
+                PropKind::FundingRequest(10.into()),
+                "Funding req".to_owned(),
+            )
+            .unwrap();
+        ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id2);
+        let p2 = ctr.get_proposal(id2).unwrap();
+        assert_eq!(p2.proposal.status, ProposalStatus::Approved);
+
+        // execute the first proposal - it should work.
+        ctx.block_timestamp += (VOTING_DURATION + COOLDOWN) * MSECOND;
+        testing_env!(ctx.clone());
+        assert_exec_ok(ctr.execute(id1));
+
+        // execution of the second proposal should work, but the proposal should be rejected
+        ctx.block_timestamp += (time_diff + 1) * MSECOND;
+        testing_env!(ctx.clone());
+        match ctr.execute(id2) {
+            Ok(PromiseOrValue::Value(resp)) => assert_eq!(resp, Err(ExecRespErr::BudgetOverflow)),
+            Ok(PromiseOrValue::Promise(_)) => {
+                panic!("expecting Ok ExecRespErr::BudgetOverflow, got Ok Promise");
+            }
+            Err(err) => panic!(
+                "expecting Ok ExecRespErr::BudgetOverflow, got: Err: {:?}",
+                err
+            ),
+        }
     }
 
     #[test]
@@ -936,17 +1012,12 @@ mod unit_tests {
         testing_env!(ctx.clone());
 
         ctr.veto_hook(id).unwrap();
-
         // veto vetoed prop
-        match ctr.veto_hook(id) {
-            Err(HookError::ProposalFinalized) => (),
-            x => panic!("expected ProposalFinalized, got: {:?}", x),
-        }
+        assert_eq!(ctr.veto_hook(id), Err(HookError::ProposalFinalized));
 
         ctx.block_timestamp = START * MSECOND;
         ctx.predecessor_account_id = acc(1);
         testing_env!(ctx.clone());
-
         let id = ctr
             .create_proposal(PropKind::Text, "Proposal unit test 2".to_string())
             .unwrap();
@@ -965,26 +1036,16 @@ mod unit_tests {
         testing_env!(ctx);
 
         // Can execute past cooldown but not veto proposal
-        match ctr.veto_hook(id) {
-            Err(HookError::CooldownOver) => (),
-            x => panic!("expected CooldownOver, got: {:?}", x),
-        }
-
-        ctr.execute(id).unwrap();
+        assert_eq!(ctr.veto_hook(id), Err(HookError::CooldownOver));
+        assert_exec_ok(ctr.execute(id));
 
         // Cannot veto executed or failed proposal
-        match ctr.veto_hook(id) {
-            Err(HookError::ProposalFinalized) => (),
-            x => panic!("expected ProposalFinalized, got: {:?}", x),
-        }
+        assert_eq!(ctr.veto_hook(id), Err(HookError::ProposalFinalized));
 
         let mut prop = ctr.proposals.get(&id).unwrap();
         prop.status = ProposalStatus::Failed;
         ctr.proposals.insert(&id, &prop);
-        match ctr.veto_hook(id) {
-            Err(HookError::ProposalFinalized) => (),
-            x => panic!("expected ProposalFinalized, got: {:?}", x),
-        }
+        assert_eq!(ctr.veto_hook(id), Err(HookError::ProposalFinalized));
     }
 
     fn create_all_props(ctr: &mut Contract) -> (u32, u32, u32, u32, u32) {
@@ -1066,7 +1127,6 @@ mod unit_tests {
         ctr.dissolve_hook().unwrap();
         let expected = r#"EVENT_JSON:{"standard":"ndc-congress","version":"1.0.0","event":"dissolve","data":""}"#;
         assert_eq!(vec![expected], get_logs());
-
         assert!(ctr.dissolved);
 
         ctr.create_proposal(
@@ -1080,21 +1140,15 @@ mod unit_tests {
     fn dismiss_hook() {
         let (mut ctx, mut ctr, id) = setup_ctr(100);
 
-        match ctr.dismiss_hook(acc(2)) {
-            Err(HookError::NotAuthorized) => (),
-            x => panic!("expected NotAuthorized, got: {:?}", x),
-        }
+        assert_eq!(ctr.dismiss_hook(acc(2)), Err(HookError::NotAuthorized));
 
         ctx.predecessor_account_id = voting_body();
         testing_env!(ctx.clone());
-
         assert_eq!(ctr.dismiss_hook(acc(10)), Ok(()));
-
         ctr.dismiss_hook(acc(2)).unwrap();
 
         let expected = r#"EVENT_JSON:{"standard":"ndc-congress","version":"1.0.0","event":"dismiss","data":{"member":"user-2.near"}}"#;
         assert_eq!(vec![expected], get_logs());
-
         assert_eq!(ctr.member_permissions(acc(2)), vec![]);
 
         // Proposal should not pass with only 2 votes
@@ -1175,8 +1229,7 @@ mod unit_tests {
         ctx.block_timestamp =
             (prop.proposal.submission_time + ctr.voting_duration + ctr.cooldown + 1) * MSECOND;
         testing_env!(ctx);
-
-        ctr.execute(motion_rem_ban).unwrap();
+        assert_exec_ok(ctr.execute(motion_rem_ban));
 
         prop = ctr.get_proposal(motion_rem_ban).unwrap();
         assert_eq!(prop.proposal.status, ProposalStatus::Executed);
@@ -1239,10 +1292,7 @@ mod unit_tests {
 
         ctx.predecessor_account_id = acc(2);
         testing_env!(ctx.clone());
-        match ctr.vote(prop, Vote::Approve) {
-            Err(VoteError::NoSelfVote) => (),
-            x => panic!("expected NotAllowedAgainst, got: {:?}", x),
-        }
+        assert_eq!(ctr.vote(prop, Vote::Approve), Err(VoteError::NoSelfVote));
     }
 
     #[test]
@@ -1261,6 +1311,66 @@ mod unit_tests {
     }
 
     #[test]
+    fn vote_timestamp() {
+        let (mut ctx, mut ctr, id) = setup_ctr(100);
+
+        ctx.predecessor_account_id = acc(1);
+        ctx.block_timestamp = START * MSECOND;
+        testing_env!(ctx.clone());
+        ctr.vote(id, Vote::Approve).unwrap();
+        let prop = ctr.get_proposal(id).unwrap();
+        assert_eq!(prop.proposal.votes.get(&acc(1)).unwrap().timestamp, START);
+
+        ctx.predecessor_account_id = acc(2);
+        ctx.block_timestamp = (START + 100) * MSECOND;
+        testing_env!(ctx.clone());
+        ctr.vote(id, Vote::Approve).unwrap();
+        let prop = ctr.get_proposal(id).unwrap();
+        assert_eq!(
+            prop.proposal.votes.get(&acc(2)).unwrap().timestamp,
+            START + 100
+        );
+    }
+
+    #[test]
+    fn min_voting_duration_execute() {
+        let (mut ctx, mut ctr, id) = setup_ctr(100);
+        ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
+        let p = ctr.get_proposal(id).unwrap();
+        assert_eq!(p.proposal.status, ProposalStatus::InProgress);
+
+        // should not be able to exeucte a proposal while in min_voting_duration
+        ctx.block_timestamp = (START + MIN_VOTING_DURATION - 10) * MSECOND;
+        let p = ctr.get_proposal(id).unwrap();
+        assert_eq!(p.proposal.status, ProposalStatus::InProgress);
+        testing_env!(ctx.clone());
+        match ctr.execute(id) {
+            Ok(_) => panic!("expecting Err"),
+            Err(err) => assert_eq!(err, ExecError::MinVotingDuration),
+        };
+
+        ctx.block_timestamp = (START + MIN_VOTING_DURATION + 10) * MSECOND;
+        testing_env!(ctx.clone());
+        // proposal status should be reported correctly, however we need to wait for cooldow
+        // to execute
+        let p = ctr.get_proposal(id).unwrap();
+        assert_eq!(p.proposal.status, ProposalStatus::Approved);
+        match ctr.execute(id) {
+            Ok(_) => panic!("expecting Err"),
+            Err(err) => assert_eq!(err, ExecError::ExecTime),
+        };
+
+        // cooldown starts when the proposal is "virtually approved" -> that is when it received
+        // enough approve votes. In this test case, the propoosal was virtually approved
+        // at START, so we should be able to execute proposal right after the cooldown.
+        ctx.block_timestamp = (START + COOLDOWN + 1) * MSECOND;
+        testing_env!(ctx.clone());
+        let p = ctr.get_proposal(id).unwrap();
+        assert_eq!(p.proposal.status, ProposalStatus::Approved);
+        assert_exec_ok(ctr.execute(id))
+    }
+
+    #[test]
     fn all_votes_casted() {
         let (ctx, mut ctr, id) = setup_ctr(100);
         let mut prop = ctr.get_proposal(id);
@@ -1274,5 +1384,11 @@ mod unit_tests {
 
         prop = ctr.get_proposal(id);
         assert_eq!(prop.unwrap().proposal.status, ProposalStatus::Approved);
+    }
+
+    #[test]
+    fn members_len() {
+        let (_, ctr, _) = setup_ctr(100);
+        assert_eq!(ctr.members_len(), 4);
     }
 }

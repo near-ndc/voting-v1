@@ -52,8 +52,9 @@ async fn instantiate_congress(
     let start_time = now + 20 * 1000;
     let end_time: u64 = now + 100 * 1000;
     let voting_duration = 20 * 1000;
+    let min_voting_duration = 0;
     // initialize contract
-    let res1 = congress_contract
+    let res = congress_contract
         .call("new")
         .args_json(json!({
             "community_fund": community_fund.id(),
@@ -61,6 +62,7 @@ async fn instantiate_congress(
             "end_time": end_time,
             "cooldown": cooldown,
             "voting_duration": voting_duration,
+            "min_voting_duration": min_voting_duration,
             "members": members,
             "member_perms": member_perms,
             "hook_auth": hook_auth,
@@ -69,9 +71,10 @@ async fn instantiate_congress(
             "registry": registry
         }))
         .max_gas()
-        .transact();
+        .transact()
+        .await?;
 
-    assert!(res1.await?.is_success());
+    assert!(res.is_success(), "{:?}", res);
 
     Ok(congress_contract)
 }
@@ -364,7 +367,7 @@ async fn tc_ban_and_dismiss() -> anyhow::Result<()> {
     let setup = init(&worker).await?;
 
     let res2 = setup
-        .alice
+        .bob
         .call(setup.tc_contract.id(), "create_proposal")
         .args_json(json!({
             "kind": PropKind::DismissAndBan { member: to_near_account(setup.alice.id()), house:  to_near_account(setup.coa_contract.id())
@@ -377,7 +380,7 @@ async fn tc_ban_and_dismiss() -> anyhow::Result<()> {
     let proposal_id: u32 = res2.await?.json()?;
 
     let res = setup
-        .alice
+        .bob
         .call(setup.tc_contract.id(), "vote")
         .args_json(json!({"id": proposal_id, "vote": Vote::Approve,}))
         .max_gas()
@@ -430,7 +433,7 @@ async fn tc_ban_and_dismiss_fail_cases() -> anyhow::Result<()> {
     let setup = init(&worker).await?;
 
     let res2 = setup
-        .alice
+        .bob
         .call(setup.tc_contract.id(), "create_proposal")
         .args_json(json!({
             "kind": PropKind::DismissAndBan { member: to_near_account(setup.alice.id()), house:  to_near_account(setup.coa_contract.id())
@@ -458,7 +461,7 @@ async fn tc_ban_and_dismiss_fail_cases() -> anyhow::Result<()> {
     assert!(res.is_success());
 
     vote(
-        vec![setup.john.clone(), setup.alice.clone()],
+        vec![setup.john.clone(), setup.bob.clone()],
         &setup.tc_contract,
         proposal_id,
     )
@@ -564,7 +567,6 @@ async fn tc_ban_and_dismiss_fail_cases() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[ignore = "valid only for migration"]
 #[tokio::test]
 async fn migration_mainnet() -> anyhow::Result<()> {
     let worker_sandbox = near_workspaces::sandbox().await?;
@@ -577,20 +579,58 @@ async fn migration_mainnet() -> anyhow::Result<()> {
         .transact()
         .await?;
 
+    // query the pre-migrated contract
+    let num_of_proposals: u64 = congress
+        .call("number_of_proposals")
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+
+    let members: MembersOutput = congress
+        .call("get_members")
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+
     // deploy the new contract
-    let res = congress
+    let new_congress = congress
         .as_account()
         .deploy(include_bytes!("../../res/congress.wasm"))
-        .await?;
-    assert!(res.is_success());
-
-    let new_congress = res.into_result()?;
+        .await?
+        .into_result()?;
 
     // call the migrate method
     let res = new_congress.call("migrate").max_gas().transact().await?;
     assert!(res.is_success(), "{:?}", res.receipt_failures());
 
-    // TODO: add post migration query
+    let res: u64 = new_congress
+        .call("number_of_proposals")
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+    assert_eq!(res, num_of_proposals);
+
+    let prop: Option<ProposalOutput> = new_congress
+        .call("get_proposal")
+        .args_json(json!({"id": 1}))
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+
+    let members_len: u8 = new_congress
+        .call("members_len")
+        .max_gas()
+        .transact()
+        .await?
+        .json()?;
+
+    assert_eq!(members.members.len() as u8, members_len);
+
+    print!("{:?}", prop.unwrap().proposal);
 
     Ok(())
 }

@@ -8,19 +8,21 @@ This repository provides smart contracts for NDC v1 Voting Body.
 
 ## Proposal types
 
-| Proposal                                                 | Voting Entity | Contract    |
-| :------------------------------------------------------- | :------------ | :---------- |
-| Elect house representatives                              | Voting Body   | elections   |
-| Constitution ratification                                | Voting Body   | voting_body |
-| Dissolve a house and call for new elections              | Voting Body   | voting_body |
-| Setup Budget (fund HoM DAO)                              | Voting Body   | voting_body |
-| Veto any HoM proposal (in principle any fund deployment) | Voting Body   | voting_body |
-| Transfer Funds                                           | HoM           | Astra++     |
-| Budget proposal                                          | HoM           | Astra++     |
-| Veto                                                     | CoA           | Astra++     |
-| Reinstate representative                                 | TC / CoA      | Astra++     |
-| Investigate                                              | TC            | Astra++     |
-| Remove representative                                    | TC            | Astra++     |
+| Proposal                                     | Voting Entity | Contract    |
+| :------------------------------------------- | :------------ | :---------- |
+| Elect house representatives                  | Voting Body   | elections   |
+| Constitution ratification                    | Voting Body   | voting body |
+| Dissolve a house and call for new elections  | Voting Body   | voting body |
+| Setup Package                                | Voting Body   | voting body |
+| Budget ratification                          | Voting Body   | voting body |
+| Veto HoM Recurrent and Big Funding Proposals | Voting Body   | voting body |
+| Budget                                       | HoM           | congress    |
+| Transfer Funds                               | HoM           | congress    |
+| Funding proposal                             | HoM           | congress    |
+| Veto any HoM proposal                        | CoA           | congress    |
+| Reinstate representative                     | TC / CoA      | congress    |
+| Investigate                                  | TC            | congress    |
+| Remove representative                        | TC            | congress    |
 
 In NDC v1, Voting Body can't make proposal for budget management. They can only veto budget proposals.
 
@@ -53,6 +55,3 @@ Moreover, Voting Body can make the following proposals, that will pass when [NEA
 - [ ] Decide about admin / gwg. Currently:
   - admin is a GWG DAO
   - only admin can create constitution proposal
-- [ ] Decide about NDC proposal deposits to allow others to create proposals
-  - would be good to consider adding veto in addition to yes/no/abstain votes.
-- [ ] Fork Astro DAO to add Veto Hooks and challenge period and Veto proposal (to allow TC to veto HoM).

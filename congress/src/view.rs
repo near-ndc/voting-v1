@@ -28,6 +28,7 @@ pub struct ConfigOutput {
     pub budget_spent: U128,
     pub budget_cap: U128,
     pub big_funding_threshold: U128,
+    pub min_voting_duration: u64,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -66,9 +67,17 @@ impl Contract {
             Either::Right(from_index..=min(self.prop_counter, from_index + limit - 1))
         };
 
+        let (members, _) = self.members.get().unwrap();
+        let ml = members.len();
+
         iter.filter_map(|id| {
             self.proposals.get(&id).map(|mut proposal| {
-                proposal.recompute_status(self.voting_duration);
+                proposal.finalize_status(
+                    ml,
+                    self.threshold,
+                    self.min_voting_duration,
+                    self.voting_duration,
+                );
                 ProposalOutput { id, proposal }
             })
         })
@@ -77,8 +86,15 @@ impl Contract {
 
     /// Get specific proposal.
     pub fn get_proposal(&self, id: u32) -> Option<ProposalOutput> {
+        let (members, _) = self.members.get().unwrap();
+        let ml = members.len();
         self.proposals.get(&id).map(|mut proposal| {
-            proposal.recompute_status(self.voting_duration);
+            proposal.finalize_status(
+                ml,
+                self.threshold,
+                self.min_voting_duration,
+                self.voting_duration,
+            );
             ProposalOutput { id, proposal }
         })
     }
@@ -89,6 +105,10 @@ impl Contract {
 
     pub fn is_dissolved(&self) -> bool {
         self.dissolved
+    }
+
+    pub fn members_len(&self) -> u8 {
+        self.members_len
     }
 
     /// Returns all members with permissions
@@ -119,12 +139,8 @@ impl Contract {
     /// Returns hook permissions for given account
     /// Returns empty vector `[]` if not a hook.
     pub fn hook_permissions(&self, user: AccountId) -> Vec<HookPerm> {
-        let hooks = self.hook_auth.get().unwrap();
-        let res = hooks.get(&user).cloned();
-        if res.is_none() {
-            return vec![];
-        }
-        res.unwrap()
+        let mut hooks = self.hook_auth.get().unwrap();
+        hooks.remove(&user).unwrap_or(vec![])
     }
 
     pub fn config(&self) -> ConfigOutput {
@@ -137,6 +153,7 @@ impl Contract {
             budget_spent: U128(self.budget_spent),
             budget_cap: U128(self.budget_cap),
             big_funding_threshold: U128(self.big_funding_threshold),
+            min_voting_duration: self.min_voting_duration,
         }
     }
 }
