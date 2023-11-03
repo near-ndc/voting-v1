@@ -1,12 +1,11 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
-use near_sdk::collections::LookupMap;
 use near_sdk::json_types::{Base64VecU8, U128, U64};
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{env, AccountId, Balance, Promise};
 
 use std::collections::HashSet;
 
-use crate::{PrevotePropError, VoteError, REMOVE_REWARD};
+use crate::{PrevotePropError, REMOVE_REWARD};
 
 /// Consent sets the conditions for vote to pass. It specifies a quorum (minimum amount of
 /// accounts that have to vote and the approval threshold (% of #approve votes) for a proposal
@@ -35,7 +34,10 @@ pub enum ConsentKind {
 /// Proposals that are sent to this DAO.
 #[derive(BorshSerialize, BorshDeserialize, Serialize)]
 #[serde(crate = "near_sdk::serde")]
-#[cfg_attr(all(test, not(target_arch = "wasm32")), derive(Debug))]
+#[cfg_attr(
+    all(test, not(target_arch = "wasm32")),
+    derive(Debug, PartialEq, Clone)
+)]
 pub struct Proposal {
     /// Original proposer.
     pub proposer: AccountId,
@@ -54,9 +56,6 @@ pub struct Proposal {
     pub abstain: u32,
     pub support: u32,
     pub supported: HashSet<AccountId>,
-    /// Map of who voted and how.
-    #[serde(skip_serializing)]
-    pub(crate) votes: LookupMap<AccountId, Vote>,
     /// start time (for voting period).
     pub start: u64,
     /// Unix time in milliseconds when the proposal was executed. `None` if it is not approved
@@ -66,27 +65,6 @@ pub struct Proposal {
     pub(crate) proposal_storage: u128,
 }
 
-#[cfg(all(test, not(target_arch = "wasm32")))]
-impl PartialEq for Proposal {
-    fn eq(&self, o: &Self) -> bool {
-        self.proposer == o.proposer
-            && self.bond == o.bond
-            && self.additional_bond == o.additional_bond
-            && self.description == o.description
-            && self.kind == o.kind
-            && self.start == o.start
-            && self.approve == o.approve
-            && self.reject == o.reject
-            && self.spam == o.spam
-            && self.abstain == o.abstain
-            && self.support == o.support
-            && self.supported == o.supported
-            && self.start == o.start
-            && self.executed_at == o.executed_at
-            && self.proposal_storage == o.proposal_storage
-    }
-}
-
 impl Proposal {
     pub fn add_support(&mut self, user: AccountId) -> Result<(), PrevotePropError> {
         if self.supported.contains(&user) {
@@ -94,26 +72,6 @@ impl Proposal {
         }
         self.support += 1;
         self.supported.insert(user);
-        Ok(())
-    }
-
-    pub fn add_vote(&mut self, user: AccountId, vote: Vote) -> Result<(), VoteError> {
-        // allow to overwrite existing votes
-        if let Some(old_vote) = self.votes.insert(&user, &vote) {
-            match old_vote {
-                Vote::Approve => self.approve -= 1,
-                Vote::Reject => self.reject -= 1,
-                Vote::Abstain => self.abstain -= 1,
-                Vote::Spam => self.spam -= 1,
-            }
-        }
-
-        match vote {
-            Vote::Abstain => self.abstain += 1,
-            Vote::Approve => self.approve += 1,
-            Vote::Reject => self.reject += 1,
-            Vote::Spam => self.spam += 1,
-        };
         Ok(())
     }
 
