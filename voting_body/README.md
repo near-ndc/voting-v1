@@ -21,10 +21,12 @@ When creating a proposal, the submitter must stake a bond. If `pre-vote bond` is
 
 Proposal can only be created by an IAH verified account. We use `is_human_call` method. Example call:
 
-    near IAH_REGIATRY call is_human_call \
-      '{"ctr": "voting-body.near", "function": "create_proposal", "payload": {"kind": {"Veto": {"dao": "hom.near", "prop_id": 12}}}}' \
-      --accountId YOU
-      --deposit $pre_vote_bond
+``` shell
+near IAH_REGIATRY call is_human_call \
+  '{"ctr": "voting-body.near", "function": "create_proposal", "payload": {"kind": {"Veto": {"dao": "hom.near", "prop_id": 12}}}}' \
+  --accountId YOU
+  --deposit $pre_vote_bond
+```
 
 ### Pre-voting queue
 
@@ -38,11 +40,12 @@ Note: originally only a congress support was required to move a proposal to the 
 
 Voting Body Support can only be made by an IAH verified account. We use `is_human_call_lock` method, which will lock the caller for soul transfers, to avoid double support. Example call:
 
-    lock_duration=pre_voting_duration+1
-    near IAH_REGIATRY call is_human_call_lock \
-      '{"ctr": "voting-body.near", "function": "support_proposal", "payload": 4, "lock_duration": '$lock_duration', "with_proof": false}' \
-      --accountId YOU
-
+``` shell
+lock_duration=pre_voting_duration+1
+near IAH_REGIATRY call is_human_call_lock \
+  '{"ctr": "voting-body.near", "function": "support_proposal", "payload": 4, "lock_duration": '$lock_duration', "with_proof": false}' \
+  --accountId YOU
+```
 
 ### Active queue
 
@@ -167,12 +170,13 @@ Voting Body intentionally doesn't support optimistic execution, that is approvin
 
 Vote can only be made by an IAH verified account. We use `is_human_call_lock` method, which will lock the caller for soul transfers, to avoid double vote. Example call:
 
-    lock_duration=voting_duration+1
-    near IAH_REGIATRY call is_human_call_lock \
-      '{"ctr": "voting-body.near", "function": "vote", "payload": {"prop_id": 4, "vote": "approve"}, "lock_duration": '$lock_duration', "with_proof": false}' \
-      --accountId YOU
-      --deposit 0.02 # used for vote storage, reminder will be returned.
-
+``` shell
+lock_duration=voting_duration+1
+near IAH_REGIATRY call is_human_call_lock \
+  '{"ctr": "voting-body.near", "function": "vote", "payload": {"prop_id": 4, "vote": "approve"}, "lock_duration": '$lock_duration', "with_proof": false}' \
+  --accountId YOU
+  --deposit 0.02 # used for vote storage, reminder will be returned.
+```
 
 ### Quorums and Thresholds
 
