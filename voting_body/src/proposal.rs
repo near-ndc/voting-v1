@@ -247,6 +247,14 @@ pub enum ProposalStatus {
     Failed,
 }
 
+#[derive(BorshSerialize, BorshDeserialize, Serialize)]
+#[serde(crate = "near_sdk::serde")]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq))]
+pub struct VoteRecord {
+    pub timestamp: u64, // unix time of when this vote was submitted
+    pub vote: Vote,
+}
+
 /// Votes recorded in the proposal.
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Clone, Debug, PartialEq))]
