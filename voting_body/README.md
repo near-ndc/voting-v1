@@ -22,10 +22,16 @@ When creating a proposal, the submitter must stake a bond. If `pre-vote bond` is
 Proposal can only be created by an IAH verified account. We use `is_human_call` method. Example call:
 
 ``` shell
-near IAH_REGIATRY call is_human_call \
-  '{"ctr": "voting-body.near", "function": "create_proposal", "payload": {"kind": {"Veto": {"dao": "hom.near", "prop_id": 12}}}}' \
-  --accountId YOU
-  --deposit $pre_vote_bond
+near call IAH_REGISTRY is_human_call \
+  '{"ctr": "VB.near", "function": "create_proposal", "payload": "{\"kind\": {\"Veto\": {\"dao\": \"hom.near\", \"prop_id\": 12}}, \"description\": \"this proposal is against the budget objectives\"}"}' \
+  --accountId YOU \
+  --depositYocto $pre_vote_bond
+  
+  
+# Creating a text proposal with with a active_queue_bond (making it automatically advancing to the active queue)
+near call IAH_REGISTRY  is_human_call \
+  '{"ctr": "VB.near", "function": "create_proposal", "payload": "{\"kind\": \"Text\", \"description\": \"lets go\"}"}' \
+  --accountId YOU --deposit $active_queue_bond
 ```
 
 ### Pre-voting queue
@@ -42,8 +48,8 @@ Voting Body Support can only be made by an IAH verified account. We use `is_huma
 
 ``` shell
 lock_duration=pre_voting_duration+1
-near IAH_REGIATRY call is_human_call_lock \
-  '{"ctr": "voting-body.near", "function": "support_proposal", "payload": 4, "lock_duration": '$lock_duration', "with_proof": false}' \
+near call IAH_REGISTRY is_human_call_lock \
+  '{"ctr": "VB.near", "function": "support_proposal", "payload": "1", "lock_duration": '$lock_duration', "with_proof": false}' \
   --accountId YOU
 ```
 
@@ -115,12 +121,13 @@ There are several types of proposals with specific functionalities and limitatio
 title: Possible Proposal Status Flows
 ---
 flowchart TB
+    Trash([Trash])
     PreVote --> InProgress
     InProgress --> Approved
     InProgress --> Rejected
     InProgress --> Spam
     Approved --> Executed
-    Approved --> Failed
+    Executed -- tx fail --> Failed
     Failed -- re-execute --> Executed
 
     PreVote -- slashed --> Trash
@@ -171,11 +178,11 @@ Voting Body intentionally doesn't support optimistic execution, that is approvin
 Vote can only be made by an IAH verified account. We use `is_human_call_lock` method, which will lock the caller for soul transfers, to avoid double vote. Example call:
 
 ``` shell
-lock_duration=voting_duration+1
-near IAH_REGIATRY call is_human_call_lock \
-  '{"ctr": "voting-body.near", "function": "vote", "payload": {"prop_id": 4, "vote": "approve"}, "lock_duration": '$lock_duration', "with_proof": false}' \
-  --accountId YOU
-  --deposit 0.02 # used for vote storage, reminder will be returned.
+lock_duration=voting_duration+1  # minimum value is the time in milliseconds remaining to the voting end + 1.
+near call IAH_REGISTRY is_human_call_lock \
+  '{"ctr": "VB.near", "function": "vote", "payload": "{\"prop_id\": 3, \"vote\": \"Approve\"}", "lock_duration": '$lock_duration', "with_proof": false}' \
+  --accountId YOU \
+  --deposit 0.01 # used for vote storage, reminder will be returned.
 ```
 
 ### Quorums and Thresholds
