@@ -35,7 +35,7 @@ pub enum ConsentKind {
 /// Proposals that are sent to this DAO.
 #[derive(BorshSerialize, BorshDeserialize, Serialize)]
 #[serde(crate = "near_sdk::serde")]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, /*PartialEq*/))]
+#[cfg_attr(all(test, not(target_arch = "wasm32")), derive(Debug))]
 pub struct Proposal {
     /// Original proposer.
     pub proposer: AccountId,
@@ -55,16 +55,36 @@ pub struct Proposal {
     pub support: u32,
     pub supported: HashSet<AccountId>,
     /// Map of who voted and how.
-    // TODO: must not be a hashmap
     #[serde(skip_serializing)]
-    pub votes: LookupMap<AccountId, Vote>,
+    pub(crate) votes: LookupMap<AccountId, Vote>,
     /// start time (for voting period).
     pub start: u64,
     /// Unix time in milliseconds when the proposal was executed. `None` if it is not approved
     /// or execution failed.
     pub executed_at: Option<u64>,
     /// Proposal storage cost (excluding vote)
-    pub proposal_storage: u128,
+    pub(crate) proposal_storage: u128,
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+impl PartialEq for Proposal {
+    fn eq(&self, o: &Self) -> bool {
+        self.proposer == o.proposer
+            && self.bond == o.bond
+            && self.additional_bond == o.additional_bond
+            && self.description == o.description
+            && self.kind == o.kind
+            && self.start == o.start
+            && self.approve == o.approve
+            && self.reject == o.reject
+            && self.spam == o.spam
+            && self.abstain == o.abstain
+            && self.support == o.support
+            && self.supported == o.supported
+            && self.start == o.start
+            && self.executed_at == o.executed_at
+            && self.proposal_storage == o.proposal_storage
+    }
 }
 
 impl Proposal {
