@@ -114,7 +114,9 @@ impl Contract {
         #[allow(unused_variables)] iah_proof: SBTs,
         payload: CreatePropPayload,
     ) -> Result<u32, CreatePropError> {
-        self.assert_iah_registry();
+        if env::predecessor_account_id() != self.accounts.get().unwrap().iah_registry {
+            return Err(CreatePropError::NotIAHreg);
+        }
         let storage_start = env::storage_usage();
         let now = env::block_timestamp_ms();
         let bond = env::attached_deposit();
@@ -185,10 +187,10 @@ impl Contract {
     /// User who calls the function to receives REMOVE_REWARD.
     /// Fails if proposal is not overdue or not in pre-vote queue.
     #[handle_result]
-    pub fn slash_prevote_proposal(&mut self, id: u32) -> Result<(), PrevotePropError> {
+    pub fn slash_prevote_proposal(&mut self, id: u32) -> Result<(), PrevoteError> {
         let p = self.remove_pre_vote_prop(id)?;
         if env::block_timestamp_ms() - p.start <= self.pre_vote_duration {
-            return Err(PrevotePropError::NotOverdue);
+            return Err(PrevoteError::NotOverdue);
         }
         Promise::new(env::predecessor_account_id()).transfer(REMOVE_REWARD);
         self.slash_prop(id, p.bond - REMOVE_REWARD);
@@ -209,7 +211,7 @@ impl Contract {
     /// * proposal-active: when a proposal was successfully updated.
     /// Excess of attached bond is sent back to the caller.
     /// Returns error when proposal is not in the pre-vote queue or not enough bond was attached.
-    pub fn top_up_proposal(&mut self, id: u32) -> Result<bool, PrevotePropError> {
+    pub fn top_up_proposal(&mut self, id: u32) -> Result<bool, PrevoteError> {
         let user = env::predecessor_account_id();
         let mut bond = env::attached_deposit();
         let mut p = self.remove_pre_vote_prop(id)?;
@@ -225,7 +227,7 @@ impl Contract {
 
         let required_bond = self.active_queue_bond - p.bond;
         if bond < required_bond {
-            return Err(PrevotePropError::MinBond);
+            return Err(PrevoteError::MinBond);
         }
         let diff = bond - required_bond;
         if diff > 0 {
@@ -239,21 +241,30 @@ impl Contract {
 
     /// Supports proposal in the pre-vote queue.
     /// Returns false if the proposal can't be supported because it is overdue.
-    /// Must be called via `iah_registry.is_human_call`.
+    /// Must be called via `iah_registry.is_human_call_lock` with
+    /// `lock_duration: self.pre_vote_duration + 1`.
     #[handle_result]
     pub fn support_proposal(
         &mut self,
         caller: AccountId,
-        #[allow(unused_variables)] iah_proof: SBTs,
+        locked_until: u64,
+        #[allow(unused_variables)] iah_proof: Option<SBTs>,
         payload: SupportPropPayload,
-    ) -> Result<bool, PrevotePropError> {
-        self.assert_iah_registry();
+    ) -> Result<bool, PrevoteError> {
+        if env::predecessor_account_id() != self.accounts.get().unwrap().iah_registry {
+            return Err(PrevoteError::NotIAHreg);
+        }
         let mut p = self.assert_pre_vote_prop(payload.prop_id)?;
-        if env::block_timestamp_ms() - p.start > self.pre_vote_duration {
+        let now = env::block_timestamp_ms();
+        if now - p.start > self.pre_vote_duration {
             self.slash_prop(payload.prop_id, p.bond);
             self.pre_vote_proposals.remove(&payload.prop_id);
             return Ok(false);
         }
+        if locked_until <= p.start + self.pre_vote_duration {
+            return Err(PrevoteError::LockedUntil);
+        }
+
         p.add_support(caller)?;
         if p.support >= self.pre_vote_support {
             self.pre_vote_proposals.remove(&payload.prop_id);
@@ -271,10 +282,10 @@ impl Contract {
         &mut self,
         prop_id: u32,
         dao: AccountId,
-    ) -> Result<Promise, PrevotePropError> {
+    ) -> Result<Promise, PrevoteError> {
         let a = self.accounts.get().unwrap();
         if !(a.congress_coa == dao || a.congress_hom == dao || a.congress_tc == dao) {
-            return Err(PrevotePropError::NotCongress);
+            return Err(PrevoteError::NotCongress);
         }
 
         Ok(ext_congress::ext(dao)
@@ -289,9 +300,9 @@ impl Contract {
         &mut self,
         #[callback_result] is_member: Result<bool, near_sdk::PromiseError>,
         prop_id: u32,
-    ) -> Result<bool, PrevotePropError> {
+    ) -> Result<bool, PrevoteError> {
         if !is_member.unwrap_or(false) {
-            return Err(PrevotePropError::NotCongressMember);
+            return Err(PrevoteError::NotCongressMember);
         }
 
         let mut p = self.remove_pre_vote_prop(prop_id)?;
@@ -303,16 +314,20 @@ impl Contract {
         Ok(true)
     }
 
-    /// Must be called via `iah_registry.is_human_call`.
+    /// Must be called via `iah_registry.is_human_call_lock` with
+    /// `lock_duration: self.voting_duration + 1`.
     #[payable]
     #[handle_result]
     pub fn vote(
         &mut self,
         caller: AccountId,
-        #[allow(unused_variables)] iah_proof: SBTs,
+        locked_until: u64,
+        #[allow(unused_variables)] iah_proof: Option<SBTs>,
         payload: VotePayload,
     ) -> Result<(), VoteError> {
-        self.assert_iah_registry();
+        if env::predecessor_account_id() != self.accounts.get().unwrap().iah_registry {
+            return Err(VoteError::NotIAHreg);
+        }
         let storage_start = env::storage_usage();
         let mut prop = self
             .proposals
@@ -323,6 +338,16 @@ impl Contract {
         }
         if !prop.is_active(self.voting_duration) {
             return Err(VoteError::Timeout);
+        }
+        println!(
+            ">>> prop start: {} duration: {}, now: {}",
+            prop.start,
+            self.voting_duration,
+            env::block_timestamp_ms()
+        );
+        println!(">>>>>> locked_until {}", locked_until);
+        if locked_until <= prop.start + self.voting_duration {
+            return Err(VoteError::LockedUntil);
         }
 
         self.add_vote(payload.prop_id, caller.clone(), payload.vote, &mut prop);
@@ -489,23 +514,16 @@ impl Contract {
         );
     }
 
-    fn assert_iah_registry(&self) {
-        require!(
-            env::predecessor_account_id() == self.accounts.get().unwrap().iah_registry,
-            "must be called by iah_registry"
-        );
-    }
-
-    fn remove_pre_vote_prop(&mut self, id: u32) -> Result<Proposal, PrevotePropError> {
+    fn remove_pre_vote_prop(&mut self, id: u32) -> Result<Proposal, PrevoteError> {
         self.pre_vote_proposals
             .remove(&id)
-            .ok_or(PrevotePropError::NotFound)
+            .ok_or(PrevoteError::NotFound)
     }
 
-    fn assert_pre_vote_prop(&mut self, id: u32) -> Result<Proposal, PrevotePropError> {
+    fn assert_pre_vote_prop(&mut self, id: u32) -> Result<Proposal, PrevoteError> {
         self.pre_vote_proposals
             .get(&id)
-            .ok_or(PrevotePropError::NotFound)
+            .ok_or(PrevoteError::NotFound)
     }
 
     fn insert_prop_to_active(&mut self, prop_id: u32, p: &mut Proposal) {
@@ -667,12 +685,26 @@ mod unit_tests {
         (context, contract, id)
     }
 
+    fn min_vote_lock(ctx: &VMContext) -> u64 {
+        ctx.block_timestamp / MSECOND + VOTING_DURATION + 1
+    }
+
+    fn min_prevote_lock(ctx: &VMContext) -> u64 {
+        ctx.block_timestamp / MSECOND + PRE_VOTE_DURATION + 1
+    }
+
     fn vote(mut ctx: VMContext, ctr: &mut Contract, accs: Vec<AccountId>, id: u32, vote: Vote) {
         for a in accs {
             ctx.predecessor_account_id = iah_registry();
             ctx.attached_deposit = VOTE_DEPOSIT;
             testing_env!(ctx.clone());
-            let res = ctr.vote(a.clone(), iah_proof(), vote_payload(id, vote.clone()));
+            let locked_until = min_vote_lock(&ctx);
+            let res = ctr.vote(
+                a.clone(),
+                locked_until,
+                None,
+                vote_payload(id, vote.clone()),
+            );
             assert_eq!(
                 res,
                 Ok(()),
@@ -768,7 +800,8 @@ mod unit_tests {
         ctx.predecessor_account_id = iah_registry();
         ctx.attached_deposit = 0;
         testing_env!(ctx.clone());
-        match ctr.vote(acc(2), iah_proof(), vote_payload(id, Vote::Approve)) {
+        let locked = min_vote_lock(&ctx);
+        match ctr.vote(acc(2), locked, None, vote_payload(id, Vote::Approve)) {
             Err(VoteError::Storage(_)) => (),
             x => panic!("expected Storage, got: {:?}", x),
         }
@@ -791,8 +824,9 @@ mod unit_tests {
         testing_env!(ctx.clone());
         prop1 = ctr.get_proposal(id).unwrap();
         assert_eq!(prop1.proposal.status, ProposalStatus::InProgress);
+        let locked = min_vote_lock(&ctx);
         assert_eq!(
-            ctr.vote(acc(5), iah_proof(), vote_payload(id, Vote::Spam)),
+            ctr.vote(acc(5), locked, None, vote_payload(id, Vote::Spam)),
             Ok(())
         );
         prop1.proposal.spam += 1;
@@ -817,7 +851,7 @@ mod unit_tests {
         let id = create_proposal(ctx.clone(), &mut ctr, BOND);
         let mut prop2 = ctr.get_proposal(id).unwrap();
         assert_eq!(
-            ctr.vote(acc(3), iah_proof(), vote_payload(id, Vote::Approve)),
+            ctr.vote(acc(3), locked, None, vote_payload(id, Vote::Approve)),
             Ok(())
         );
         vote(
@@ -925,22 +959,24 @@ mod unit_tests {
         let (mut ctx, mut ctr, id) = setup_ctr(BOND);
         ctx.block_timestamp = START + (ctr.voting_duration + 1) * MSECOND;
         testing_env!(ctx.clone());
+        let locked = min_vote_lock(&ctx);
         assert_eq!(
-            ctr.vote(acc(1), iah_proof(), vote_payload(id, Vote::Approve)),
+            ctr.vote(acc(1), locked, None, vote_payload(id, Vote::Approve)),
             Err(VoteError::Timeout)
         );
     }
 
     #[test]
     fn vote_not_found() {
-        let (_, mut ctr, id) = setup_ctr(PRE_BOND);
+        let (ctx, mut ctr, id) = setup_ctr(PRE_BOND);
         // proposal is in pre-vote queue, so should not be found in the active queue
-        match ctr.vote(acc(1), iah_proof(), vote_payload(id, Vote::Approve)) {
+        let locked = min_vote_lock(&ctx);
+        match ctr.vote(acc(1), locked, None, vote_payload(id, Vote::Approve)) {
             Err(err) => assert_eq!(err, VoteError::PropNotFound),
             Ok(_) => panic!("expect PropNotFound, got: Ok"),
         }
 
-        match ctr.vote(acc(1), iah_proof(), vote_payload(999, Vote::Approve)) {
+        match ctr.vote(acc(1), locked, None, vote_payload(999, Vote::Approve)) {
             Err(err) => assert_eq!(err, VoteError::PropNotFound),
             Ok(_) => panic!("expect PropNotFound, got: Ok"),
         }
@@ -1140,8 +1176,9 @@ mod unit_tests {
 
         ctx.attached_deposit = VOTE_DEPOSIT;
         testing_env!(ctx.clone());
+        let locked = min_vote_lock(&ctx);
         assert_eq!(
-            ctr.vote(acc(1), iah_proof(), vote_payload(id, Vote::Approve)),
+            ctr.vote(acc(1), locked, None, vote_payload(id, Vote::Approve)),
             Ok(())
         );
         p.proposal.approve = 1;
@@ -1149,7 +1186,7 @@ mod unit_tests {
         assert_eq!(ctr.get_proposal(id).unwrap(), p);
 
         assert_eq!(
-            ctr.vote(acc(1), iah_proof(), vote_payload(id, Vote::Abstain)),
+            ctr.vote(acc(1), locked, None, vote_payload(id, Vote::Abstain)),
             Ok(())
         );
         p.proposal.approve = 0;
@@ -1158,7 +1195,7 @@ mod unit_tests {
         assert_eq!(ctr.get_proposal(id).unwrap(), p);
 
         assert_eq!(
-            ctr.vote(acc(1), iah_proof(), vote_payload(id, Vote::Reject)),
+            ctr.vote(acc(1), locked, None, vote_payload(id, Vote::Reject)),
             Ok(())
         );
         p.proposal.abstain = 0;
@@ -1167,7 +1204,7 @@ mod unit_tests {
         assert_eq!(ctr.get_proposal(id).unwrap(), p);
 
         assert_eq!(
-            ctr.vote(acc(1), iah_proof(), vote_payload(id, Vote::Spam)),
+            ctr.vote(acc(1), locked, None, vote_payload(id, Vote::Spam)),
             Ok(())
         );
         p.proposal.reject = 0;
@@ -1236,16 +1273,17 @@ mod unit_tests {
         let (mut ctx, mut ctr, id) = setup_ctr(PRE_BOND);
 
         // make one less support then what is necessary to test that the proposal is still in prevote
+        let locked = min_prevote_lock(&ctx);
         for i in 1..PRE_VOTE_SUPPORT {
             assert_eq!(
-                ctr.support_proposal(acc(i as u8), iah_proof(), support_prop_payload(id)),
+                ctr.support_proposal(acc(i as u8), locked, None, support_prop_payload(id)),
                 Ok(true)
             );
         }
 
         assert_eq!(
-            ctr.support_proposal(acc(1), iah_proof(), support_prop_payload(id)),
-            Err(PrevotePropError::DoubleSupport)
+            ctr.support_proposal(acc(1), locked, None, support_prop_payload(id)),
+            Err(PrevoteError::DoubleSupport)
         );
 
         let p = ctr.assert_pre_vote_prop(id).unwrap();
@@ -1258,20 +1296,19 @@ mod unit_tests {
         // add the missing support and assert that the proposal was moved to active
         ctx.block_timestamp = START + 2 * MSECOND;
         testing_env!(ctx.clone());
+        let locked = min_prevote_lock(&ctx);
         assert_eq!(
             ctr.support_proposal(
                 acc(PRE_VOTE_SUPPORT as u8),
-                iah_proof(),
+                locked,
+                None,
                 support_prop_payload(id)
             ),
             Ok(true)
         );
 
         // should be removed from prevote queue
-        assert_eq!(
-            ctr.assert_pre_vote_prop(id),
-            Err(PrevotePropError::NotFound)
-        );
+        assert_eq!(ctr.assert_pre_vote_prop(id), Err(PrevoteError::NotFound));
         let p = ctr.proposals.get(&id).unwrap();
         assert_eq!(p.status, ProposalStatus::InProgress);
         assert_eq!(p.support, PRE_VOTE_SUPPORT);
@@ -1280,8 +1317,8 @@ mod unit_tests {
 
         // can't support proposal which was already moved
         assert_eq!(
-            ctr.support_proposal(acc(1), iah_proof(), support_prop_payload(id)),
-            Err(PrevotePropError::NotFound)
+            ctr.support_proposal(acc(1), locked, None, support_prop_payload(id)),
+            Err(PrevoteError::NotFound)
         );
 
         //
@@ -1290,8 +1327,9 @@ mod unit_tests {
         let id = create_proposal(ctx.clone(), &mut ctr, PRE_BOND);
         ctx.block_timestamp += (PRE_VOTE_DURATION + 1) * MSECOND;
         testing_env!(ctx.clone());
+        let locked = min_prevote_lock(&ctx);
         assert_eq!(
-            ctr.support_proposal(acc(1), iah_proof(), support_prop_payload(id)),
+            ctr.support_proposal(acc(1), locked, None, support_prop_payload(id)),
             Ok(false)
         );
         assert_eq!(ctr.get_proposal(id), None);
@@ -1316,38 +1354,41 @@ mod unit_tests {
         assert_eq!(c2, ctr.super_consent);
     }
 
-    #[should_panic(expected = "must be called by iah_registry")]
     #[test]
-    fn vote_not_called_by_iah_registry() {
+    fn not_called_by_iah_registry() {
         let (mut ctx, mut ctr, id) = setup_ctr(BOND);
+        let locked = min_vote_lock(&ctx);
         ctx.predecessor_account_id = acc(1);
         testing_env!(ctx);
-        ctr.vote(acc(1), iah_proof(), vote_payload(id, Vote::Approve))
-            .unwrap();
-    }
+        assert_eq!(
+            ctr.vote(acc(1), locked, None, vote_payload(id, Vote::Approve)),
+            Err(VoteError::NotIAHreg)
+        );
 
-    #[should_panic(expected = "must be called by iah_registry")]
-    #[test]
-    fn create_proposal_not_called_by_iah_registry() {
-        let (mut ctx, mut ctr, _) = setup_ctr(BOND);
-        ctx.predecessor_account_id = acc(1);
-        testing_env!(ctx);
-        ctr.create_proposal(
+        let resp = ctr.create_proposal(
             acc(1),
             iah_proof(),
             create_prop_payload(PropKind::Text, "Proposal unit test".to_string()),
-        )
-        .unwrap();
+        );
+        assert_eq!(resp, Err(CreatePropError::NotIAHreg));
+
+        let resp = ctr.support_proposal(acc(1), locked, None, support_prop_payload(id));
+        assert_eq!(resp, Err(PrevoteError::NotIAHreg));
     }
 
-    #[should_panic(expected = "must be called by iah_registry")]
     #[test]
-    fn support_proposal_not_called_by_iah_registry() {
-        let (mut ctx, mut ctr, id) = setup_ctr(PRE_BOND);
-        ctx.predecessor_account_id = acc(1);
-        testing_env!(ctx);
-        ctr.support_proposal(acc(1), iah_proof(), support_prop_payload(id))
-            .unwrap();
+    fn iah_lock_not_enough() {
+        let (ctx, mut ctr, id) = setup_ctr(BOND);
+        let locked = min_vote_lock(&ctx) - 1;
+        assert_eq!(
+            ctr.vote(acc(1), locked, None, vote_payload(id, Vote::Approve)),
+            Err(VoteError::LockedUntil)
+        );
+
+        let locked = min_prevote_lock(&ctx) - 1;
+        let id2 = create_proposal(ctx, &mut ctr, PRE_BOND);
+        let resp = ctr.support_proposal(acc(1), locked, None, support_prop_payload(id2));
+        assert_eq!(resp, Err(PrevoteError::LockedUntil));
     }
 
     #[test]
@@ -1355,7 +1396,7 @@ mod unit_tests {
         let (_, mut ctr, id) = setup_ctr(PRE_BOND);
 
         match ctr.support_proposal_by_congress(id, iah_registry()) {
-            Err(PrevotePropError::NotCongress) => (),
+            Err(PrevoteError::NotCongress) => (),
             _ => panic!("expected error: provided DAO must be one of the congress houses"),
         };
         assert!(
@@ -1370,11 +1411,11 @@ mod unit_tests {
 
         assert_eq!(
             ctr.on_support_by_congress(Ok(false), id),
-            Err(PrevotePropError::NotCongressMember)
+            Err(PrevoteError::NotCongressMember)
         );
         assert_eq!(
             ctr.on_support_by_congress(Err(near_sdk::PromiseError::Failed), id),
-            Err(PrevotePropError::NotCongressMember)
+            Err(PrevoteError::NotCongressMember)
         );
         assert!(
             ctr.pre_vote_proposals.contains_key(&id),
@@ -1396,10 +1437,7 @@ mod unit_tests {
         let mut prop = ctr.get_proposal(id).unwrap();
 
         assert_eq!(ctr.on_support_by_congress(Ok(true), id), Ok(true));
-        assert_eq!(
-            ctr.assert_pre_vote_prop(id),
-            Err(PrevotePropError::NotFound)
-        );
+        assert_eq!(ctr.assert_pre_vote_prop(id), Err(PrevoteError::NotFound));
         // modify prop to expected values and see if it equals the stored one
         prop.proposal.status = ProposalStatus::InProgress;
         prop.proposal.start += 1; // start is in milliseconds
@@ -1446,17 +1484,18 @@ mod unit_tests {
     fn vote_map() {
         let (ctx, mut ctr, id1) = setup_ctr(BOND);
         let id2 = create_proposal(ctx.clone(), &mut ctr, BOND);
+        let locked = min_vote_lock(&ctx);
 
         assert_eq!(
-            ctr.vote(acc(1), iah_proof(), vote_payload(id1, Vote::Approve)),
+            ctr.vote(acc(1), locked, None, vote_payload(id1, Vote::Approve)),
             Ok(())
         );
         assert_eq!(
-            ctr.vote(acc(1), iah_proof(), vote_payload(id2, Vote::Reject)),
+            ctr.vote(acc(1), locked, None, vote_payload(id2, Vote::Reject)),
             Ok(())
         );
         assert_eq!(
-            ctr.vote(acc(2), iah_proof(), vote_payload(id2, Vote::Spam)),
+            ctr.vote(acc(2), locked, None, vote_payload(id2, Vote::Spam)),
             Ok(())
         );
 

@@ -5,7 +5,7 @@ use near_sdk::{env, AccountId, Balance, Promise};
 
 use std::collections::HashSet;
 
-use crate::{PrevotePropError, REMOVE_REWARD};
+use crate::{PrevoteError, REMOVE_REWARD};
 
 /// Consent sets the conditions for vote to pass. It specifies a quorum (minimum amount of
 /// accounts that have to vote and the approval threshold (% of #approve votes) for a proposal
@@ -66,9 +66,9 @@ pub struct Proposal {
 }
 
 impl Proposal {
-    pub fn add_support(&mut self, user: AccountId) -> Result<(), PrevotePropError> {
+    pub fn add_support(&mut self, user: AccountId) -> Result<(), PrevoteError> {
         if self.supported.contains(&user) {
-            return Err(PrevotePropError::DoubleSupport);
+            return Err(PrevoteError::DoubleSupport);
         }
         self.support += 1;
         self.supported.insert(user);
