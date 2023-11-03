@@ -19,6 +19,13 @@ Parameters:
 Every human can create a proposal. The proposals are organized in 2 queues (pre-voting queue and active queue) in order to filter out spam proposals.
 When creating a proposal, the submitter must stake a bond. If `pre-vote bond` is attached, then the proposal goes to the pre-voting queue. If active queue bond is attached then the proposal goes directly to active queue.
 
+Proposal can only be created by an IAH verified account. We use `is_human_call` method. Example call:
+
+    near IAH_REGIATRY call is_human_call \
+      '{"ctr": "voting-body.near", "function": "create_proposal", "payload": {"kind": {"Veto": {"dao": "hom.near", "prop_id": 12}}}}' \
+      --accountId YOU
+      --deposit $pre_vote_bond
+
 ### Pre-voting queue
 
 Proposals in this queue are not active. VB members can't vote for proposals in the pre-vote queue and UI doesn't display them by default. Instead, members can send a _pre_vote_support_ transaction. There are 3 ways to move a proposal to the active queue:
@@ -28,6 +35,14 @@ Proposals in this queue are not active. VB members can't vote for proposals in t
 - get a support by one of the Congress members using `support_proposal_by_congress`.
 
 Note: originally only a congress support was required to move a proposal to the active queue. However, that creates a strong subjectivity and censorship (example: VB wants to dismiss a house - obviously house may not be happy and not "support" such a proposal).
+
+Voting Body Support can only be made by an IAH verified account. We use `is_human_call_lock` method, which will lock the caller for soul transfers, to avoid double support. Example call:
+
+    lock_duration=pre_voting_duration+1
+    near IAH_REGIATRY call is_human_call_lock \
+      '{"ctr": "voting-body.near", "function": "support_proposal", "payload": 4, "lock_duration": '$lock_duration', "with_proof": false}' \
+      --accountId YOU
+
 
 ### Active queue
 
@@ -149,6 +164,15 @@ Spam proposals are removed, and the bond is slashed (sent to the community treas
 A proposal is **rejected** if voting time is over (proposal is not in progress anymore), and it was not approved nor marked as spam.
 
 Voting Body intentionally doesn't support optimistic execution, that is approving or rejecting a proposal once sufficient amount of votes are cast. We want to give a chance to every member vote and express their opinion providing more clear outcome of the voting.
+
+Vote can only be made by an IAH verified account. We use `is_human_call_lock` method, which will lock the caller for soul transfers, to avoid double vote. Example call:
+
+    lock_duration=voting_duration+1
+    near IAH_REGIATRY call is_human_call_lock \
+      '{"ctr": "voting-body.near", "function": "vote", "payload": {"prop_id": 4, "vote": "approve"}, "lock_duration": '$lock_duration', "with_proof": false}' \
+      --accountId YOU
+      --deposit 0.02 # used for vote storage, reminder will be returned.
+
 
 ### Quorums and Thresholds
 
