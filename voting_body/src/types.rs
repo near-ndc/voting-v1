@@ -18,13 +18,6 @@ pub struct CreatePropPayload {
     pub description: String,
 }
 
-#[derive(Serialize, Deserialize)]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Clone))]
-#[serde(crate = "near_sdk::serde")]
-pub struct SupportPropPayload {
-    pub prop_id: u32,
-}
-
 pub type SBTs = Vec<(AccountId, Vec<u64>)>;
 
 #[derive(Serialize)]

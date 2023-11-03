@@ -10,7 +10,7 @@ use near_sdk::{
     near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseOrValue,
     PromiseResult,
 };
-use types::{CreatePropPayload, ExecResponse, SBTs, SupportPropPayload, VotePayload};
+use types::{CreatePropPayload, ExecResponse, SBTs, VotePayload};
 
 mod constants;
 mod errors;
@@ -243,22 +243,24 @@ impl Contract {
     /// Returns false if the proposal can't be supported because it is overdue.
     /// Must be called via `iah_registry.is_human_call_lock` with
     /// `lock_duration: self.pre_vote_duration + 1`.
+    /// `payload` must be a pre-vote proposal ID.
     #[handle_result]
     pub fn support_proposal(
         &mut self,
         caller: AccountId,
         locked_until: u64,
         #[allow(unused_variables)] iah_proof: Option<SBTs>,
-        payload: SupportPropPayload,
+        payload: u32,
     ) -> Result<bool, PrevoteError> {
         if env::predecessor_account_id() != self.accounts.get().unwrap().iah_registry {
             return Err(PrevoteError::NotIAHreg);
         }
-        let mut p = self.assert_pre_vote_prop(payload.prop_id)?;
+        let prop_id = payload;
+        let mut p = self.assert_pre_vote_prop(prop_id)?;
         let now = env::block_timestamp_ms();
         if now - p.start > self.pre_vote_duration {
-            self.slash_prop(payload.prop_id, p.bond);
-            self.pre_vote_proposals.remove(&payload.prop_id);
+            self.slash_prop(prop_id, p.bond);
+            self.pre_vote_proposals.remove(&prop_id);
             return Ok(false);
         }
         if locked_until <= p.start + self.pre_vote_duration {
@@ -267,10 +269,10 @@ impl Contract {
 
         p.add_support(caller)?;
         if p.support >= self.pre_vote_support {
-            self.pre_vote_proposals.remove(&payload.prop_id);
-            self.insert_prop_to_active(payload.prop_id, &mut p);
+            self.pre_vote_proposals.remove(&prop_id);
+            self.insert_prop_to_active(prop_id, &mut p);
         } else {
-            self.pre_vote_proposals.insert(&payload.prop_id, &p);
+            self.pre_vote_proposals.insert(&prop_id, &p);
         }
         Ok(true)
     }
@@ -339,13 +341,6 @@ impl Contract {
         if !prop.is_active(self.voting_duration) {
             return Err(VoteError::Timeout);
         }
-        println!(
-            ">>> prop start: {} duration: {}, now: {}",
-            prop.start,
-            self.voting_duration,
-            env::block_timestamp_ms()
-        );
-        println!(">>>>>> locked_until {}", locked_until);
         if locked_until <= prop.start + self.voting_duration {
             return Err(VoteError::LockedUntil);
         }
@@ -629,10 +624,6 @@ mod unit_tests {
 
     fn create_prop_payload(kind: PropKind, description: String) -> CreatePropPayload {
         CreatePropPayload { kind, description }
-    }
-
-    fn support_prop_payload(id: u32) -> SupportPropPayload {
-        SupportPropPayload { prop_id: id }
     }
 
     fn iah_proof() -> SBTs {
@@ -1276,13 +1267,13 @@ mod unit_tests {
         let locked = min_prevote_lock(&ctx);
         for i in 1..PRE_VOTE_SUPPORT {
             assert_eq!(
-                ctr.support_proposal(acc(i as u8), locked, None, support_prop_payload(id)),
+                ctr.support_proposal(acc(i as u8), locked, None, id),
                 Ok(true)
             );
         }
 
         assert_eq!(
-            ctr.support_proposal(acc(1), locked, None, support_prop_payload(id)),
+            ctr.support_proposal(acc(1), locked, None, id),
             Err(PrevoteError::DoubleSupport)
         );
 
@@ -1298,12 +1289,7 @@ mod unit_tests {
         testing_env!(ctx.clone());
         let locked = min_prevote_lock(&ctx);
         assert_eq!(
-            ctr.support_proposal(
-                acc(PRE_VOTE_SUPPORT as u8),
-                locked,
-                None,
-                support_prop_payload(id)
-            ),
+            ctr.support_proposal(acc(PRE_VOTE_SUPPORT as u8), locked, None, id),
             Ok(true)
         );
 
@@ -1317,7 +1303,7 @@ mod unit_tests {
 
         // can't support proposal which was already moved
         assert_eq!(
-            ctr.support_proposal(acc(1), locked, None, support_prop_payload(id)),
+            ctr.support_proposal(acc(1), locked, None, id),
             Err(PrevoteError::NotFound)
         );
 
@@ -1328,10 +1314,7 @@ mod unit_tests {
         ctx.block_timestamp += (PRE_VOTE_DURATION + 1) * MSECOND;
         testing_env!(ctx.clone());
         let locked = min_prevote_lock(&ctx);
-        assert_eq!(
-            ctr.support_proposal(acc(1), locked, None, support_prop_payload(id)),
-            Ok(false)
-        );
+        assert_eq!(ctr.support_proposal(acc(1), locked, None, id), Ok(false));
         assert_eq!(ctr.get_proposal(id), None);
     }
 
@@ -1372,7 +1355,7 @@ mod unit_tests {
         );
         assert_eq!(resp, Err(CreatePropError::NotIAHreg));
 
-        let resp = ctr.support_proposal(acc(1), locked, None, support_prop_payload(id));
+        let resp = ctr.support_proposal(acc(1), locked, None, id);
         assert_eq!(resp, Err(PrevoteError::NotIAHreg));
     }
 
@@ -1387,7 +1370,7 @@ mod unit_tests {
 
         let locked = min_prevote_lock(&ctx) - 1;
         let id2 = create_proposal(ctx, &mut ctr, PRE_BOND);
-        let resp = ctr.support_proposal(acc(1), locked, None, support_prop_payload(id2));
+        let resp = ctr.support_proposal(acc(1), locked, None, id2);
         assert_eq!(resp, Err(PrevoteError::LockedUntil));
     }
 
@@ -1504,5 +1487,31 @@ mod unit_tests {
         assert_eq!(get(id1, acc(1)), vote_record(now, Vote::Approve));
         assert_eq!(get(id2, acc(1)), vote_record(now, Vote::Reject));
         assert_eq!(get(id2, acc(2)), vote_record(now, Vote::Spam));
+    }
+
+    #[test]
+    fn check_serialization() {
+        assert_eq!(
+            serde_json::to_string(&PropKind::Text {}).unwrap(),
+            "\"Text\"".to_string()
+        );
+
+        let k = PropKind::Dismiss {
+            dao: coa(),
+            member: acc(1),
+        };
+        assert_eq!(
+            serde_json::to_string(&k).unwrap(),
+            "{\"Dismiss\":{\"dao\":\"coa.near\",\"member\":\"user-1.near\"}}".to_string()
+        );
+
+        let k = PropKind::Veto {
+            dao: hom(),
+            prop_id: 12,
+        };
+        assert_eq!(
+            serde_json::to_string(&k).unwrap(),
+            "{\"Veto\":{\"dao\":\"hom.near\",\"prop_id\":12}}".to_string()
+        );
     }
 }
