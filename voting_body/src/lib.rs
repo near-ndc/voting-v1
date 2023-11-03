@@ -1137,12 +1137,9 @@ mod unit_tests {
         let (mut ctx, mut ctr, id) = setup_ctr(BOND);
         let mut p = ctr.get_proposal(id).unwrap();
         assert_eq!(p.proposal.status, ProposalStatus::InProgress);
-        // TODO: do a check
-        // assert!((p.proposal.votes.is_empty()));
 
         ctx.attached_deposit = VOTE_DEPOSIT;
         testing_env!(ctx.clone());
-
         assert_eq!(
             ctr.vote(acc(1), iah_proof(), vote_payload(id, Vote::Approve)),
             Ok(())
@@ -1462,7 +1459,11 @@ mod unit_tests {
             ctr.vote(acc(2), iah_proof(), vote_payload(id2, Vote::Spam)),
             Ok(())
         );
-        // TODO
-        // assert_eq!()
+
+        let now = ctx.block_timestamp;
+        let get = |prop_id, acc| ctr.votes.get(&(prop_id, acc)).unwrap();
+        assert_eq!(get(id1, acc(1)), vote_record(now, Vote::Approve));
+        assert_eq!(get(id2, acc(1)), vote_record(now, Vote::Reject));
+        assert_eq!(get(id2, acc(2)), vote_record(now, Vote::Spam));
     }
 }
