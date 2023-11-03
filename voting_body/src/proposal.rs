@@ -35,10 +35,7 @@ pub enum ConsentKind {
 /// Proposals that are sent to this DAO.
 #[derive(BorshSerialize, BorshDeserialize, Serialize)]
 #[serde(crate = "near_sdk::serde")]
-#[cfg_attr(
-    not(target_arch = "wasm32"),
-    derive(Deserialize, Debug, PartialEq, Clone)
-)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, /*PartialEq*/))]
 pub struct Proposal {
     /// Original proposer.
     pub proposer: AccountId,
@@ -59,6 +56,7 @@ pub struct Proposal {
     pub supported: HashSet<AccountId>,
     /// Map of who voted and how.
     // TODO: must not be a hashmap
+    #[serde(skip_serializing)]
     pub votes: LookupMap<AccountId, Vote>,
     /// start time (for voting period).
     pub start: u64,
@@ -168,8 +166,8 @@ impl Proposal {
 }
 
 /// Kinds of proposals, doing different action.
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq)]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Clone))]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Clone, PartialEq))]
 #[serde(crate = "near_sdk::serde")]
 pub enum PropKind {
     Dismiss {
@@ -270,8 +268,8 @@ pub enum Vote {
 }
 
 /// Function call arguments.
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq)]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Clone))]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Clone, PartialEq))]
 #[serde(crate = "near_sdk::serde")]
 pub struct ActionCall {
     pub method_name: String,

@@ -756,7 +756,7 @@ mod unit_tests {
             Ok(())
         );
         prop1.proposal.spam += 1;
-        prop1.proposal.votes.insert(acc(5), Vote::Spam);
+        prop1.proposal.votes.insert(&acc(5), &Vote::Spam);
         assert!(matches!(ctr.execute(id), Err(ExecError::InProgress)));
 
         //
@@ -790,9 +790,9 @@ mod unit_tests {
 
         prop2.proposal.approve = 1;
         prop2.proposal.reject = 2;
-        prop2.proposal.votes.insert(acc(3), Vote::Approve);
-        prop2.proposal.votes.insert(acc(1), Vote::Reject);
-        prop2.proposal.votes.insert(acc(2), Vote::Reject);
+        prop2.proposal.votes.insert(&acc(3), &Vote::Approve);
+        prop2.proposal.votes.insert(&acc(1), &Vote::Reject);
+        prop2.proposal.votes.insert(&acc(2), &Vote::Reject);
 
         assert_eq!(ctr.get_proposals(0, 1, None), vec![prop1.clone()]);
         assert_eq!(
@@ -1107,7 +1107,7 @@ mod unit_tests {
             Ok(())
         );
         p.proposal.approve = 1;
-        p.proposal.votes.insert(acc(1), Vote::Approve);
+        p.proposal.votes.insert(&acc(1), &Vote::Approve);
         assert_eq!(ctr.get_proposal(id).unwrap(), p);
 
         assert_eq!(
@@ -1116,7 +1116,7 @@ mod unit_tests {
         );
         p.proposal.approve = 0;
         p.proposal.abstain = 1;
-        p.proposal.votes.insert(acc(1), Vote::Abstain);
+        p.proposal.votes.insert(&acc(1), &Vote::Abstain);
         assert_eq!(ctr.get_proposal(id).unwrap(), p);
 
         assert_eq!(
@@ -1125,7 +1125,7 @@ mod unit_tests {
         );
         p.proposal.abstain = 0;
         p.proposal.reject = 1;
-        p.proposal.votes.insert(acc(1), Vote::Reject);
+        p.proposal.votes.insert(&acc(1), &Vote::Reject);
         assert_eq!(ctr.get_proposal(id).unwrap(), p);
 
         assert_eq!(
@@ -1134,7 +1134,7 @@ mod unit_tests {
         );
         p.proposal.reject = 0;
         p.proposal.spam = 1;
-        p.proposal.votes.insert(acc(1), Vote::Spam);
+        p.proposal.votes.insert(&acc(1), &Vote::Spam);
         assert_eq!(ctr.get_proposal(id).unwrap(), p);
     }
 

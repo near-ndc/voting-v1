@@ -7,14 +7,40 @@ use crate::*;
 
 /// This is format of output via JSON for the proposal.
 #[derive(Serialize)]
-#[cfg_attr(test, derive(PartialEq))]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Clone))]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, /* PartialEq */))]
 #[serde(crate = "near_sdk::serde")]
 pub struct ProposalOutput {
     /// Id of the proposal.
     pub id: u32,
     #[serde(flatten)]
     pub proposal: Proposal,
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+impl Clone for ProposalOutput {
+    fn clone(&self) -> Self {
+        ProposalOutput {
+            id: self.id,
+            proposal: Proposal {
+                proposer: self.proposal.proposer.clone(),
+                bond: self.proposal.bond,
+                additional_bond: self.proposal.additional_bond.clone(),
+                description: self.proposal.description.clone(),
+                kind: self.proposal.kind,
+                status: self.proposal.status,
+                approve: self.proposal.approve,
+                reject: self.proposal.reject,
+                spam: self.proposal.spam,
+                abstain: self.proposal.abstain,
+                support: self.proposal.support,
+                supported: self.proposal.supported,
+                votes: LookupMap::new(storage::StorageKey::Votes),
+                start: self.proposal.start,
+                executed_at: self.proposal.executed_at,
+                proposal_storage: self.proposal.proposal_storage,
+            },
+        }
+    }
 }
 
 /// This is format of output via JSON for the config.
