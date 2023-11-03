@@ -215,7 +215,7 @@ impl Contract {
         emit_vote(id);
 
         // automatic execution
-        if prop.status == ProposalStatus::Approved && self.cooldown == 0 {
+        if matches!(prop.status, ProposalStatus::Approved) && self.cooldown == 0 {
             // We ignore a failure of self.execute here to assure that the vote is counted.
             let res = self.execute(id);
             if res.is_err() {
@@ -236,12 +236,12 @@ impl Contract {
     ) -> Result<PromiseOrValue<Result<(), ExecRespErr>>, ExecError> {
         self.assert_active();
         let mut prop = self.assert_proposal(id);
-        if prop.status == ProposalStatus::Executed {
+        if matches!(prop.status, ProposalStatus::Executed) {
             // More fine-grained errors
             return Err(ExecError::AlreadyExecuted);
         }
         // check if we can finalize the proposal status due to having enough votes during min_voting_duration
-        if prop.status == ProposalStatus::InProgress {
+        if matches!(prop.status, ProposalStatus::InProgress) {
             let (members, _) = self.members.get().unwrap();
             if !prop.finalize_status(
                 members.len(),
