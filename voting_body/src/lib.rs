@@ -529,11 +529,17 @@ impl Contract {
         }
     }
 
-    pub fn add_vote(&mut self, prop_id: u32, user: AccountId, vote: Vote, prop: &mut Proposal) {
+    fn add_vote(&mut self, prop_id: u32, user: AccountId, vote: Vote, prop: &mut Proposal) {
+        match vote {
+            Vote::Abstain => prop.abstain += 1,
+            Vote::Approve => prop.approve += 1,
+            Vote::Reject => prop.reject += 1,
+            Vote::Spam => prop.spam += 1,
+        };
         // allow to overwrite existing votes
         let v = VoteRecord {
             timestamp: env::block_timestamp_ms(),
-            vote: vote.clone(), // TODO: reorder to avoid clone
+            vote,
         };
         if let Some(old_vote) = self.votes.insert(&(prop_id, user), &v) {
             match old_vote.vote {
@@ -543,13 +549,6 @@ impl Contract {
                 Vote::Spam => prop.spam -= 1,
             }
         }
-
-        match vote {
-            Vote::Abstain => prop.abstain += 1,
-            Vote::Approve => prop.approve += 1,
-            Vote::Reject => prop.reject += 1,
-            Vote::Spam => prop.spam += 1,
-        };
     }
 }
 
