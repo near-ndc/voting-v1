@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use crate::VoteError;
 
 /// Proposal that are sent to this DAO.
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize)]
 #[serde(crate = "near_sdk::serde")]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq))]
 pub struct Proposal {
@@ -79,7 +79,7 @@ impl Proposal {
         min_voting_duration: u64,
         voting_duration: u64,
     ) -> bool {
-        if self.status != ProposalStatus::InProgress {
+        if !matches!(self.status, ProposalStatus::InProgress) {
             return true;
         }
         let past_min_voting_duration = self.past_min_voting_duration(min_voting_duration);
@@ -157,9 +157,9 @@ impl PropKind {
     }
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize)]
 #[serde(crate = "near_sdk::serde")]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Debug))]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq))]
 pub enum ProposalStatus {
     InProgress,
     Approved,
@@ -182,7 +182,7 @@ pub enum Vote {
     // note: we don't have Remove
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[derive(BorshSerialize, BorshDeserialize, Serialize)]
 #[serde(crate = "near_sdk::serde")]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq))]
 pub struct VoteRecord {
@@ -226,8 +226,8 @@ pub enum HookPerm {
     Dissolve,
 }
 
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq)]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Clone))]
+#[derive(BorshSerialize, BorshDeserialize, Serialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Clone, PartialEq))]
 #[serde(crate = "near_sdk::serde")]
 pub enum ExecRespErr {
     BudgetOverflow,

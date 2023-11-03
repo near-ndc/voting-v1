@@ -1,12 +1,12 @@
 use std::cmp::{max, min};
 
 use itertools::Either;
-use near_sdk::serde::{Deserialize, Serialize};
+use near_sdk::serde::Serialize;
 
 use crate::*;
 
 /// This is format of output via JSON for the proposal.
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize)]
 #[cfg_attr(test, derive(Debug, PartialEq))]
 #[serde(crate = "near_sdk::serde")]
 pub struct ProposalOutput {
@@ -31,7 +31,7 @@ pub struct ConfigOutput {
     pub min_voting_duration: u64,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize)]
 #[cfg_attr(test, derive(Debug, PartialEq))]
 #[serde(crate = "near_sdk::serde")]
 pub struct MembersOutput {
