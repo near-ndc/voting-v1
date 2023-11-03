@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use common::finalize_storage_check;
 use events::*;
@@ -35,6 +35,8 @@ pub struct Contract {
     pub pre_vote_proposals: LookupMap<u32, Proposal>,
     /// Set of active proposals.
     pub proposals: LookupMap<u32, Proposal>,
+    /// map (prop_id, voter) -> VoteRecord
+    pub votes: LookupMap<(u32, AccountId), VoteRecord>,
 
     /// Near amount required to create a proposal. Will be slashed if the proposal is marked as
     /// spam.
@@ -77,6 +79,7 @@ impl Contract {
             prop_counter: 0,
             pre_vote_proposals: LookupMap::new(StorageKey::PreVoteProposals),
             proposals: LookupMap::new(StorageKey::Proposals),
+            votes: LookupMap::new(StorageKey::Votes),
             pre_vote_duration,
             voting_duration,
             pre_vote_bond: pre_vote_bond.0,
@@ -155,7 +158,6 @@ impl Contract {
             spam: 0,
             support: 0,
             supported: HashSet::new(),
-            votes: HashMap::new(),
             start: now,
             executed_at: None,
             proposal_storage: 0,
@@ -323,7 +325,7 @@ impl Contract {
             return Err(VoteError::Timeout);
         }
 
-        prop.add_vote(caller.clone(), payload.vote)?;
+        self.add_vote(payload.prop_id, caller.clone(), payload.vote, &mut prop);
         // NOTE: we can't quickly set a status to a finalized one because we don't know the total number of
         // voters
 
@@ -453,6 +455,30 @@ impl Contract {
     }
 
     /*****************
+     * CALLBACKS
+     ****************/
+
+    #[private]
+    pub fn on_execute(&mut self, prop_id: u32) {
+        assert_eq!(
+            env::promise_results_count(),
+            1,
+            "ERR_UNEXPECTED_CALLBACK_PROMISES"
+        );
+        match env::promise_result(0) {
+            PromiseResult::NotReady => unreachable!(),
+            PromiseResult::Successful(_) => (),
+            PromiseResult::Failed => {
+                let mut prop = self.proposals.get(&prop_id).expect("proposal not found");
+                prop.status = ProposalStatus::Failed;
+                prop.executed_at = None;
+                self.proposals.insert(&prop_id, &prop);
+                emit_executed(prop_id);
+            }
+        };
+    }
+
+    /*****************
      * INTERNAL
      ****************/
 
@@ -496,30 +522,32 @@ impl Contract {
         emit_prevote_prop_slashed(prop_id, amount);
     }
 
-    #[private]
-    pub fn on_execute(&mut self, prop_id: u32) {
-        assert_eq!(
-            env::promise_results_count(),
-            1,
-            "ERR_UNEXPECTED_CALLBACK_PROMISES"
-        );
-        match env::promise_result(0) {
-            PromiseResult::NotReady => unreachable!(),
-            PromiseResult::Successful(_) => (),
-            PromiseResult::Failed => {
-                let mut prop = self.proposals.get(&prop_id).expect("proposal not found");
-                prop.status = ProposalStatus::Failed;
-                prop.executed_at = None;
-                self.proposals.insert(&prop_id, &prop);
-                emit_executed(prop_id);
-            }
-        };
-    }
-
     fn prop_consent(&self, prop: &Proposal) -> Consent {
         match prop.kind.required_consent() {
             ConsentKind::Simple => self.simple_consent.clone(),
             ConsentKind::Super => self.super_consent.clone(),
+        }
+    }
+
+    fn add_vote(&mut self, prop_id: u32, user: AccountId, vote: Vote, prop: &mut Proposal) {
+        match vote {
+            Vote::Abstain => prop.abstain += 1,
+            Vote::Approve => prop.approve += 1,
+            Vote::Reject => prop.reject += 1,
+            Vote::Spam => prop.spam += 1,
+        };
+        // allow to overwrite existing votes
+        let v = VoteRecord {
+            timestamp: env::block_timestamp_ms(),
+            vote,
+        };
+        if let Some(old_vote) = self.votes.insert(&(prop_id, user), &v) {
+            match old_vote.vote {
+                Vote::Approve => prop.approve -= 1,
+                Vote::Reject => prop.reject -= 1,
+                Vote::Abstain => prop.abstain -= 1,
+                Vote::Spam => prop.spam -= 1,
+            }
         }
     }
 }
@@ -570,8 +598,15 @@ mod unit_tests {
         AccountId::new_unchecked("admin.near".to_string())
     }
 
-    fn vote_payload(id: u32, vote: Vote) -> VotePayload {
-        VotePayload { prop_id: id, vote }
+    fn vote_payload(prop_id: u32, vote: Vote) -> VotePayload {
+        VotePayload { prop_id, vote }
+    }
+
+    fn vote_record(timestamp_ns: u64, vote: Vote) -> VoteRecord {
+        VoteRecord {
+            timestamp: timestamp_ns / MSECOND,
+            vote,
+        }
     }
 
     fn create_prop_payload(kind: PropKind, description: String) -> CreatePropPayload {
@@ -646,6 +681,11 @@ mod unit_tests {
                 ctr.proposals.get(&id).unwrap(),
             );
         }
+    }
+
+    fn insert_vote(ctr: &mut Contract, prop_id: u32, voter: AccountId, timestamp_ns: u64, v: Vote) {
+        ctr.votes
+            .insert(&(prop_id, voter), &vote_record(timestamp_ns, v));
     }
 
     fn vote_and_fast_forward_status_check(
@@ -756,7 +796,7 @@ mod unit_tests {
             Ok(())
         );
         prop1.proposal.spam += 1;
-        prop1.proposal.votes.insert(acc(5), Vote::Spam);
+        insert_vote(&mut ctr, id, acc(5), ctx.block_timestamp, Vote::Spam);
         assert!(matches!(ctr.execute(id), Err(ExecError::InProgress)));
 
         //
@@ -790,9 +830,9 @@ mod unit_tests {
 
         prop2.proposal.approve = 1;
         prop2.proposal.reject = 2;
-        prop2.proposal.votes.insert(acc(3), Vote::Approve);
-        prop2.proposal.votes.insert(acc(1), Vote::Reject);
-        prop2.proposal.votes.insert(acc(2), Vote::Reject);
+        insert_vote(&mut ctr, id, acc(3), ctx.block_timestamp, Vote::Approve);
+        insert_vote(&mut ctr, id, acc(1), ctx.block_timestamp, Vote::Reject);
+        insert_vote(&mut ctr, id, acc(2), ctx.block_timestamp, Vote::Reject);
 
         assert_eq!(ctr.get_proposals(0, 1, None), vec![prop1.clone()]);
         assert_eq!(
@@ -1097,17 +1137,15 @@ mod unit_tests {
         let (mut ctx, mut ctr, id) = setup_ctr(BOND);
         let mut p = ctr.get_proposal(id).unwrap();
         assert_eq!(p.proposal.status, ProposalStatus::InProgress);
-        assert!((p.proposal.votes.is_empty()));
 
         ctx.attached_deposit = VOTE_DEPOSIT;
         testing_env!(ctx.clone());
-
         assert_eq!(
             ctr.vote(acc(1), iah_proof(), vote_payload(id, Vote::Approve)),
             Ok(())
         );
         p.proposal.approve = 1;
-        p.proposal.votes.insert(acc(1), Vote::Approve);
+        insert_vote(&mut ctr, id, acc(1), ctx.block_timestamp, Vote::Approve);
         assert_eq!(ctr.get_proposal(id).unwrap(), p);
 
         assert_eq!(
@@ -1116,7 +1154,7 @@ mod unit_tests {
         );
         p.proposal.approve = 0;
         p.proposal.abstain = 1;
-        p.proposal.votes.insert(acc(1), Vote::Abstain);
+        insert_vote(&mut ctr, id, acc(1), ctx.block_timestamp, Vote::Abstain);
         assert_eq!(ctr.get_proposal(id).unwrap(), p);
 
         assert_eq!(
@@ -1125,7 +1163,7 @@ mod unit_tests {
         );
         p.proposal.abstain = 0;
         p.proposal.reject = 1;
-        p.proposal.votes.insert(acc(1), Vote::Reject);
+        insert_vote(&mut ctr, id, acc(1), ctx.block_timestamp, Vote::Reject);
         assert_eq!(ctr.get_proposal(id).unwrap(), p);
 
         assert_eq!(
@@ -1134,7 +1172,7 @@ mod unit_tests {
         );
         p.proposal.reject = 0;
         p.proposal.spam = 1;
-        p.proposal.votes.insert(acc(1), Vote::Spam);
+        insert_vote(&mut ctr, id, acc(1), ctx.block_timestamp, Vote::Spam);
         assert_eq!(ctr.get_proposal(id).unwrap(), p);
     }
 
@@ -1402,5 +1440,30 @@ mod unit_tests {
         assert_eq!(active_proposals.len(), 1);
         let pre_vote_proposals = ctr.get_pre_vote_proposals(0, 10, None);
         assert_eq!(pre_vote_proposals.len(), 2);
+    }
+
+    #[test]
+    fn vote_map() {
+        let (ctx, mut ctr, id1) = setup_ctr(BOND);
+        let id2 = create_proposal(ctx.clone(), &mut ctr, BOND);
+
+        assert_eq!(
+            ctr.vote(acc(1), iah_proof(), vote_payload(id1, Vote::Approve)),
+            Ok(())
+        );
+        assert_eq!(
+            ctr.vote(acc(1), iah_proof(), vote_payload(id2, Vote::Reject)),
+            Ok(())
+        );
+        assert_eq!(
+            ctr.vote(acc(2), iah_proof(), vote_payload(id2, Vote::Spam)),
+            Ok(())
+        );
+
+        let now = ctx.block_timestamp;
+        let get = |prop_id, acc| ctr.votes.get(&(prop_id, acc)).unwrap();
+        assert_eq!(get(id1, acc(1)), vote_record(now, Vote::Approve));
+        assert_eq!(get(id2, acc(1)), vote_record(now, Vote::Reject));
+        assert_eq!(get(id2, acc(2)), vote_record(now, Vote::Spam));
     }
 }

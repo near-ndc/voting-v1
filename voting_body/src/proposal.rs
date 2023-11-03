@@ -3,9 +3,9 @@ use near_sdk::json_types::{Base64VecU8, U128, U64};
 use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::{env, AccountId, Balance, Promise};
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
-use crate::{PrevotePropError, VoteError, REMOVE_REWARD};
+use crate::{PrevotePropError, REMOVE_REWARD};
 
 /// Consent sets the conditions for vote to pass. It specifies a quorum (minimum amount of
 /// accounts that have to vote and the approval threshold (% of #approve votes) for a proposal
@@ -35,8 +35,8 @@ pub enum ConsentKind {
 #[derive(BorshSerialize, BorshDeserialize, Serialize)]
 #[serde(crate = "near_sdk::serde")]
 #[cfg_attr(
-    not(target_arch = "wasm32"),
-    derive(Deserialize, Debug, PartialEq, Clone)
+    all(test, not(target_arch = "wasm32")),
+    derive(Debug, PartialEq, Clone)
 )]
 pub struct Proposal {
     /// Original proposer.
@@ -56,16 +56,13 @@ pub struct Proposal {
     pub abstain: u32,
     pub support: u32,
     pub supported: HashSet<AccountId>,
-    /// Map of who voted and how.
-    // TODO: must not be a hashmap
-    pub votes: HashMap<AccountId, Vote>,
     /// start time (for voting period).
     pub start: u64,
     /// Unix time in milliseconds when the proposal was executed. `None` if it is not approved
     /// or execution failed.
     pub executed_at: Option<u64>,
     /// Proposal storage cost (excluding vote)
-    pub proposal_storage: u128,
+    pub(crate) proposal_storage: u128,
 }
 
 impl Proposal {
@@ -75,31 +72,6 @@ impl Proposal {
         }
         self.support += 1;
         self.supported.insert(user);
-        Ok(())
-    }
-
-    pub fn add_vote(&mut self, user: AccountId, vote: Vote) -> Result<(), VoteError> {
-        // allow to overwrite existing votes
-        if let Some(old_vote) = self.votes.get(&user) {
-            match old_vote {
-                Vote::Approve => self.approve -= 1,
-                Vote::Reject => self.reject -= 1,
-                Vote::Abstain => self.abstain -= 1,
-                Vote::Spam => self.spam -= 1,
-            }
-        }
-
-        match vote {
-            Vote::Abstain => self.abstain += 1,
-            Vote::Approve => self.approve += 1,
-            Vote::Reject => {
-                self.reject += 1;
-            }
-            Vote::Spam => {
-                self.spam += 1;
-            }
-        };
-        self.votes.insert(user, vote);
         Ok(())
     }
 
@@ -172,8 +144,8 @@ impl Proposal {
 }
 
 /// Kinds of proposals, doing different action.
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq)]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Clone))]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Clone, PartialEq))]
 #[serde(crate = "near_sdk::serde")]
 pub enum PropKind {
     Dismiss {
@@ -251,6 +223,14 @@ pub enum ProposalStatus {
     Failed,
 }
 
+#[derive(BorshSerialize, BorshDeserialize, Serialize)]
+#[serde(crate = "near_sdk::serde")]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq))]
+pub struct VoteRecord {
+    pub timestamp: u64, // unix time of when this vote was submitted
+    pub vote: Vote,
+}
+
 /// Votes recorded in the proposal.
 #[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Clone, Debug, PartialEq))]
@@ -266,8 +246,8 @@ pub enum Vote {
 }
 
 /// Function call arguments.
-#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, PartialEq)]
-#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Clone))]
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize)]
+#[cfg_attr(not(target_arch = "wasm32"), derive(Debug, Clone, PartialEq))]
 #[serde(crate = "near_sdk::serde")]
 pub struct ActionCall {
     pub method_name: String,
