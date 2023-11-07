@@ -206,19 +206,26 @@ near call VOTING_BODY get_vote \
 ### Creating a Budget Approval proposal
 
 1. HoM must create a Budget Proposal and approve it.
+
 2. CoA must not veto it.
+
 3. Once cooldown is over (cooldown starts once the proposal is internally approved), and it was not vetoed, then it's finalized.
+
 4. Any human can can now create a VB Text proposal, referencing original HoM Budget proposal, example:
+
    ```shell
    near call IAH_REGISTRY is_human_call \
    '{"ctr": "VB.near", "function": "create_proposal", "payload": "{\"kind\": {\"ApproveBudget\": {\"dao\": \"HOM.near\", \"prop_id\": 12}}, \"description\": \"ADDITIONAL INFORMATION\"}"}' \
    --accountId YOU \
    --depositYocto $pre_vote_bond
    ```
+
 5. Now we need to advance the proposal to the active queue. The easiest way is to ask any Congress member (HoM or other house) to support it. Below, `prop_id` must be the id of the proposal created above, `dao` must be the house address and the caller is member of (eg: `congress-hom-v1.ndc-gwg.near`).
+
    ```shell
    near call VB support_proposal_by_congress \
      '{"prop_id": 5, `dao`: "HOM"}' \
      --accountId YOU
    ```
+
 6. Share the proposal ID with others and ask the VB to vote.
