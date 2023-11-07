@@ -207,7 +207,7 @@ near call VOTING_BODY get_vote \
 
 1. HoM must create a Budget Proposal and approve it.
 2. CoA must not veto it.
-3. Once cooldown is over (cooldown starts once the proposal is internally approved), and it was not veto, then it's finalized.
+3. Once cooldown is over (cooldown starts once the proposal is internally approved), and it was not vetoed, then it's finalized.
 4. Any human can can now create a VB Text proposal, referencing original HoM Budget proposal, example:
    ```shell
    near call IAH_REGISTRY is_human_call \
@@ -215,7 +215,7 @@ near call VOTING_BODY get_vote \
    --accountId YOU \
    --depositYocto $pre_vote_bond
    ```
-5. Now we need to advance the proposal to the active queue. The easiest way is to ask any Congress member (HoM or other house) to support it. Below, `prop_id` must be the id of the proposal created above, and `dao` must be the house address a callers is member of (eg: `congress-hom-v1.ndc-gwg.near`).
+5. Now we need to advance the proposal to the active queue. The easiest way is to ask any Congress member (HoM or other house) to support it. Below, `prop_id` must be the id of the proposal created above, `dao` must be the house address and the caller is member of (eg: `congress-hom-v1.ndc-gwg.near`).
    ```shell
    near call VB support_proposal_by_congress \
      '{"prop_id": 5, `dao`: "HOM"}' \
