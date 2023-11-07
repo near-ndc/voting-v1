@@ -178,6 +178,10 @@ pub enum PropKind {
         pre_vote_bond: U128,
         active_queue_bond: U128,
     },
+    UpdateVotingDuration {
+        pre_vote_duration: u64,
+        voting_duration: u64,
+    },
 }
 
 impl PropKind {
@@ -189,8 +193,9 @@ impl PropKind {
             PropKind::Veto { .. } => "veto".to_string(),
             PropKind::ApproveBudget { .. } => "approve-budget".to_string(),
             PropKind::Text { .. } => "text".to_string(),
-            PropKind::FunctionCall { .. } => "function-call".to_string(),
-            PropKind::UpdateBonds { .. } => "config: update-bonds".to_string(),
+            PropKind::FunctionCall { .. } => "function call".to_string(),
+            PropKind::UpdateBonds { .. } => "config: update bonds".to_string(),
+            PropKind::UpdateVotingDuration { .. } => "config: update voting duration".to_string(),
         }
     }
 
@@ -200,7 +205,8 @@ impl PropKind {
             | Self::Veto { .. }
             | Self::Text
             | Self::FunctionCall { .. }
-            | Self::UpdateBonds { .. } => ConsentKind::Simple,
+            | Self::UpdateBonds { .. }
+            | Self::UpdateVotingDuration { .. } => ConsentKind::Simple,
             Self::Dissolve { .. } | Self::ApproveBudget { .. } => ConsentKind::Super,
         }
     }

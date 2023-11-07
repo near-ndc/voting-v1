@@ -51,8 +51,8 @@ pub struct Contract {
     pub super_consent: Consent,
 
     /// all times below are in milliseconds
-    pub voting_duration: u64,
     pub pre_vote_duration: u64,
+    pub voting_duration: u64,
     pub accounts: LazyOption<Accounts>,
 }
 
@@ -430,6 +430,13 @@ impl Contract {
             } => {
                 self.pre_vote_bond = pre_vote_bond.0;
                 self.active_queue_bond = active_queue_bond.0;
+            }
+            PropKind::UpdateVotingDuration {
+                pre_vote_duration,
+                voting_duration,
+            } => {
+                self.pre_vote_duration = *pre_vote_duration;
+                self.voting_duration = *voting_duration;
             }
         };
 
@@ -1051,7 +1058,7 @@ mod unit_tests {
     }
 
     #[test]
-    fn execution_() {
+    fn execution_update_bonds() {
         let (mut ctx, mut ctr, _) = setup_ctr(PRE_BOND);
         ctx.attached_deposit = BOND;
         testing_env!(ctx.clone());
@@ -1087,6 +1094,49 @@ mod unit_tests {
         let p = ctr.get_proposal(id).unwrap();
         assert_eq!(p.proposal.status, ProposalStatus::Executed);
         assert_eq!(p.proposal.executed_at, Some(ctx.block_timestamp / MSECOND));
+        assert_eq!(ctr.pre_vote_bond, PRE_BOND * 2);
+        assert_eq!(ctr.active_queue_bond, BOND * 5);
+    }
+
+    #[test]
+    fn execution_update_voting_duration() {
+        let (mut ctx, mut ctr, _) = setup_ctr(PRE_BOND);
+        ctx.attached_deposit = BOND;
+        testing_env!(ctx.clone());
+        let id = ctr
+            .create_proposal(
+                acc(1),
+                iah_proof(),
+                CreatePropPayload {
+                    kind: PropKind::UpdateVotingDuration {
+                        pre_vote_duration: PRE_VOTE_DURATION * 3,
+                        voting_duration: VOTING_DURATION * 4,
+                    },
+                    description: "updating voting duration".to_owned(),
+                },
+            )
+            .unwrap();
+        vote(
+            ctx.clone(),
+            &mut ctr,
+            vec![acc(1), acc(2), acc(3)],
+            id,
+            Vote::Approve,
+        );
+
+        ctx.predecessor_account_id = acc(10);
+        ctx.block_timestamp += ctr.voting_duration * 10 * MSECOND;
+        testing_env!(ctx.clone());
+
+        match ctr.execute(id) {
+            Ok(_) => (),
+            Err(err) => panic!("expected OK, got: {:?}", err),
+        }
+        let p = ctr.get_proposal(id).unwrap();
+        assert_eq!(p.proposal.status, ProposalStatus::Executed);
+        assert_eq!(p.proposal.executed_at, Some(ctx.block_timestamp / MSECOND));
+        assert_eq!(ctr.pre_vote_duration, PRE_VOTE_DURATION * 3);
+        assert_eq!(ctr.voting_duration, VOTING_DURATION * 4);
     }
 
     #[test]

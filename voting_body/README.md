@@ -114,6 +114,12 @@ There are several types of proposals with specific functionalities and limitatio
    - Arguments: `pre_vote_bond: U128`, `active_queue_bond: U128`
    - Description: allows VB to update contract configuration.
 
+8. **UpdateVotingDuration**
+
+   - Arguments: `pre_vote_duration: u64`, `voting_duration: u64`
+   - Description: allows VB to update contract configuration.
+
+
 ## Proposal Lifecycle
 
 ```mermaid
