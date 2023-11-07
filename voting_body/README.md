@@ -5,7 +5,12 @@
 
 Voting Body is governance structure of all non-blacklisted human participants in the NEAR Ecosystem. There are no requirements for being a member of the voting body beyond completing ‘I am Human’ and not being on the blacklist.
 
-Parameters:
+Deployed Contracts
+
+* mainnet: `voting-body-v1.ndc-gwg.near`
+* testnet: `voting-body-v1.gwg.testnet`, IAH registry: `registry-unstable-v2.i-am-human.testnet`
+
+## Contract Parameters
 
 - `quorum`: a minimum amount of members that need to vote to approve a proposal.
 - `pre_vote_support`: minimum amount of support, a proposal has to receive in order to move it to the active queue, where users can vote to approve a proposal.
@@ -13,6 +18,7 @@ Parameters:
 - `pre_vote_bond`: amount of N required to add a proposal to the pre-vote queue.
 - `active_queue_bond`: amount of N required to move a proposal directly to the active queue.
 - `vote_duration`: max amount of time a proposal can be active in the active queue. If a proposal didn't get enough approvals by that time, it will be removed and bond returned.
+
 
 ## Creating proposals
 
