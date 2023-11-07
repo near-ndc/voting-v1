@@ -215,7 +215,7 @@ near call VOTING_BODY get_vote \
    --accountId YOU \
    --depositYocto $pre_vote_bond
    ```
-5. Now we need to advance the proposal to the active queue. The easiest way is to ask any Congress member (HoM or other house) to support it. Below, `prop_id` must be the id of the proposal created above, and `dao` must be the DAO address a callers is member of (eg: `congress-hom-v1.ndc-gwg.near`).
+5. Now we need to advance the proposal to the active queue. The easiest way is to ask any Congress member (HoM or other house) to support it. Below, `prop_id` must be the id of the proposal created above, and `dao` must be the house address a callers is member of (eg: `congress-hom-v1.ndc-gwg.near`).
    ```shell
    near call VB support_proposal_by_congress \
      '{"prop_id": 5, `dao`: "HOM"}' \
