@@ -125,17 +125,34 @@ impl Contract {
             return Err(CreatePropError::MinBond);
         }
 
-        if let PropKind::FunctionCall { receiver_id, .. } = &payload.kind {
-            let accounts = self.accounts.get().unwrap();
-
-            if *receiver_id == accounts.congress_coa
-                || *receiver_id == accounts.congress_hom
-                || *receiver_id == accounts.congress_tc
-            {
-                return Err(CreatePropError::FunctionCall(
+        // validate proposals
+        match &payload.kind {
+            PropKind::FunctionCall { receiver_id, .. } => {
+                let accounts = self.accounts.get().unwrap();
+                if *receiver_id == accounts.congress_coa
+                    || *receiver_id == accounts.congress_hom
+                    || *receiver_id == accounts.congress_tc
+                {
+                    return Err(CreatePropError::BadRequest(
                     "receiver_id can't be a congress house, use a specific proposal to interact with the congress".to_string(),
                 ));
+                }
             }
+            PropKind::UpdateVoteDuration {
+                pre_vote_duration,
+                vote_duration,
+            } => {
+                if *pre_vote_duration < MIN_DURATION
+                    || *vote_duration < MIN_DURATION
+                    || *pre_vote_duration > MAX_DURATION
+                    || *vote_duration > MAX_DURATION
+                {
+                    return Err(CreatePropError::BadRequest(
+                    "receiver_id can't be a congress house, use a specific proposal to interact with the congress".to_string(),
+                ));
+                }
+            }
+            _ => (),
         }
 
         // TODO: check if proposal is created by a congress member. If yes, move it to active
@@ -1108,8 +1125,8 @@ mod unit_tests {
                 iah_proof(),
                 CreatePropPayload {
                     kind: PropKind::UpdateVoteDuration {
-                        pre_vote_duration: PRE_VOTE_DURATION * 3,
-                        vote_duration: VOTE_DURATION * 4,
+                        pre_vote_duration: MIN_DURATION,
+                        vote_duration: MAX_DURATION,
                     },
                     description: "updating voting duration".to_owned(),
                 },
@@ -1134,8 +1151,8 @@ mod unit_tests {
         let p = ctr.get_proposal(id).unwrap();
         assert_eq!(p.proposal.status, ProposalStatus::Executed);
         assert_eq!(p.proposal.executed_at, Some(ctx.block_timestamp / MSECOND));
-        assert_eq!(ctr.pre_vote_duration, PRE_VOTE_DURATION * 3);
-        assert_eq!(ctr.vote_duration, VOTE_DURATION * 4);
+        assert_eq!(ctr.pre_vote_duration, MIN_DURATION);
+        assert_eq!(ctr.vote_duration, MAX_DURATION);
     }
 
     #[test]
@@ -1496,7 +1513,7 @@ mod unit_tests {
             Ok(_) => panic!("expected Err(CreatePropError::FunctionCall)"),
             Err(err) => assert_eq!(
                 err,
-                CreatePropError::FunctionCall("receiver_id can't be a congress house, use a specific proposal to interact with the congress".to_string())
+                CreatePropError::BadRequest("receiver_id can't be a congress house, use a specific proposal to interact with the congress".to_string())
             ),
         }
     }

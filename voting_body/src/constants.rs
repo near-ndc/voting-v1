@@ -12,3 +12,8 @@ pub const EXECUTE_GAS: Gas = Gas(8 * Gas::ONE_TERA.0);
 
 // 64bytes(accountID) + 1byte (prefix) + 4bytes(proposal_id) + vote(byte) = 72B -> add 20% margin = < 90B
 pub const VOTE_STORAGE: u64 = 90;
+
+/// max voting duration to prevent common mistake with time unit. 90 days in milliseconds
+pub const MAX_DURATION: u64 = 7776000000;
+/// min voting duration to prevent common mistake with time unit. 1 day in milliseconds
+pub const MIN_DURATION: u64 = 86400000;
