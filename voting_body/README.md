@@ -183,6 +183,9 @@ near call IAH_REGISTRY is_human_call_lock \
   '{"ctr": "VB.near", "function": "vote", "payload": "{\"prop_id\": 3, \"vote\": \"Approve\"}", "lock_duration": '$lock_duration', "with_proof": false}' \
   --accountId YOU \
   --deposit 0.01 # used for vote storage, reminder will be returned.
+
+near call VOTING_BODY get_vote \
+  '{"id": 3, "voter": "YOU"}'
 ```
 
 ### Quorums and Thresholds

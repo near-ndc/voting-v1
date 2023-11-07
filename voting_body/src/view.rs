@@ -101,6 +101,13 @@ impl Contract {
         })
     }
 
+    /// * `id`: proposal id
+    /// * `voter`: account address.
+    /// Returns none if voter didn't vote for the given proposal id.
+    pub fn get_vote(&self, id: u32, voter: AccountId) -> Option<VoteRecord> {
+        self.votes.get(&(id, voter))
+    }
+
     pub fn number_of_proposals(&self) -> u32 {
         self.prop_counter
     }
