@@ -12,12 +12,12 @@ Parameters:
 - `pre_vote_duration`: max amount of time, users can express support to move a proposal to the active queue, before it will be removed.
 - `pre_vote_bond`: amount of N required to add a proposal to the pre-vote queue.
 - `active_queue_bond`: amount of N required to move a proposal directly to the active queue.
-- `voting_duration`: max amount of time a proposal can be active in the active queue. If a proposal didn't get enough approvals by that time, it will be removed and bond returned.
+- `vote_duration`: max amount of time a proposal can be active in the active queue. If a proposal didn't get enough approvals by that time, it will be removed and bond returned.
 
 ## Creating proposals
 
-Every human can create a proposal. The proposals are organized in 2 queues (pre-voting queue and active queue) in order to filter out spam proposals.
-When creating a proposal, the submitter must stake a bond. If `pre-vote bond` is attached, then the proposal goes to the pre-voting queue. If active queue bond is attached then the proposal goes directly to active queue.
+Every human can create a proposal. The proposals are organized in 2 queues (pre-vote queue and active queue) in order to filter out spam proposals.
+When creating a proposal, the submitter must stake a bond. If `pre-vote bond` is attached, then the proposal goes to the pre-vote queue. If active queue bond is attached then the proposal goes directly to active queue.
 
 Proposal can only be created by an IAH verified account. We use `is_human_call` method. Example call:
 
@@ -34,7 +34,7 @@ near call IAH_REGISTRY  is_human_call \
   --accountId YOU --deposit $active_queue_bond
 ```
 
-### Pre-voting queue
+### Pre-vote queue
 
 Proposals in this queue are not active. VB members can't vote for proposals in the pre-vote queue and UI doesn't display them by default. Instead, members can send a _pre_vote_support_ transaction. There are 3 ways to move a proposal to the active queue:
 
@@ -47,7 +47,7 @@ Note: originally only a congress support was required to move a proposal to the 
 Voting Body Support can only be made by an IAH verified account. We use `is_human_call_lock` method, which will lock the caller for soul transfers, to avoid double support. Example call:
 
 ``` shell
-lock_duration=pre_voting_duration+1
+lock_duration=pre_vote_duration+1
 near call IAH_REGISTRY is_human_call_lock \
   '{"ctr": "VB.near", "function": "support_proposal", "payload": "1", "lock_duration": '$lock_duration', "with_proof": false}' \
   --accountId YOU
@@ -57,7 +57,7 @@ near call IAH_REGISTRY is_human_call_lock \
 
 Proposals in this queue are eligible for voting and displayed by the default in the UI. Proposals from the active queue are not removed unless they are marked as spam (more about it in the voting section). They are preserved and anyone can query them, even when a proposal was rejected.
 
-When a proposal is moved from the pre-voting queue to the active queue, the set of accounts that supported the proposal is cleared - it's not needed any more. We can save the space and proposal load time.
+When a proposal is moved from the pre-vote queue to the active queue, the set of accounts that supported the proposal is cleared - it's not needed any more. We can save the space and proposal load time.
 
 ```mermaid
 ---
@@ -114,9 +114,9 @@ There are several types of proposals with specific functionalities and limitatio
    - Arguments: `pre_vote_bond: U128`, `active_queue_bond: U128`
    - Description: allows VB to update contract configuration.
 
-8. **UpdateVotingDuration**
+8. **UpdateVoteDuration**
 
-   - Arguments: `pre_vote_duration: u64`, `voting_duration: u64`
+   - Arguments: `pre_vote_duration: u64`, `vote_duration: u64`
    - Description: allows VB to update contract configuration.
 
 
@@ -143,7 +143,7 @@ flowchart TB
 When proposal is created, but the creator doesn't deposit `active_queue_bond` immediately, then the status of a proposal is `PreVote`.
 A proposal that doesn't advance to the active queue by the `pre_vote_duration` is eligible for slashing. In such case, any account can call `slash_prevote_proposal(id)` method: the proposal will be removed, `SLASH_REWARD` will be transferred (as in incentive) to the caller and the remainder bond will be sent to the community fund.
 
-Proposal, that is moved to the active queue has status `InProgress` and keeps that status until the voting period is over (`proposal.start_time + voting_duration`). During that time all Members can vote for the proposal.
+Proposal, that is moved to the active queue has status `InProgress` and keeps that status until the voting period is over (`proposal.start_time + vote_duration`). During that time all Members can vote for the proposal.
 
 Once the voting period is over, a proposal will have `Approved`, `Rejected` or `Spam` status, based on the voting result.
 During this time, anyone can call `execute(id)`. Note these statuses are only visible when we query a proposal and: a) voting is over b) and was not executed. Executing a proposal will set the `proposal.executed_at` property to the current time in milliseconds and will have the following effects:
@@ -160,7 +160,7 @@ Any VB member can vote on any _in progress_ proposal in the active queue. Voter 
 - reject
 - spam: strong conviction that the proposal is spam, should be removed and a deposit slashed.
 
-A proposal voting is in progress when `now <= proposal.start_time + voting_duration`, where `proposal.start_time` is a time when the proposal is added to the active queue.
+A proposal voting is in progress when `now <= proposal.start_time + vote_duration`, where `proposal.start_time` is a time when the proposal is added to the active queue.
 
 Syntax: #vote_type denotes number of votes of the specified type, eg: #approve means number of approve votes.
 
@@ -184,7 +184,7 @@ Voting Body intentionally doesn't support optimistic execution, that is approvin
 Vote can only be made by an IAH verified account. We use `is_human_call_lock` method, which will lock the caller for soul transfers, to avoid double vote. Example call:
 
 ``` shell
-lock_duration=voting_duration+1  # minimum value is the time in milliseconds remaining to the voting end + 1.
+lock_duration=vote_duration+1  # minimum value is the time in milliseconds remaining to the voting end + 1.
 near call IAH_REGISTRY is_human_call_lock \
   '{"ctr": "VB.near", "function": "vote", "payload": "{\"prop_id\": 3, \"vote\": \"Approve\"}", "lock_duration": '$lock_duration', "with_proof": false}' \
   --accountId YOU \

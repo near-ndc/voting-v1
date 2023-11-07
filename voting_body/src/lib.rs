@@ -52,7 +52,7 @@ pub struct Contract {
 
     /// all times below are in milliseconds
     pub pre_vote_duration: u64,
-    pub voting_duration: u64,
+    pub vote_duration: u64,
     pub accounts: LazyOption<Accounts>,
 }
 
@@ -63,7 +63,7 @@ impl Contract {
     /// * hook_auth : map of accounts authorized to call hooks.
     pub fn new(
         pre_vote_duration: u64,
-        voting_duration: u64,
+        vote_duration: u64,
         pre_vote_support: u32,
         pre_vote_bond: U128,
         active_queue_bond: U128,
@@ -81,7 +81,7 @@ impl Contract {
             proposals: LookupMap::new(StorageKey::Proposals),
             votes: LookupMap::new(StorageKey::Votes),
             pre_vote_duration,
-            voting_duration,
+            vote_duration,
             pre_vote_bond: pre_vote_bond.0,
             active_queue_bond: active_queue_bond.0,
             pre_vote_support,
@@ -317,7 +317,7 @@ impl Contract {
     }
 
     /// Must be called via `iah_registry.is_human_call_lock` with
-    /// `lock_duration: self.voting_duration + 1`.
+    /// `lock_duration: self.vote_duration + 1`.
     #[payable]
     #[handle_result]
     pub fn vote(
@@ -338,10 +338,10 @@ impl Contract {
         if !matches!(prop.status, ProposalStatus::InProgress) {
             return Err(VoteError::NotInProgress);
         }
-        if !prop.is_active(self.voting_duration) {
+        if !prop.is_active(self.vote_duration) {
             return Err(VoteError::Timeout);
         }
-        if locked_until <= prop.start + self.voting_duration {
+        if locked_until <= prop.start + self.vote_duration {
             return Err(VoteError::LockedUntil);
         }
 
@@ -372,7 +372,7 @@ impl Contract {
             return Err(ExecError::AlreadyFinalized);
         }
 
-        prop.recompute_status(self.voting_duration, self.prop_consent(&prop));
+        prop.recompute_status(self.vote_duration, self.prop_consent(&prop));
         match prop.status {
             ProposalStatus::PreVote => panic_str("pre-vote proposal can't be in the active queue"),
             ProposalStatus::InProgress => return Err(ExecError::InProgress),
@@ -431,12 +431,12 @@ impl Contract {
                 self.pre_vote_bond = pre_vote_bond.0;
                 self.active_queue_bond = active_queue_bond.0;
             }
-            PropKind::UpdateVotingDuration {
+            PropKind::UpdateVoteDuration {
                 pre_vote_duration,
-                voting_duration,
+                vote_duration,
             } => {
                 self.pre_vote_duration = *pre_vote_duration;
-                self.voting_duration = *voting_duration;
+                self.vote_duration = *vote_duration;
             }
         };
 
@@ -470,7 +470,7 @@ impl Contract {
 
     /// udpate voting time for e2e tests purposes
     /// TODO: remove
-    pub fn admin_update_durations(&mut self, pre_vote_duration: u64, voting_duration: u64) {
+    pub fn admin_update_durations(&mut self, pre_vote_duration: u64, vote_duration: u64) {
         self.assert_admin();
         require!(
             env::current_account_id().as_ref().contains("test"),
@@ -478,7 +478,7 @@ impl Contract {
         );
 
         self.pre_vote_duration = pre_vote_duration;
-        self.voting_duration = voting_duration;
+        self.vote_duration = vote_duration;
     }
 
     /*****************
@@ -583,7 +583,7 @@ mod unit_tests {
 
     const START: u64 = 60 * 5 * 1000 * MSECOND;
     // In milliseconds
-    const VOTING_DURATION: u64 = 60 * 5 * 1000;
+    const VOTE_DURATION: u64 = 60 * 5 * 1000;
     const PRE_VOTE_DURATION: u64 = 60 * 10 * 1000;
     const PRE_BOND: u128 = ONE_NEAR * 3;
     const BOND: u128 = ONE_NEAR * 500;
@@ -642,7 +642,7 @@ mod unit_tests {
         let mut context = VMContextBuilder::new().build();
         let mut contract = Contract::new(
             PRE_VOTE_DURATION,
-            VOTING_DURATION,
+            VOTE_DURATION,
             PRE_VOTE_SUPPORT,
             U128(PRE_BOND),
             U128(BOND),
@@ -684,7 +684,7 @@ mod unit_tests {
     }
 
     fn min_vote_lock(ctx: &VMContext) -> u64 {
-        ctx.block_timestamp / MSECOND + VOTING_DURATION + 1
+        ctx.block_timestamp / MSECOND + VOTE_DURATION + 1
     }
 
     fn min_prevote_lock(ctx: &VMContext) -> u64 {
@@ -727,7 +727,7 @@ mod unit_tests {
         expected_status: ProposalStatus,
     ) {
         vote(ctx.clone(), ctr, accs, id, v);
-        ctx.block_timestamp += (ctr.voting_duration + 1) * MSECOND;
+        ctx.block_timestamp += (ctr.vote_duration + 1) * MSECOND;
         testing_env!(ctx.clone());
         let prop = ctr.get_proposal(id).unwrap();
         assert_eq!(prop.proposal.status, expected_status);
@@ -817,7 +817,7 @@ mod unit_tests {
         //
         // Proposal already got enough votes, but the voting time is not over yet. So, we can
         // still vote, but we can't execute.
-        ctx.block_timestamp += VOTING_DURATION / 2 * MSECOND;
+        ctx.block_timestamp += VOTE_DURATION / 2 * MSECOND;
         ctx.attached_deposit = ONE_NEAR / 10;
         testing_env!(ctx.clone());
         prop1 = ctr.get_proposal(id).unwrap();
@@ -955,7 +955,7 @@ mod unit_tests {
     #[test]
     fn proposal_overdue() {
         let (mut ctx, mut ctr, id) = setup_ctr(BOND);
-        ctx.block_timestamp = START + (ctr.voting_duration + 1) * MSECOND;
+        ctx.block_timestamp = START + (ctr.vote_duration + 1) * MSECOND;
         testing_env!(ctx.clone());
         let locked = min_vote_lock(&ctx);
         assert_eq!(
@@ -1005,7 +1005,7 @@ mod unit_tests {
             Vote::Approve,
         );
 
-        ctx.block_timestamp = START + ctr.voting_duration / 2 * MSECOND;
+        ctx.block_timestamp = START + ctr.vote_duration / 2 * MSECOND;
         testing_env!(ctx.clone());
         let mut p = ctr.get_proposal(id).unwrap();
         assert_eq!(p.proposal.status, ProposalStatus::InProgress);
@@ -1015,7 +1015,7 @@ mod unit_tests {
         }
 
         // fast forward to voting overtime
-        ctx.block_timestamp = START + (ctr.voting_duration + 1) * MSECOND;
+        ctx.block_timestamp = START + (ctr.vote_duration + 1) * MSECOND;
         testing_env!(ctx.clone());
         assert!(matches!(
             ctr.execute(id),
@@ -1041,7 +1041,7 @@ mod unit_tests {
             Vote::Spam,
         );
 
-        ctx.block_timestamp += (ctr.voting_duration + 1) * MSECOND * 10;
+        ctx.block_timestamp += (ctr.vote_duration + 1) * MSECOND * 10;
         testing_env!(ctx.clone());
         match ctr.execute(id) {
             Ok(PromiseOrValue::Value(ExecResponse::Slashed)) => (),
@@ -1084,7 +1084,7 @@ mod unit_tests {
         );
 
         ctx.predecessor_account_id = acc(10);
-        ctx.block_timestamp += ctr.voting_duration * 10 * MSECOND;
+        ctx.block_timestamp += ctr.vote_duration * 10 * MSECOND;
         testing_env!(ctx.clone());
 
         match ctr.execute(id) {
@@ -1099,7 +1099,7 @@ mod unit_tests {
     }
 
     #[test]
-    fn execution_update_voting_duration() {
+    fn execution_update_vote_duration() {
         let (mut ctx, mut ctr, _) = setup_ctr(PRE_BOND);
         ctx.attached_deposit = BOND;
         testing_env!(ctx.clone());
@@ -1108,9 +1108,9 @@ mod unit_tests {
                 acc(1),
                 iah_proof(),
                 CreatePropPayload {
-                    kind: PropKind::UpdateVotingDuration {
+                    kind: PropKind::UpdateVoteDuration {
                         pre_vote_duration: PRE_VOTE_DURATION * 3,
-                        voting_duration: VOTING_DURATION * 4,
+                        vote_duration: VOTE_DURATION * 4,
                     },
                     description: "updating voting duration".to_owned(),
                 },
@@ -1125,7 +1125,7 @@ mod unit_tests {
         );
 
         ctx.predecessor_account_id = acc(10);
-        ctx.block_timestamp += ctr.voting_duration * 10 * MSECOND;
+        ctx.block_timestamp += ctr.vote_duration * 10 * MSECOND;
         testing_env!(ctx.clone());
 
         match ctr.execute(id) {
@@ -1136,7 +1136,7 @@ mod unit_tests {
         assert_eq!(p.proposal.status, ProposalStatus::Executed);
         assert_eq!(p.proposal.executed_at, Some(ctx.block_timestamp / MSECOND));
         assert_eq!(ctr.pre_vote_duration, PRE_VOTE_DURATION * 3);
-        assert_eq!(ctr.voting_duration, VOTING_DURATION * 4);
+        assert_eq!(ctr.vote_duration, VOTE_DURATION * 4);
     }
 
     #[test]
@@ -1149,7 +1149,7 @@ mod unit_tests {
             id,
             Vote::Approve,
         );
-        ctx.block_timestamp = START + (ctr.voting_duration + 1) * MSECOND;
+        ctx.block_timestamp = START + (ctr.vote_duration + 1) * MSECOND;
         testing_env!(ctx.clone());
 
         ctr.execute(id).unwrap();
@@ -1172,7 +1172,7 @@ mod unit_tests {
         p = ctr.get_proposal(id2).unwrap();
 
         // Set time after voting period
-        ctx.block_timestamp = (p.proposal.start + ctr.voting_duration + 1) * MSECOND;
+        ctx.block_timestamp = (p.proposal.start + ctr.vote_duration + 1) * MSECOND;
         testing_env!(ctx);
 
         // Call refund
@@ -1196,7 +1196,7 @@ mod unit_tests {
                 threshold: 60,
             },
             pre_vote_duration: PRE_VOTE_DURATION,
-            voting_duration: VOTING_DURATION,
+            vote_duration: VOTE_DURATION,
             accounts: Accounts {
                 iah_registry: iah_registry(),
                 community_treasury: treasury(),

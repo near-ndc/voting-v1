@@ -30,7 +30,7 @@ pub struct ConfigOutput {
     pub pre_vote_support: u32,
     pub simple_consent: Consent,
     pub super_consent: Consent,
-    pub voting_duration: u64,
+    pub vote_duration: u64,
     pub pre_vote_duration: u64,
     pub accounts: Accounts,
 }
@@ -82,7 +82,7 @@ impl Contract {
 
         iter.filter_map(|id| {
             proposals.get(&id).map(|mut proposal| {
-                proposal.recompute_status(self.voting_duration, self.prop_consent(&proposal));
+                proposal.recompute_status(self.vote_duration, self.prop_consent(&proposal));
                 ProposalOutput { id, proposal }
             })
         })
@@ -96,7 +96,7 @@ impl Contract {
             p = self.pre_vote_proposals.get(&id);
         }
         p.map(|mut proposal| {
-            proposal.recompute_status(self.voting_duration, self.prop_consent(&proposal));
+            proposal.recompute_status(self.vote_duration, self.prop_consent(&proposal));
             ProposalOutput { id, proposal }
         })
     }
@@ -121,7 +121,7 @@ impl Contract {
             simple_consent: self.simple_consent.clone(),
             super_consent: self.super_consent.clone(),
             pre_vote_duration: self.pre_vote_duration,
-            voting_duration: self.voting_duration,
+            vote_duration: self.vote_duration,
             accounts: self.accounts.get().unwrap(),
         }
     }

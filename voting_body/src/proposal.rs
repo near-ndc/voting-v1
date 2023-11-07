@@ -75,13 +75,13 @@ impl Proposal {
         Ok(())
     }
 
-    pub fn is_active(&self, voting_duration: u64) -> bool {
-        env::block_timestamp_ms() <= self.start + voting_duration
+    pub fn is_active(&self, vote_duration: u64) -> bool {
+        env::block_timestamp_ms() <= self.start + vote_duration
     }
 
-    pub fn recompute_status(&mut self, voting_duration: u64, consent: Consent) {
+    pub fn recompute_status(&mut self, vote_duration: u64, consent: Consent) {
         // still in progress or already finalzied
-        if self.is_active(voting_duration) || self.status != ProposalStatus::InProgress {
+        if self.is_active(vote_duration) || self.status != ProposalStatus::InProgress {
             return;
         }
         let total_no = self.reject + self.spam;
@@ -178,9 +178,9 @@ pub enum PropKind {
         pre_vote_bond: U128,
         active_queue_bond: U128,
     },
-    UpdateVotingDuration {
+    UpdateVoteDuration {
         pre_vote_duration: u64,
-        voting_duration: u64,
+        vote_duration: u64,
     },
 }
 
@@ -195,7 +195,7 @@ impl PropKind {
             PropKind::Text { .. } => "text".to_string(),
             PropKind::FunctionCall { .. } => "function call".to_string(),
             PropKind::UpdateBonds { .. } => "config: update bonds".to_string(),
-            PropKind::UpdateVotingDuration { .. } => "config: update voting duration".to_string(),
+            PropKind::UpdateVoteDuration { .. } => "config: update voting duration".to_string(),
         }
     }
 
@@ -206,7 +206,7 @@ impl PropKind {
             | Self::Text
             | Self::FunctionCall { .. }
             | Self::UpdateBonds { .. }
-            | Self::UpdateVotingDuration { .. } => ConsentKind::Simple,
+            | Self::UpdateVoteDuration { .. } => ConsentKind::Simple,
             Self::Dissolve { .. } | Self::ApproveBudget { .. } => ConsentKind::Super,
         }
     }
