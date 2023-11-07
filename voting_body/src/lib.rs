@@ -462,24 +462,25 @@ impl Contract {
      * ADMIN
      ****************/
 
+    /// Allows admin to udpate the consent based on the latest amount of humans verified accounts.
     pub fn admin_update_consent(&mut self, simple_consent: Consent, super_consent: Consent) {
         self.assert_admin();
         self.simple_consent = simple_consent;
         self.super_consent = super_consent;
     }
 
-    /// udpate voting time for e2e tests purposes
-    /// TODO: remove
-    pub fn admin_update_durations(&mut self, pre_vote_duration: u64, vote_duration: u64) {
-        self.assert_admin();
-        require!(
-            env::current_account_id().as_ref().contains("test"),
-            "can only be run in test contracts"
-        );
+    // /// udpate voting time for e2e tests purposes
+    // /// TODO: remove
+    // pub fn admin_update_durations(&mut self, pre_vote_duration: u64, vote_duration: u64) {
+    //     self.assert_admin();
+    //     require!(
+    //         env::current_account_id().as_ref().contains("test"),
+    //         "can only be run in test contracts"
+    //     );
 
-        self.pre_vote_duration = pre_vote_duration;
-        self.vote_duration = vote_duration;
-    }
+    //     self.pre_vote_duration = pre_vote_duration;
+    //     self.vote_duration = vote_duration;
+    // }
 
     /*****************
      * CALLBACKS
@@ -777,8 +778,6 @@ mod unit_tests {
             vec![],
             "should only return active proposals"
         );
-
-        // TODO: vote through the SBT coin check
 
         //
         // move proposal to an active queue and vote
