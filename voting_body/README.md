@@ -19,6 +19,12 @@ Deployed Contracts
 - `active_queue_bond`: amount of N required to move a proposal directly to the active queue.
 - `vote_duration`: max amount of time a proposal can be active in the active queue. If a proposal didn't get enough approvals by that time, it will be removed and bond returned.
 
+You can query the parameters with: 
+
+``` shell
+near view VOTING_BODY config ''
+```
+
 
 ## Creating proposals
 
