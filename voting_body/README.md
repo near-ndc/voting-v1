@@ -21,13 +21,13 @@ When creating a proposal, the submitter must stake a bond. If `pre-vote bond` is
 
 Proposal can only be created by an IAH verified account. We use `is_human_call` method. Example call:
 
-``` shell
+```shell
 near call IAH_REGISTRY is_human_call \
   '{"ctr": "VB.near", "function": "create_proposal", "payload": "{\"kind\": {\"Veto\": {\"dao\": \"hom.near\", \"prop_id\": 12}}, \"description\": \"this proposal is against the budget objectives\"}"}' \
   --accountId YOU \
   --depositYocto $pre_vote_bond
-  
-  
+
+
 # Creating a text proposal with with a active_queue_bond (making it automatically advancing to the active queue)
 near call IAH_REGISTRY  is_human_call \
   '{"ctr": "VB.near", "function": "create_proposal", "payload": "{\"kind\": \"Text\", \"description\": \"lets go\"}"}' \
@@ -46,7 +46,7 @@ Note: originally only a congress support was required to move a proposal to the 
 
 Voting Body Support can only be made by an IAH verified account. We use `is_human_call_lock` method, which will lock the caller for soul transfers, to avoid double support. Example call:
 
-``` shell
+```shell
 lock_duration=pre_vote_duration+1
 near call IAH_REGISTRY is_human_call_lock \
   '{"ctr": "VB.near", "function": "support_proposal", "payload": "1", "lock_duration": '$lock_duration', "with_proof": false}' \
@@ -119,7 +119,6 @@ There are several types of proposals with specific functionalities and limitatio
    - Arguments: `pre_vote_duration: u64`, `vote_duration: u64`
    - Description: allows VB to update contract configuration.
 
-
 ## Proposal Lifecycle
 
 ```mermaid
@@ -183,7 +182,7 @@ Voting Body intentionally doesn't support optimistic execution, that is approvin
 
 Vote can only be made by an IAH verified account. We use `is_human_call_lock` method, which will lock the caller for soul transfers, to avoid double vote. Example call:
 
-``` shell
+```shell
 lock_duration=vote_duration+1  # minimum value is the time in milliseconds remaining to the voting end + 1.
 near call IAH_REGISTRY is_human_call_lock \
   '{"ctr": "VB.near", "function": "vote", "payload": "{\"prop_id\": 3, \"vote\": \"Approve\"}", "lock_duration": '$lock_duration', "with_proof": false}' \
@@ -201,3 +200,32 @@ near call VOTING_BODY get_vote \
 
 - **Near Consent:** quorum=(7% of the voting body) + **simple majority**=50%.
 - **Near Supermajority Consent**: quorum=(12% of the voting body) + **super majority**=60%.
+
+## Cheat Sheet
+
+### Creating a Budget Approval proposal
+
+1. HoM must create a Budget Proposal and approve it.
+
+2. CoA must not veto it.
+
+3. Once cooldown is over (cooldown starts once the proposal is internally approved), and it was not vetoed, then it's finalized.
+
+4. Any human can can now create a VB Text proposal, referencing original HoM Budget proposal, example:
+
+   ```shell
+   near call IAH_REGISTRY is_human_call \
+   '{"ctr": "VB.near", "function": "create_proposal", "payload": "{\"kind\": {\"ApproveBudget\": {\"dao\": \"HOM.near\", \"prop_id\": 12}}, \"description\": \"ADDITIONAL INFORMATION\"}"}' \
+   --accountId YOU \
+   --depositYocto $pre_vote_bond
+   ```
+
+5. Now we need to advance the proposal to the active queue. The easiest way is to ask any Congress member (HoM or other house) to support it. Below, `prop_id` must be the id of the proposal created above, `dao` must be the house address and the caller is member of (eg: `congress-hom-v1.ndc-gwg.near`).
+
+   ```shell
+   near call VB support_proposal_by_congress \
+     '{"prop_id": 5, `dao`: "HOM"}' \
+     --accountId YOU
+   ```
+
+6. Share the proposal ID with others and ask the VB to vote.
