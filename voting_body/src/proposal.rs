@@ -5,7 +5,7 @@ use near_sdk::{env, AccountId, Balance, Promise};
 
 use std::collections::HashSet;
 
-use crate::{PrevoteError, REMOVE_REWARD};
+use crate::{PrevoteError, SLASH_REWARD};
 
 /// Consent sets the conditions for vote to pass. It specifies a quorum (minimum amount of
 /// accounts that have to vote and the approval threshold (% of #approve votes) for a proposal
@@ -130,9 +130,9 @@ impl Proposal {
         if let Some((_, amount)) = self.additional_bond {
             bond += amount;
         }
-        let reward = if bond >= REMOVE_REWARD {
-            Promise::new(treasury).transfer(bond - REMOVE_REWARD);
-            REMOVE_REWARD
+        let reward = if bond >= SLASH_REWARD {
+            Promise::new(treasury).transfer(bond - SLASH_REWARD);
+            SLASH_REWARD
         } else {
             bond
         };

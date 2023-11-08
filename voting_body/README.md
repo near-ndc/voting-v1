@@ -241,3 +241,21 @@ near call VOTING_BODY get_vote \
    ```
 
 6. Share the proposal ID with others and ask the VB to vote.
+
+### Slashing a proposal
+
+Any proposal with _Spam_ status or _PreVote_  and being overdue (see [Proposal Lifecycle](#proposal-lifecycle) section) is slasheable. Any account can trigger a slash, and in exchange he will receive the [`SLASH_REWARD`](https://github.com/near-ndc/voting-v1/blob/master/voting_body/src/constants.rs#L5).
+
+Slashing pre vote proposal:
+
+``` shell
+near call VB slash_prevote_proposal '{"id": 5}' \
+  --accountId YOU
+```
+
+Slashing proposal in the active queue is as simple as executing it:
+
+``` shell
+near call VB execute '{"id": 5}' \
+  --accountId YOU
+```

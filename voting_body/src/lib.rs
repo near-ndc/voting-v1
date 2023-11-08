@@ -209,8 +209,8 @@ impl Contract {
         if env::block_timestamp_ms() - p.start <= self.pre_vote_duration {
             return Err(PrevoteError::NotOverdue);
         }
-        Promise::new(env::predecessor_account_id()).transfer(REMOVE_REWARD);
-        self.slash_prop(id, p.bond - REMOVE_REWARD);
+        Promise::new(env::predecessor_account_id()).transfer(SLASH_REWARD);
+        self.slash_prop(id, p.bond - SLASH_REWARD);
         // NOTE: we don't need to check p.additional_bond: if it is set then the prop wouldn't
         // be in the pre-vote queue.
 
