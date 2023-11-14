@@ -206,13 +206,12 @@ impl PropKind {
         match self {
             Self::Dismiss { .. }
             | Self::Veto { .. }
+            | Self::ApproveBudget { .. }
             | Self::Text
             | Self::FunctionCall { .. }
             | Self::UpdateBonds { .. }
             | Self::UpdateVoteDuration { .. } => ConsentKind::Simple,
-            Self::Dissolve { .. } | Self::TextSuper | Self::ApproveBudget { .. } => {
-                ConsentKind::Super
-            }
+            Self::Dissolve { .. } | Self::TextSuper => ConsentKind::Super,
         }
     }
 }
