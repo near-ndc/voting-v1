@@ -167,6 +167,8 @@ pub enum PropKind {
     /// NewBudget, UpdateBudget are modelled using Text.
     // NOTE: In Sputnik, this variant kind is called `Vote`
     Text,
+    /// Same as the `Text` proposal, but requires the Super Consent to approve.
+    TextSuper,
     /// Calls `receiver_id` with list of method names in a single promise.
     /// Allows this contract to execute any arbitrary set of actions in other contracts
     /// except for congress contracts.
@@ -192,7 +194,8 @@ impl PropKind {
             PropKind::Dissolve { .. } => "dissolve".to_string(),
             PropKind::Veto { .. } => "veto".to_string(),
             PropKind::ApproveBudget { .. } => "approve-budget".to_string(),
-            PropKind::Text { .. } => "text".to_string(),
+            PropKind::Text => "text".to_string(),
+            PropKind::TextSuper => "text super consent".to_string(),
             PropKind::FunctionCall { .. } => "function call".to_string(),
             PropKind::UpdateBonds { .. } => "config: update bonds".to_string(),
             PropKind::UpdateVoteDuration { .. } => "config: update voting duration".to_string(),
@@ -207,7 +210,9 @@ impl PropKind {
             | Self::FunctionCall { .. }
             | Self::UpdateBonds { .. }
             | Self::UpdateVoteDuration { .. } => ConsentKind::Simple,
-            Self::Dissolve { .. } | Self::ApproveBudget { .. } => ConsentKind::Super,
+            Self::Dissolve { .. } | Self::TextSuper | Self::ApproveBudget { .. } => {
+                ConsentKind::Super
+            }
         }
     }
 }

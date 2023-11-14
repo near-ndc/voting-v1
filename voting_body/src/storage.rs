@@ -23,3 +23,17 @@ pub struct Accounts {
     pub congress_tc: AccountId,
     pub admin: AccountId,
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod unit_tests2 {
+    use near_sdk::IntoStorageKey;
+
+    use crate::storage::StorageKey;
+
+    #[test]
+    fn check_storage() {
+        assert_eq!(StorageKey::PreVoteProposals.into_storage_key(), vec![0]);
+        assert_eq!(StorageKey::Accounts.into_storage_key(), vec![2]);
+        assert_eq!(StorageKey::Votes.into_storage_key(), vec![3]);
+    }
+}

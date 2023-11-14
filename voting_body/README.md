@@ -7,8 +7,8 @@ Voting Body is governance structure of all non-blacklisted human participants in
 
 Deployed Contracts
 
-* mainnet: `voting-body-v1.ndc-gwg.near`
-* testnet: `voting-body-v1.gwg.testnet`, IAH registry: `registry-unstable-v2.i-am-human.testnet`
+- mainnet: `voting-body-v1.ndc-gwg.near`
+- testnet: `voting-body-v1.gwg.testnet`, IAH registry: `registry-unstable-v2.i-am-human.testnet`
 
 ## Contract Parameters
 
@@ -19,12 +19,11 @@ Deployed Contracts
 - `active_queue_bond`: amount of N required to move a proposal directly to the active queue.
 - `vote_duration`: max amount of time a proposal can be active in the active queue. If a proposal didn't get enough approvals by that time, it will be removed and bond returned.
 
-You can query the parameters with: 
+You can query the parameters with:
 
-``` shell
+```shell
 near view VOTING_BODY config ''
 ```
-
 
 ## Creating proposals
 
@@ -116,17 +115,21 @@ There are several types of proposals with specific functionalities and limitatio
 
    - Description: A text proposal for general purposes, without specific arguments. It doesn't involve any method calls.
 
-6. **FunctionCall Proposal**
+6. **TextSuper Proposal**
+
+   - Description: same as `Text` proposal, but requires Near Supermajority Consent to approve.
+
+7. **FunctionCall Proposal**
 
    - Arguments: `receiver_id`: `AccountId`, `actions`: `Vec<ActionCall>`
    - Description: This proposal enables you to call the `receiver_id` with a list of method names in a single promise. It allows your contract to execute various actions in other contracts, excluding congress contracts. Attempting to create a proposal that calls any congress DAOs will result in an error, preventing the proposal from being created.
 
-7. **UpdateBonds**
+8. **UpdateBonds**
 
    - Arguments: `pre_vote_bond: U128`, `active_queue_bond: U128`
    - Description: allows VB to update contract configuration.
 
-8. **UpdateVoteDuration**
+9. **UpdateVoteDuration**
 
    - Arguments: `pre_vote_duration: u64`, `vote_duration: u64`
    - Description: allows VB to update contract configuration.
@@ -244,18 +247,18 @@ near call VOTING_BODY get_vote \
 
 ### Slashing a proposal
 
-Any proposal with _Spam_ status or _PreVote_  and being overdue (see [Proposal Lifecycle](#proposal-lifecycle) section) is slasheable. Any account can trigger a slash, and in exchange he will receive the [`SLASH_REWARD`](https://github.com/near-ndc/voting-v1/blob/master/voting_body/src/constants.rs#L5).
+Any proposal with _Spam_ status or _PreVote_ and being overdue (see [Proposal Lifecycle](#proposal-lifecycle) section) is slasheable. Any account can trigger a slash, and in exchange he will receive the [`SLASH_REWARD`](https://github.com/near-ndc/voting-v1/blob/master/voting_body/src/constants.rs#L5).
 
 Slashing pre vote proposal:
 
-``` shell
+```shell
 near call VB slash_prevote_proposal '{"id": 5}' \
   --accountId YOU
 ```
 
 Slashing proposal in the active queue is as simple as executing it:
 
-``` shell
+```shell
 near call VB execute '{"id": 5}' \
   --accountId YOU
 ```
