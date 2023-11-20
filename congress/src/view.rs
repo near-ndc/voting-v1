@@ -1,13 +1,15 @@
 use std::cmp::{max, min};
 
 use itertools::Either;
-use near_sdk::serde::Serialize;
+#[allow(unused_imports)]
+use near_sdk::serde::{Deserialize, Serialize};
 
 use crate::*;
 
 /// This is format of output via JSON for the proposal.
 #[derive(Serialize)]
 #[cfg_attr(test, derive(Debug, PartialEq))]
+#[cfg_attr(any(test, not(target_arch = "wasm32")), derive(Deserialize))]
 #[serde(crate = "near_sdk::serde")]
 pub struct ProposalOutput {
     /// Id of the proposal.
@@ -24,15 +26,16 @@ pub struct ConfigOutput {
     pub start_time: u64,
     pub end_time: u64,
     pub cooldown: u64,
-    pub voting_duration: u64,
+    pub vote_duration: u64,
     pub budget_spent: U128,
     pub budget_cap: U128,
     pub big_funding_threshold: U128,
-    pub min_voting_duration: u64,
+    pub min_vote_duration: u64,
 }
 
 #[derive(Serialize)]
 #[cfg_attr(test, derive(Debug, PartialEq))]
+#[cfg_attr(any(test, not(target_arch = "wasm32")), derive(Deserialize))]
 #[serde(crate = "near_sdk::serde")]
 pub struct MembersOutput {
     /// Id of the proposal.
@@ -75,8 +78,8 @@ impl Contract {
                 proposal.finalize_status(
                     ml,
                     self.threshold,
-                    self.min_voting_duration,
-                    self.voting_duration,
+                    self.min_vote_duration,
+                    self.vote_duration,
                 );
                 ProposalOutput { id, proposal }
             })
@@ -92,8 +95,8 @@ impl Contract {
             proposal.finalize_status(
                 ml,
                 self.threshold,
-                self.min_voting_duration,
-                self.voting_duration,
+                self.min_vote_duration,
+                self.vote_duration,
             );
             ProposalOutput { id, proposal }
         })
@@ -149,11 +152,11 @@ impl Contract {
             start_time: self.start_time,
             end_time: self.end_time,
             cooldown: self.cooldown,
-            voting_duration: self.voting_duration,
+            vote_duration: self.vote_duration,
             budget_spent: U128(self.budget_spent),
             budget_cap: U128(self.budget_cap),
             big_funding_threshold: U128(self.big_funding_threshold),
-            min_voting_duration: self.min_voting_duration,
+            min_vote_duration: self.min_vote_duration,
         }
     }
 }

@@ -30,7 +30,7 @@ pub enum ExecError {
     ExecTime,
     NotApproved,
     AlreadyExecuted,
-    MinVotingDuration,
+    MinVoteDuration,
 }
 
 impl FunctionError for ExecError {
@@ -41,7 +41,7 @@ impl FunctionError for ExecError {
                 panic_str("can execute only approved or re-execute failed proposals")
             }
             ExecError::AlreadyExecuted => panic_str("proposal was already executed"),
-            ExecError::MinVotingDuration => panic_str("proposal still in min voting duration"),
+            ExecError::MinVoteDuration => panic_str("proposal still in min voting duration"),
         }
     }
 }

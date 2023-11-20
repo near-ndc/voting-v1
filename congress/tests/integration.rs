@@ -51,8 +51,8 @@ async fn instantiate_congress(
 ) -> anyhow::Result<Contract> {
     let start_time = now + 20 * 1000;
     let end_time: u64 = now + 100 * 1000;
-    let voting_duration = 20 * 1000;
-    let min_voting_duration = 0;
+    let vote_duration = 20 * 1000;
+    let min_vote_duration = 0;
     // initialize contract
     let res = congress_contract
         .call("new")
@@ -61,8 +61,8 @@ async fn instantiate_congress(
             "start_time": start_time,
             "end_time": end_time,
             "cooldown": cooldown,
-            "voting_duration": voting_duration,
-            "min_voting_duration": min_voting_duration,
+            "vote_duration": vote_duration,
+            "min_vote_duration": min_vote_duration,
             "members": members,
             "member_perms": member_perms,
             "hook_auth": hook_auth,

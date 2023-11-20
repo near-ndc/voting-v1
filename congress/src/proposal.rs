@@ -11,6 +11,7 @@ use crate::VoteError;
 #[derive(BorshSerialize, BorshDeserialize, Serialize)]
 #[serde(crate = "near_sdk::serde")]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq))]
+#[cfg_attr(any(test, not(target_arch = "wasm32")), derive(Deserialize))]
 pub struct Proposal {
     /// Original proposer.
     pub proposer: AccountId,
@@ -76,31 +77,31 @@ impl Proposal {
         &mut self,
         members_num: usize,
         threshold: u8,
-        min_voting_duration: u64,
-        voting_duration: u64,
+        min_vote_duration: u64,
+        vote_duration: u64,
     ) -> bool {
         if !matches!(self.status, ProposalStatus::InProgress) {
             return true;
         }
-        let past_min_voting_duration = self.past_min_voting_duration(min_voting_duration);
+        let past_min_vote_duration = self.past_min_vote_duration(min_vote_duration);
         let all_voted = self.votes.len() == members_num;
-        if past_min_voting_duration || all_voted {
+        if past_min_vote_duration || all_voted {
             if self.approve >= threshold {
                 self.status = ProposalStatus::Approved;
             } else if self.reject + self.abstain > members_num as u8 - threshold
-                || env::block_timestamp_ms() > self.submission_time + voting_duration
+                || env::block_timestamp_ms() > self.submission_time + vote_duration
             {
                 self.status = ProposalStatus::Rejected;
             }
         }
-        past_min_voting_duration
+        past_min_vote_duration
     }
 
-    pub fn past_min_voting_duration(&self, min_voting_duration: u64) -> bool {
-        if min_voting_duration == 0 {
+    pub fn past_min_vote_duration(&self, min_vote_duration: u64) -> bool {
+        if min_vote_duration == 0 {
             return true;
         }
-        self.submission_time + min_voting_duration < env::block_timestamp_ms()
+        self.submission_time + min_vote_duration < env::block_timestamp_ms()
     }
 }
 
@@ -160,6 +161,7 @@ impl PropKind {
 #[derive(BorshSerialize, BorshDeserialize, Serialize)]
 #[serde(crate = "near_sdk::serde")]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq))]
+#[cfg_attr(any(test, not(target_arch = "wasm32")), derive(Deserialize))]
 pub enum ProposalStatus {
     InProgress,
     Approved,
@@ -185,6 +187,7 @@ pub enum Vote {
 #[derive(BorshSerialize, BorshDeserialize, Serialize)]
 #[serde(crate = "near_sdk::serde")]
 #[cfg_attr(not(target_arch = "wasm32"), derive(Debug, PartialEq))]
+#[cfg_attr(any(test, not(target_arch = "wasm32")), derive(Deserialize))]
 pub struct VoteRecord {
     pub timestamp: u64, // unix time of when this vote was submitted
     pub vote: Vote,

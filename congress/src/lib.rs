@@ -56,8 +56,8 @@ pub struct Contract {
     pub start_time: u64,
     pub end_time: u64,
     pub cooldown: u64,
-    pub voting_duration: u64,
-    pub min_voting_duration: u64,
+    pub vote_duration: u64,
+    pub min_vote_duration: u64,
 
     pub budget_spent: Balance,
     pub budget_cap: Balance,
@@ -74,8 +74,8 @@ impl Contract {
         start_time: u64,
         end_time: u64,
         cooldown: u64,
-        voting_duration: u64,
-        min_voting_duration: u64,
+        vote_duration: u64,
+        min_vote_duration: u64,
         #[allow(unused_mut)] mut members: Vec<AccountId>,
         member_perms: Vec<PropPerm>,
         hook_auth: HashMap<AccountId, Vec<HookPerm>>,
@@ -101,8 +101,8 @@ impl Contract {
             start_time,
             end_time,
             cooldown,
-            voting_duration,
-            min_voting_duration,
+            vote_duration,
+            min_vote_duration,
             budget_spent: 0,
             budget_cap: budget_cap.0,
             big_funding_threshold: big_funding_threshold.0,
@@ -199,7 +199,7 @@ impl Contract {
             return Err(VoteError::NotInProgress);
         }
         let now = env::block_timestamp_ms();
-        if now > prop.submission_time + self.voting_duration {
+        if now > prop.submission_time + self.vote_duration {
             return Err(VoteError::NotActive);
         }
 
@@ -207,8 +207,8 @@ impl Contract {
         prop.finalize_status(
             members.len(),
             self.threshold,
-            self.min_voting_duration,
-            self.voting_duration,
+            self.min_vote_duration,
+            self.vote_duration,
         );
 
         self.proposals.insert(&id, &prop);
@@ -228,7 +228,7 @@ impl Contract {
 
     /// Allows anyone to execute proposal.
     /// If `contract.cooldown` is set, then a proposal can be only executed after the cooldown:
-    /// (submission_time + voting_duration + cooldown).
+    /// (submission_time + vote_duration + cooldown).
     #[handle_result]
     pub fn execute(
         &mut self,
@@ -240,16 +240,16 @@ impl Contract {
             // More fine-grained errors
             return Err(ExecError::AlreadyExecuted);
         }
-        // check if we can finalize the proposal status due to having enough votes during min_voting_duration
+        // check if we can finalize the proposal status due to having enough votes during min_vote_duration
         if matches!(prop.status, ProposalStatus::InProgress) {
             let (members, _) = self.members.get().unwrap();
             if !prop.finalize_status(
                 members.len(),
                 self.threshold,
-                self.min_voting_duration,
-                self.voting_duration,
+                self.min_vote_duration,
+                self.vote_duration,
             ) {
-                return Err(ExecError::MinVotingDuration);
+                return Err(ExecError::MinVoteDuration);
             }
         }
         if !matches!(
@@ -374,7 +374,7 @@ impl Contract {
             }
             ProposalStatus::Approved => {
                 let cooldown = min(
-                    proposal.submission_time + self.voting_duration,
+                    proposal.submission_time + self.vote_duration,
                     proposal.approved_at.unwrap(),
                 ) + self.cooldown;
                 if cooldown < env::block_timestamp_ms() {
@@ -564,8 +564,8 @@ mod unit_tests {
     // In milliseconds
     const START: u64 = 60 * 5 * 1000;
     const TERM: u64 = 60 * 15 * 1000;
-    const VOTING_DURATION: u64 = 60 * 5 * 1000;
-    const MIN_VOTING_DURATION: u64 = 30 * 5 * 1000;
+    const VOTE_DURATION: u64 = 60 * 5 * 1000;
+    const MIN_VOTE_DURATION: u64 = 30 * 5 * 1000;
     const COOLDOWN: u64 = 40 * 5 * 1000;
 
     fn acc(idx: u8) -> AccountId {
@@ -607,8 +607,8 @@ mod unit_tests {
             START,
             end_time,
             COOLDOWN,
-            VOTING_DURATION,
-            MIN_VOTING_DURATION,
+            VOTE_DURATION,
+            MIN_VOTE_DURATION,
             vec![acc(1), acc(2), acc(3), acc(4)],
             vec![
                 PropPerm::Text,
@@ -700,7 +700,7 @@ mod unit_tests {
         let res = ctr.get_proposals(3, 1, Some(true));
         assert_eq!(res, vec![ctr.get_proposal(id3).unwrap(),]);
 
-        ctx.block_timestamp = (START + MIN_VOTING_DURATION + 10) * MSECOND;
+        ctx.block_timestamp = (START + MIN_VOTE_DURATION + 10) * MSECOND;
         testing_env!(ctx.clone());
         ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
 
@@ -721,7 +721,7 @@ mod unit_tests {
         assert_eq!(ctr.vote(id, Vote::Reject), Err(VoteError::DoubleVote));
         assert_eq!(ctr.vote(id, Vote::Approve), Err(VoteError::DoubleVote));
 
-        ctx.block_timestamp = (ctr.start_time + ctr.voting_duration + 1) * MSECOND;
+        ctx.block_timestamp = (ctr.start_time + ctr.vote_duration + 1) * MSECOND;
         testing_env!(ctx.clone());
         assert_eq!(ctr.vote(id, Vote::Approve), Err(VoteError::NotActive));
 
@@ -733,9 +733,9 @@ mod unit_tests {
         ctx.block_timestamp = START * MSECOND;
         testing_env!(ctx.clone());
 
-        // set cooldown=0 and min_voting_duration=0 and test for immediate execution
+        // set cooldown=0 and min_vote_duration=0 and test for immediate execution
         ctr.cooldown = 0;
-        ctr.min_voting_duration = 0;
+        ctr.min_vote_duration = 0;
         let id = ctr
             .create_proposal(PropKind::Text, "Proposal unit test 2".to_string())
             .unwrap();
@@ -748,7 +748,7 @@ mod unit_tests {
             .create_proposal(PropKind::Text, "Proposal unit test query 3".to_string())
             .unwrap();
         let prop = ctr.get_proposal(id).unwrap();
-        ctx.block_timestamp = (prop.proposal.submission_time + ctr.voting_duration + 1) * MSECOND;
+        ctx.block_timestamp = (prop.proposal.submission_time + ctr.vote_duration + 1) * MSECOND;
         testing_env!(ctx);
 
         let prop = ctr.get_proposal(id).unwrap();
@@ -820,9 +820,9 @@ mod unit_tests {
         let (mut ctx, mut ctr, id) = setup_ctr(100);
         match ctr.execute(id) {
             Ok(_) => panic!("expected NotApproved, got: OK"),
-            Err(err) => assert_eq!(err, ExecError::MinVotingDuration),
+            Err(err) => assert_eq!(err, ExecError::MinVoteDuration),
         }
-        ctx.block_timestamp = (START + MIN_VOTING_DURATION + 10) * MSECOND;
+        ctx.block_timestamp = (START + MIN_VOTE_DURATION + 10) * MSECOND;
         testing_env!(ctx.clone());
         match ctr.execute(id) {
             Ok(_) => panic!("expected NotApproved, got: OK"),
@@ -838,7 +838,7 @@ mod unit_tests {
             Ok(_) => panic!("expected ExecTime, got: OK"),
         }
 
-        ctx.block_timestamp = (ctr.start_time + ctr.cooldown + ctr.voting_duration + 1) * MSECOND;
+        ctx.block_timestamp = (ctr.start_time + ctr.cooldown + ctr.vote_duration + 1) * MSECOND;
         testing_env!(ctx);
         assert_exec_ok(ctr.execute(id));
 
@@ -864,11 +864,11 @@ mod unit_tests {
             )
             .unwrap();
 
-        ctx.block_timestamp = (START + MIN_VOTING_DURATION + 10) * MSECOND;
+        ctx.block_timestamp = (START + MIN_VOTE_DURATION + 10) * MSECOND;
         testing_env!(ctx.clone());
         ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
 
-        ctx.block_timestamp = (ctr.start_time + ctr.cooldown + ctr.voting_duration + 1) * MSECOND;
+        ctx.block_timestamp = (ctr.start_time + ctr.cooldown + ctr.vote_duration + 1) * MSECOND;
         testing_env!(ctx);
 
         assert_eq!(ctr.budget_spent, 0);
@@ -896,13 +896,13 @@ mod unit_tests {
             )
             .unwrap();
 
-        ctx.block_timestamp = (START + MIN_VOTING_DURATION + 10) * MSECOND;
+        ctx.block_timestamp = (START + MIN_VOTE_DURATION + 10) * MSECOND;
         testing_env!(ctx.clone());
         ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
 
         // update to more than two months
         ctr.end_time = ctr.start_time + START * 12 * 24 * 61;
-        ctx.block_timestamp = (ctr.start_time + ctr.cooldown + ctr.voting_duration + 1) * MSECOND;
+        ctx.block_timestamp = (ctr.start_time + ctr.cooldown + ctr.vote_duration + 1) * MSECOND;
         testing_env!(ctx);
 
         // proposal isn't executed so budget spent is 0
@@ -916,7 +916,7 @@ mod unit_tests {
     #[test]
     fn proposal_execution_budget_overflow() {
         let (mut ctx, mut ctr, _) = setup_ctr(100);
-        ctr.min_voting_duration = 0;
+        ctr.min_vote_duration = 0;
 
         // create and approve a funding requst that will fill up the budget.
         let id1 = ctr
@@ -942,7 +942,7 @@ mod unit_tests {
         assert_eq!(p2.proposal.status, ProposalStatus::Approved);
 
         // execute the first proposal - it should work.
-        ctx.block_timestamp += (VOTING_DURATION + COOLDOWN) * MSECOND;
+        ctx.block_timestamp += (VOTE_DURATION + COOLDOWN) * MSECOND;
         testing_env!(ctx.clone());
         assert_exec_ok(ctr.execute(id1));
 
@@ -1000,14 +1000,14 @@ mod unit_tests {
             .unwrap();
 
         // Set timestamp close to voting end duration
-        ctx.block_timestamp = (prop.proposal.submission_time + ctr.voting_duration - 1) * MSECOND;
+        ctx.block_timestamp = (prop.proposal.submission_time + ctr.vote_duration - 1) * MSECOND;
         testing_env!(ctx.clone());
 
         ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
         prop = ctr.get_proposal(id).unwrap();
 
         // Set timestamp to during cooldown, after voting phase
-        ctx.block_timestamp = (prop.proposal.submission_time + ctr.voting_duration + 1) * MSECOND;
+        ctx.block_timestamp = (prop.proposal.submission_time + ctr.vote_duration + 1) * MSECOND;
         ctx.predecessor_account_id = coa();
         testing_env!(ctx.clone());
 
@@ -1022,7 +1022,7 @@ mod unit_tests {
             .create_proposal(PropKind::Text, "Proposal unit test 2".to_string())
             .unwrap();
 
-        ctx.block_timestamp = (START + MIN_VOTING_DURATION + 10) * MSECOND;
+        ctx.block_timestamp = (START + MIN_VOTE_DURATION + 10) * MSECOND;
         testing_env!(ctx.clone());
         ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
 
@@ -1031,7 +1031,7 @@ mod unit_tests {
 
         // Set timestamp to after cooldown
         ctx.block_timestamp =
-            (prop.proposal.submission_time + ctr.voting_duration + ctr.cooldown + 1) * MSECOND;
+            (prop.proposal.submission_time + ctr.vote_duration + ctr.cooldown + 1) * MSECOND;
         ctx.predecessor_account_id = coa();
         testing_env!(ctx);
 
@@ -1215,7 +1215,7 @@ mod unit_tests {
             )
             .unwrap();
 
-        ctx.block_timestamp = (START + MIN_VOTING_DURATION + 10) * MSECOND;
+        ctx.block_timestamp = (START + MIN_VOTE_DURATION + 10) * MSECOND;
         ctr = vote(
             ctx.clone(),
             ctr,
@@ -1227,7 +1227,7 @@ mod unit_tests {
 
         // Set timestamp to after cooldown
         ctx.block_timestamp =
-            (prop.proposal.submission_time + ctr.voting_duration + ctr.cooldown + 1) * MSECOND;
+            (prop.proposal.submission_time + ctr.vote_duration + ctr.cooldown + 1) * MSECOND;
         testing_env!(ctx);
         assert_exec_ok(ctr.execute(motion_rem_ban));
 
@@ -1333,23 +1333,23 @@ mod unit_tests {
     }
 
     #[test]
-    fn min_voting_duration_execute() {
+    fn min_vote_duration_execute() {
         let (mut ctx, mut ctr, id) = setup_ctr(100);
         ctr = vote(ctx.clone(), ctr, [acc(1), acc(2), acc(3)].to_vec(), id);
         let p = ctr.get_proposal(id).unwrap();
         assert_eq!(p.proposal.status, ProposalStatus::InProgress);
 
-        // should not be able to exeucte a proposal while in min_voting_duration
-        ctx.block_timestamp = (START + MIN_VOTING_DURATION - 10) * MSECOND;
+        // should not be able to exeucte a proposal while in min_vote_duration
+        ctx.block_timestamp = (START + MIN_VOTE_DURATION - 10) * MSECOND;
         let p = ctr.get_proposal(id).unwrap();
         assert_eq!(p.proposal.status, ProposalStatus::InProgress);
         testing_env!(ctx.clone());
         match ctr.execute(id) {
             Ok(_) => panic!("expecting Err"),
-            Err(err) => assert_eq!(err, ExecError::MinVotingDuration),
+            Err(err) => assert_eq!(err, ExecError::MinVoteDuration),
         };
 
-        ctx.block_timestamp = (START + MIN_VOTING_DURATION + 10) * MSECOND;
+        ctx.block_timestamp = (START + MIN_VOTE_DURATION + 10) * MSECOND;
         testing_env!(ctx.clone());
         // proposal status should be reported correctly, however we need to wait for cooldow
         // to execute

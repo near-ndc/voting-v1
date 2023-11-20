@@ -52,8 +52,8 @@ flowchart TB
 Any member can vote for any `InProgress` proposal. Members can't overwrite their votes. Proposal is in progress until:
 
 - all votes were cast
-- OR voting_duration passed
-- OR `min_voting_duration` passed and the tally can be finalized (proposal reached min amount of approval votes or have enough abstain + reject votes to block the approval).
+- OR `vote_duration` passed
+- OR `min_vote_duration` passed and the tally can be finalized (proposal reached min amount of approval votes or have enough abstain + reject votes to block the approval).
 
 ### Vetoing
 
@@ -67,7 +67,7 @@ A DAO `A` can veto a proposal `P` of house `H` if:
 
 Anyone (not only a house member) can execute a proposal when a proposal that is:
 
-- min voting duration passed;
+- min vote duration passed;
 - cooldown is over;
 - proposal is _approved_ or _failed_.
 
