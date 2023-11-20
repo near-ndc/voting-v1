@@ -20,15 +20,22 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ## Unreleased
 
+### Breaking changes
+
 ### Features
 
-- `members_len` view method
+### Bug Fixes
+
+## v1.1.0 (2023-11-20)
+
+### Features
+
+- `members_len` view method.
 
 ### Breaking changes
 
-- added `members_len` field to smart contract
-
-### Bug Fixes
+- added `members_len` field to smart contract.
+- renamed `voting_duration` and `min_voting_duration` to `vote_duration` and `min_vote_duration` in the Config and initialization (`new`). Motivation is to make it consistent with the Voting Body Config.
 
 ## v1.0.0 (2023-11-01)
 
