@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use congress::view::{MembersOutput, ProposalOutput};
 use congress::{ActionCall, HookPerm, PropKind, PropPerm, ProposalStatus, Vote};
 
-use integrations::setup_registry;
+use integrations::{instantiate_congress, setup_registry};
 use near_sdk::base64::{decode, encode};
 use near_sdk::json_types::{U128, U64};
 use near_sdk::serde::Deserialize;
@@ -37,46 +37,6 @@ pub struct InitStruct {
     pub john: Account,
     pub admin: Account,
     pub proposal_id: u32,
-}
-
-async fn instantiate_congress(
-    congress_contract: Contract,
-    now: u64,
-    members: Vec<&AccountId>,
-    member_perms: Vec<PropPerm>,
-    hook_auth: HashMap<AccountId, Vec<HookPerm>>,
-    community_fund: Account,
-    registry: &AccountId,
-    cooldown: u64,
-) -> anyhow::Result<Contract> {
-    let start_time = now + 20 * 1000;
-    let end_time: u64 = now + 100 * 1000;
-    let vote_duration = 20 * 1000;
-    let min_vote_duration = 0;
-    // initialize contract
-    let res = congress_contract
-        .call("new")
-        .args_json(json!({
-            "community_fund": community_fund.id(),
-            "start_time": start_time,
-            "end_time": end_time,
-            "cooldown": cooldown,
-            "vote_duration": vote_duration,
-            "min_vote_duration": min_vote_duration,
-            "members": members,
-            "member_perms": member_perms,
-            "hook_auth": hook_auth,
-            "budget_cap": parse_near!("1 N").to_string(),
-            "big_funding_threshold": parse_near!("0.3 N").to_string(),
-            "registry": registry
-        }))
-        .max_gas()
-        .transact()
-        .await?;
-
-    assert!(res.is_success(), "{:?}", res);
-
-    Ok(congress_contract)
 }
 
 async fn vote(users: Vec<Account>, dao: &Contract, proposal_id: u32) -> anyhow::Result<()> {
