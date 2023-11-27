@@ -220,9 +220,8 @@ near call VOTING_BODY get_vote \
 
 This smart contract emits several events to notify external systems or components about specific actions or state changes. Here's a breakdown of the events and the functions emitting them:
 
-#### 1. Proposal Created Event
+####  `proposal-create`
 
-- **Event Name:** `proposal-create`
 - **Description:** Emitted when a proposal is created.
 - **Payload:**
   - `prop_id`: The ID of the created proposal.
@@ -230,10 +229,7 @@ This smart contract emits several events to notify external systems or component
   - `active`: Set to true if the proposal was added to an active queue directly.
 - **Emitting Function:** `emit_prop_created`
 
-##### Functions Invoking `emit_prop_created`
-
-- List of functions that invoke `emit_prop_created`:
-  - `create_proposal`
+List of functions that invoke `emit_prop_created`: `create_proposal`
 
 #### 2. Proposal Activated Event
 
