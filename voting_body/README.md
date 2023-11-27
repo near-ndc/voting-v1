@@ -228,9 +228,7 @@ This smart contract emits several events to notify external systems or component
   - `kind`: The kind of proposal.
   - `active`: Set to true if the proposal was added to an active queue directly.
 
-List of functions that invoke `emit_prop_created`:
-
-- `create_proposal`
+Functions that invoke `emit_prop_created`: `create_proposal`.
 
 #### `proposal-activate`
 
@@ -238,11 +236,7 @@ List of functions that invoke `emit_prop_created`:
 - **Payload:**
   - `prop_id`: The ID of the activated proposal.
 
-List of functions that invoke `emit_prop_active`:
-
-- `top_up_proposal`
-- `support_proposal`
-- `support_proposal_by_congress`
+Functions that invoke `emit_prop_active`: `top_up_proposal`, `support_proposal`, `support_proposal_by_congress`.
 
 #### `proposal-prevote-slash`
 
