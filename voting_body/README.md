@@ -28,7 +28,7 @@ near view VOTING_BODY config ''
 ## Creating proposals
 
 Every human can create a proposal. The proposals are organized in 2 queues (pre-vote queue and active queue) in order to filter out spam proposals.
-When creating a proposal, the submitter must stake a bond. If `pre-vote bond` is attached, then the proposal goes to the pre-vote queue. If active queue bond is attached then the proposal goes directly to active queue.
+When creating a proposal, the submitter must stake a bond. If `pre-vote bond` is attached, then the proposal goes to the pre-vote queue. If `active_queue_bond` is attached then the proposal goes directly to active queue (_fast track_ - no need for getting a pre-vote support, but the proposer takes a responsibility of being slashed if the proposal is marked as spam).
 
 Proposal can only be created by an IAH verified account. We use `is_human_call` method. Example call:
 
@@ -49,9 +49,9 @@ near call IAH_REGISTRY  is_human_call \
 
 Proposals in this queue are not active. VB members can't vote for proposals in the pre-vote queue and UI doesn't display them by default. Instead, members can send a _pre_vote_support_ transaction. There are 3 ways to move a proposal to the active queue:
 
-- get pre-vote support;
+- get `pre_vote_support` support transactions from VB members;
 - top up with more NEAR to reach `active_queue_bond`;
-- get a support by one of the Congress members using `support_proposal_by_congress`.
+- get a support by one of the Congress members using `support_proposal_by_congress` method.
 
 Note: originally only a congress support was required to move a proposal to the active queue. However, that creates a strong subjectivity and censorship (example: VB wants to dismiss a house - obviously house may not be happy and not "support" such a proposal).
 
