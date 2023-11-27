@@ -220,88 +220,74 @@ near call VOTING_BODY get_vote \
 
 This smart contract emits several events to notify external systems or components about specific actions or state changes. Here's a breakdown of the events and the functions emitting them:
 
-####  `proposal-create`
+#### `proposal-create`
 
 - **Description:** Emitted when a proposal is created.
 - **Payload:**
   - `prop_id`: The ID of the created proposal.
   - `kind`: The kind of proposal.
   - `active`: Set to true if the proposal was added to an active queue directly.
-- **Emitting Function:** `emit_prop_created`
 
-List of functions that invoke `emit_prop_created`: `create_proposal`
+List of functions that invoke `emit_prop_created`:
 
-#### 2. Proposal Activated Event
+- `create_proposal`
 
-- **Event Name:** `proposal-activate`
+#### `proposal-activate`
+
 - **Description:** Emitted when a proposal is moved from pre-vote to the active queue.
 - **Payload:**
   - `prop_id`: The ID of the activated proposal.
-- **Emitting Function:** `emit_prop_active`
 
-##### Functions Invoking `emit_prop_active`
+List of functions that invoke `emit_prop_active`:
 
-- List of functions that invoke `emit_prop_active`:
-  - `top_up_proposal`
-  - `support_proposal`
-  - `support_proposal_by_congress`
+- `top_up_proposal`
+- `support_proposal`
+- `support_proposal_by_congress`
 
-#### 3. Prevote Proposal Slashed Event
+#### `proposal-prevote-slash`
 
-- **Event Name:** `proposal-prevote-slash`
 - **Description:** Emitted when a pre-vote proposal is removed and slashed for not getting enough support.
 - **Payload:**
   - `prop_id`: The ID of the slashed pre-vote proposal.
   - `bond`: The bond amount being slashed (in `U128` format).
-- **Emitting Function:** `emit_prevote_prop_slashed`
 
-##### Functions Invoking `emit_prevote_prop_slashed`
+List of functions that invoke `emit_prevote_prop_slashed`:
 
-- List of functions that invoke `emit_prevote_prop_slashed`:
-  - `top_up_proposal`
-  - `slash_prevote_proposal`
-  - `support_proposal`
-  - `support_proposal_by_congress`
+- `top_up_proposal`
+- `slash_prevote_proposal`
+- `support_proposal`
+- `support_proposal_by_congress`
 
-#### 4. Proposal Slashed Event
+#### `proposal-slash`
 
-- **Event Name:** `proposal-slash`
 - **Description:** Emitted when a proposal is slashed.
 - **Payload:**
   - `prop_id`: The ID of the slashed proposal.
   - `bond`: The bond amount being slashed (in `U128` format).
-- **Emitting Function:** `emit_prop_slashed`
 
-##### Functions Invoking `emit_prop_slashed`
+List of functions that invoke `emit_prop_slashed`:
 
-- List of functions that invoke `emit_prop_slashed`:
-  - `execute`
+- `execute`
 
-#### 5. Vote Event
+#### `vote`
 
-- **Event Name:** `vote`
 - **Description:** Emitted when a vote is cast for a proposal.
 - **Payload:**
   - `prop_id`: The ID of the proposal being voted on.
-- **Emitting Function:** `emit_vote`
 
-##### Functions Invoking `emit_vote`
+List of functions that invoke `emit_vote`:
 
-- List of functions that invoke `emit_vote`:
-  - `vote`
+- `vote`
 
-#### 6. Executed Event
+#### `execute`
 
-- **Event Name:** `execute`
 - **Description:** Emitted when a proposal is executed.
 - **Payload:**
   - `prop_id`: The ID of the executed proposal.
-- **Emitting Function:** `emit_executed`
 
-##### Functions Invoking `emit_executed`
+List of functions that invoke `emit_executed`:
 
-- List of functions that invoke `emit_executed`:
-  - `on_execute`
+- `on_execute`
 
 ## Cheat Sheet
 
