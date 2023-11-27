@@ -245,12 +245,7 @@ Functions that invoke `emit_prop_active`: `top_up_proposal`, `support_proposal`,
   - `prop_id`: The ID of the slashed pre-vote proposal.
   - `bond`: The bond amount being slashed (in `U128` format).
 
-List of functions that invoke `emit_prevote_prop_slashed`:
-
-- `top_up_proposal`
-- `slash_prevote_proposal`
-- `support_proposal`
-- `support_proposal_by_congress`
+List of functions that invoke `emit_prevote_prop_slashed`: `top_up_proposal`, `slash_prevote_proposal`, `support_proposal`, `support_proposal_by_congress`.
 
 #### `proposal-slash`
 
@@ -259,9 +254,7 @@ List of functions that invoke `emit_prevote_prop_slashed`:
   - `prop_id`: The ID of the slashed proposal.
   - `bond`: The bond amount being slashed (in `U128` format).
 
-List of functions that invoke `emit_prop_slashed`:
-
-- `execute`
+List of functions that invoke `emit_prop_slashed`: `execute`.
 
 #### `vote`
 
@@ -269,9 +262,7 @@ List of functions that invoke `emit_prop_slashed`:
 - **Payload:**
   - `prop_id`: The ID of the proposal being voted on.
 
-List of functions that invoke `emit_vote`:
-
-- `vote`
+List of functions that invoke `emit_vote`: `vote`.
 
 #### `execute`
 
@@ -279,9 +270,7 @@ List of functions that invoke `emit_vote`:
 - **Payload:**
   - `prop_id`: The ID of the executed proposal.
 
-List of functions that invoke `emit_executed`:
-
-- `on_execute`
+List of functions that invoke `emit_executed`: `on_execute`.
 
 ## Cheat Sheet
 
