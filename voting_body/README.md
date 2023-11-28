@@ -28,7 +28,7 @@ near view VOTING_BODY config ''
 ## Creating proposals
 
 Every human can create a proposal. The proposals are organized in 2 queues (pre-vote queue and active queue) in order to filter out spam proposals.
-When creating a proposal, the submitter must stake a bond. If `pre-vote bond` is attached, then the proposal goes to the pre-vote queue. If active queue bond is attached then the proposal goes directly to active queue.
+When creating a proposal, the submitter must stake a bond. If `pre-vote bond` is attached, then the proposal goes to the pre-vote queue. If `active_queue_bond` is attached then the proposal goes directly to active queue (_fast track_ - no need for getting a pre-vote support, but the proposer takes a responsibility of being slashed if the proposal is marked as spam).
 
 Proposal can only be created by an IAH verified account. We use `is_human_call` method. Example call:
 
@@ -49,9 +49,9 @@ near call IAH_REGISTRY  is_human_call \
 
 Proposals in this queue are not active. VB members can't vote for proposals in the pre-vote queue and UI doesn't display them by default. Instead, members can send a _pre_vote_support_ transaction. There are 3 ways to move a proposal to the active queue:
 
-- get pre-vote support;
+- get `pre_vote_support` support transactions from VB members;
 - top up with more NEAR to reach `active_queue_bond`;
-- get a support by one of the Congress members using `support_proposal_by_congress`.
+- get a support by one of the Congress members using `support_proposal_by_congress` method.
 
 Note: originally only a congress support was required to move a proposal to the active queue. However, that creates a strong subjectivity and censorship (example: VB wants to dismiss a house - obviously house may not be happy and not "support" such a proposal).
 
@@ -215,6 +215,62 @@ near call VOTING_BODY get_vote \
 
 - **Near Consent:** quorum=(7% of the voting body) + **simple majority**=50%.
 - **Near Supermajority Consent**: quorum=(12% of the voting body) + **super majority**=60%.
+
+### Events
+
+This smart contract emits several events to notify external systems or components about specific actions or state changes. Here's a breakdown of the events and the functions emitting them:
+
+#### `proposal-create`
+
+- **Description:** Emitted when a proposal is created.
+- **Payload:**
+  - `prop_id`: The ID of the created proposal.
+  - `kind`: The kind of proposal.
+  - `active`: Set to true if the proposal was added to an active queue directly.
+
+Functions that invoke `emit_prop_created`: `create_proposal`.
+
+#### `proposal-activate`
+
+- **Description:** Emitted when a proposal is moved from pre-vote to the active queue.
+- **Payload:**
+  - `prop_id`: The ID of the activated proposal.
+
+Functions that invoke `emit_prop_active`: `top_up_proposal`, `support_proposal`, `support_proposal_by_congress`.
+
+#### `proposal-prevote-slash`
+
+- **Description:** Emitted when a pre-vote proposal is removed and slashed for not getting enough support.
+- **Payload:**
+  - `prop_id`: The ID of the slashed pre-vote proposal.
+  - `bond`: The bond amount being slashed (in `U128` format).
+
+List of functions that invoke `emit_prevote_prop_slashed`: `top_up_proposal`, `slash_prevote_proposal`, `support_proposal`, `support_proposal_by_congress`.
+
+#### `proposal-slash`
+
+- **Description:** Emitted when a proposal is slashed.
+- **Payload:**
+  - `prop_id`: The ID of the slashed proposal.
+  - `bond`: The bond amount being slashed (in `U128` format).
+
+List of functions that invoke `emit_prop_slashed`: `execute`.
+
+#### `vote`
+
+- **Description:** Emitted when a vote is cast for a proposal.
+- **Payload:**
+  - `prop_id`: The ID of the proposal being voted on.
+
+List of functions that invoke `emit_vote`: `vote`.
+
+#### `execute`
+
+- **Description:** Emitted when a proposal is executed.
+- **Payload:**
+  - `prop_id`: The ID of the executed proposal.
+
+List of functions that invoke `emit_executed`: `on_execute`.
 
 ## Cheat Sheet
 
