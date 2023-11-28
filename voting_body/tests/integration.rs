@@ -23,37 +23,30 @@ pub struct TokenMetadata {
     pub reference_hash: Option<String>,
 }
 
-pub struct Suite {
+struct Suite {
     pub hom_contract: Contract,
     pub vb_contract: Contract,
     pub registry_contract: Contract,
     pub alice: Account,
-    pub bob: Account,
-    pub john: Account,
-    pub admin: Account,
     pub proposal_id: u32,
     pub vb_members: Vec<Account>,
 }
-
-async fn vote(
-    users: Vec<Account>,
-    registry: &Contract,
-    voting_body: &Contract,
-    payload: &VotePayload,
-) -> anyhow::Result<()> {
-    for user in users.into_iter() {
-        let res = user.call(registry.id(), "is_human_call_lock")
-        .args_json(json!({"ctr": voting_body.id(), "function": "vote", "payload": serde_json::to_string(payload).unwrap(), "lock_duration": 1800000, "with_proof": false}))
+impl Suite {
+    pub async fn vote(&self, payload: &VotePayload) -> anyhow::Result<()> {
+        for user in &self.vb_members {
+            let res = user.call(self.registry_contract.id(), "is_human_call_lock")
+        .args_json(json!({"ctr": self.vb_contract.id(), "function": "vote", "payload": serde_json::to_string(payload).unwrap(), "lock_duration": 1800000, "with_proof": false}))
         .max_gas()
         .deposit(parse_near!("1 N"))
         .transact()
         .await?;
-        assert!(res.is_success(), "{:?}", res);
+            assert!(res.is_success(), "{:?}", res);
+        }
+        Ok(())
     }
-    Ok(())
 }
 
-async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<InitStruct> {
+async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<Suite> {
     // deploy contracts
     let mut hom_contract = worker
         .dev_deploy(include_bytes!("../../res/congress.wasm"))
@@ -175,13 +168,10 @@ async fn init(worker: &Worker<impl DevNetwork>) -> anyhow::Result<InitStruct> {
         .await?;
     assert!(res.is_success());
 
-    Ok(InitStruct {
+    Ok(Suite {
         hom_contract: hom_contract.to_owned(),
         vb_contract: vb_contract.to_owned(),
         alice,
-        bob,
-        john,
-        admin,
         proposal_id,
         registry_contract,
         vb_members: vec![vb_member1, vb_member2, vb_member3, vb_member4],
@@ -196,7 +186,7 @@ async fn veto() -> anyhow::Result<()> {
     let proposal: Option<ProposalOutput> = setup
         .hom_contract
         .call("get_proposal")
-        .args_json(json!({"id": 1}))
+        .args_json(json!({"id": setup.proposal_id}))
         .max_gas()
         .transact()
         .await?
@@ -228,13 +218,7 @@ async fn veto() -> anyhow::Result<()> {
         prop_id: 1,
         vote: Vote::Approve,
     };
-    vote(
-        setup.vb_members,
-        &setup.registry_contract,
-        &setup.vb_contract,
-        &vote_payload,
-    )
-    .await?;
+    setup.vote(&vote_payload).await?;
 
     worker.fast_forward(10).await?;
 
@@ -298,13 +282,7 @@ async fn dismiss() -> anyhow::Result<()> {
         prop_id: 1,
         vote: Vote::Approve,
     };
-    vote(
-        setup.vb_members,
-        &setup.registry_contract,
-        &setup.vb_contract,
-        &vote_payload,
-    )
-    .await?;
+    setup.vote(&vote_payload).await?;
 
     worker.fast_forward(10).await?;
 
@@ -360,13 +338,7 @@ async fn dissolve() -> anyhow::Result<()> {
         prop_id: 1,
         vote: Vote::Approve,
     };
-    vote(
-        setup.vb_members,
-        &setup.registry_contract,
-        &setup.vb_contract,
-        &vote_payload,
-    )
-    .await?;
+    setup.vote(&vote_payload).await?;
 
     worker.fast_forward(10).await?;
 
