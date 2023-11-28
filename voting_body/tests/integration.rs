@@ -23,7 +23,7 @@ pub struct TokenMetadata {
     pub reference_hash: Option<String>,
 }
 
-pub struct InitStruct {
+pub struct Suite {
     pub hom_contract: Contract,
     pub vb_contract: Contract,
     pub registry_contract: Contract,
