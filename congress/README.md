@@ -21,12 +21,62 @@ Each proposal comes with a description, which should provide motivation and a ba
 
 Below we present how to make a proposal for every possible Congress motion:
 
-TODO:
+#### Veto
 
-- Veto
-- Dismiss
-- Dismiss and Ban
-- ...
+To initiate a veto on a proposal within this contract, the executing house must possess the appropriate `Veto` permission. Under this framework, the authority to veto any proposal submitted to the `HoM` rests with the `CoA` (Council of Advisors).
+
+To propose a veto, utilize the `create_proposal` function with the following parameters:
+
+```rust
+kind: PropKind::FunctionCall {
+    receiver_id: HoM contract address,
+    actions: ActionCall {
+        method_name: "veto_hook",
+        args: {id: "proposal_id to be vetoed"},
+        deposit: U128,
+        gas: U64,
+    }
+}
+```
+
+This proposal creation is exclusive to members of the `CoA`. If the consensus within the `CoA` is to veto the proposal, the status of the proposal in the `HoM` will automatically transition to `Vetoed`.
+
+The `Voting Body` can also `Veto` proposals from `Hom` for more details check `Voting Body` documentaion.
+
+#### Dismiss
+
+To initiate a dismiss, the executing house must possess the appropriate `Dismiss` permission. Under this framework, the authority to dismiss any member of the `HoM` and `CoA` rests with the `TC` (Transparency Commision).
+
+To propose a dismiss proposal, utilize the `create_proposal` function with the following parameters:
+
+```rust
+kind: PropKind::FunctionCall {
+    receiver_id:  "house_address.near",
+    actions: ActionCall {
+        method_name: "dismiss_hook",
+        args: {member: "member_to_dismiss.near"},
+        deposit: U128,
+        gas: U64,
+    }
+}
+```
+
+This proposal creation is exclusive to members of the `TC`. If the consensus within the `TC` is to dismiss a member the member will be removed from their power to vote.
+
+#### Dismiss and Ban
+
+To initiate a dismiss and ban action, the executing house must possess the appropriate `DismissAndBan` permission. Under this framework, the authority to dismiss any member of the `HoM` and `CoA` rests with the `TC` (Transparency Commision).
+
+To propose a dismiss and ban proposal, utilize the `create_proposal` function with the following parameters:
+
+```rust
+kind: PropKind::DismissAndBan {
+    member: "member_to_dismiss_and_ban.near",
+    house:  "house_address.near"
+}
+```
+
+This proposal creation is exclusive to members of the `TC`. If the consensus within the `TC` is to dismiss and ban a member the member will be removed from their power to vote and banned.
 
 ## Proposal Lifecycle
 
