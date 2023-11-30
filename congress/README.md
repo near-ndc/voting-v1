@@ -31,16 +31,23 @@ In NDC Gov v1 the following entities have permission to veto HoM proposals:
 
 To create a veto within the congress houses, use the `create_proposal` function:
 
-```rust
-kind: PropKind::FunctionCall {
-    receiver_id: HoM contract address,
-    actions: ActionCall {
-        method_name: "veto_hook",
-        args: {id: "proposal_id to be vetoed"},
-        deposit: U128,
-        gas: U64,
+```json
+near call congress-coa-v1.ndc-gwg.near create proposal '{
+  "kind": {
+    "FunctionCall": {
+      "receiver_id": "congress-hom-v1.ndc-gwg.near",
+      "actions": [
+        {
+          "method_name": "veto_hook",
+          "args": {"id": "proposal_id to be vetoed"},
+          "deposit": "100000000000000000000000",
+          "gas": "300000000000000"
+        }
+      ]
     }
-}
+  },
+  "description": "Your description"
+}' --accountId your_account.near
 ```
 
 See also the `Voting Body` documentation.
@@ -51,16 +58,23 @@ To initiate a dismiss, the executing house must possess the appropriate `Dismiss
 
 To propose a dismiss proposal, utilize the `create_proposal` function with the following parameters:
 
-```rust
-kind: PropKind::FunctionCall {
-    receiver_id:  "house_address.near",
-    actions: ActionCall {
-        method_name: "dismiss_hook",
-        args: {member: "member_to_dismiss.near"},
-        deposit: U128,
-        gas: U64,
+```json
+near call congress-coa-v1.ndc-gwg.near create proposal '{
+  "kind": {
+    "FunctionCall": {
+      "receiver_id": "congress-hom-v1.ndc-gwg.near",
+      "actions": [
+        {
+          "method_name": "dismiss_hook",
+          "args": {"member": "member_to_dismiss.near"},
+          "deposit": "100000000000000000000000",
+          "gas": "300000000000000"
+        }
+      ]
     }
-}
+  },
+  "description": "Your description"
+}' --accountId your_account.near
 ```
 
 This proposal creation is exclusive to members of the `TC`. If the consensus within the `TC` is to dismiss a member the member will be removed from their power to vote.
@@ -71,11 +85,16 @@ To initiate a dismiss and ban action, the executing house must possess the appro
 
 To propose a dismiss and ban proposal, utilize the `create_proposal` function with the following parameters:
 
-```rust
-kind: PropKind::DismissAndBan {
-    member: "member_to_dismiss_and_ban.near",
-    house:  "house_address.near"
-}
+```json
+near call congress-tc-v1.ndc-gwg.near create proposal '{
+  "kind": {
+    "DismissAndBan": {
+      "member": "member_to_dismiss_and_ban.near",
+      "house": "congress-hom-v1.ndc-gwg.near",
+    },
+  },
+  "description": "Your description"
+}' --accountId your_account.near
 ```
 
 This proposal creation is exclusive to members of the `TC`. If the consensus within the `TC` is to dismiss and ban a member the member will be removed from their power to vote and banned.
