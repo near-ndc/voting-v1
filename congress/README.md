@@ -54,9 +54,9 @@ See also the `Voting Body` documentation.
 
 #### Dismiss
 
-To initiate a dismiss, the executing house must possess the appropriate `Dismiss` permission. Under this framework, the authority to dismiss any member of the `HoM` and `CoA` rests with the `TC` (Transparency Commision).
+To initiate a dismiss, the executing house must have `Dismiss` permission. In NDC Gov v1, the authority to dismiss any member of the `HoM` and `CoA` rests with the `TC` (Transparency Commision).
 
-To propose a dismiss proposal, utilize the `create_proposal` function with the following parameters:
+To propose a dismiss proposal, call the `create_proposal` function:
 
 ```json
 near call congress-coa-v1.ndc-gwg.near create proposal '{
@@ -77,13 +77,11 @@ near call congress-coa-v1.ndc-gwg.near create proposal '{
 }' --accountId your_account.near
 ```
 
-This proposal creation is exclusive to members of the `TC`. If the consensus within the `TC` is to dismiss a member the member will be removed from their power to vote.
-
 #### Dismiss and Ban
 
-To initiate a dismiss and ban action, the executing house must possess the appropriate `DismissAndBan` permission. Under this framework, the authority to dismiss any member of the `HoM` and `CoA` rests with the `TC` (Transparency Commision).
+To initiate a dismiss and ban action, the executing house must have `DismissAndBan` permission. In NDC Gov v1, the authority to dismiss any member of the `HoM` and `CoA` rests with the `TC` (Transparency Commision).
 
-To propose a dismiss and ban proposal, utilize the `create_proposal` function with the following parameters:
+To propose a dismiss and ban proposal, call the `create_proposal` function:
 
 ```json
 near call congress-tc-v1.ndc-gwg.near create proposal '{
@@ -97,7 +95,6 @@ near call congress-tc-v1.ndc-gwg.near create proposal '{
 }' --accountId your_account.near
 ```
 
-This proposal creation is exclusive to members of the `TC`. If the consensus within the `TC` is to dismiss and ban a member the member will be removed from their power to vote and banned.
 
 ## Proposal Lifecycle
 
