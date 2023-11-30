@@ -43,9 +43,7 @@ kind: PropKind::FunctionCall {
 }
 ```
 
-This proposal creation is exclusive to members of the `CoA`. If the consensus within the `CoA` is to veto the proposal, the status of the proposal in the `HoM` will automatically transition to `Vetoed`.
-
-The `Voting Body` can also `Veto` proposals from `Hom` for more details check `Voting Body` documentaion.
+See also the `Voting Body` documentation.
 
 #### Dismiss
 
