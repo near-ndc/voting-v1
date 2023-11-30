@@ -21,12 +21,80 @@ Each proposal comes with a description, which should provide motivation and a ba
 
 Below we present how to make a proposal for every possible Congress motion:
 
-TODO:
+#### Veto
 
-- Veto
-- Dismiss
-- Dismiss and Ban
-- ...
+Veto is created by a separate account or DAO that has a permission to call the `veto_hook`. `VetoAll` permission allows to veto any proposal, while `VetoBigOrReccurentFundingReq` only allows to veto recurrent funding proposals or funding proposals above `big_funding_threshold`.
+In NDC Gov v1 the following entities have permission to veto HoM proposals:
+
+- `voting-body-v1.ndc-gwg.near`: `VetoBigOrReccurentFundingReq`
+- `congress-coa-v1.ndc-gwg.near`: `VetoAl`
+
+To create a veto within the congress houses, use the `create_proposal` function:
+
+```json
+near call congress-coa-v1.ndc-gwg.near create proposal '{
+  "kind": {
+    "FunctionCall": {
+      "receiver_id": "congress-hom-v1.ndc-gwg.near",
+      "actions": [
+        {
+          "method_name": "veto_hook",
+          "args": {"id": "proposal_id to be vetoed"},
+          "deposit": "100000000000000000000000",
+          "gas": "300000000000000"
+        }
+      ]
+    }
+  },
+  "description": "Your description"
+}' --accountId your_account.near
+```
+
+See also the `Voting Body` documentation.
+
+#### Dismiss
+
+To initiate a dismiss, the executing house must have `Dismiss` permission. In NDC Gov v1, the authority to dismiss any member of the `HoM` and `CoA` rests with the `TC` (Transparency Commision).
+
+To propose a dismiss proposal, call the `create_proposal` function:
+
+```json
+near call congress-coa-v1.ndc-gwg.near create proposal '{
+  "kind": {
+    "FunctionCall": {
+      "receiver_id": "congress-hom-v1.ndc-gwg.near",
+      "actions": [
+        {
+          "method_name": "dismiss_hook",
+          "args": {"member": "member_to_dismiss.near"},
+          "deposit": "100000000000000000000000",
+          "gas": "300000000000000"
+        }
+      ]
+    }
+  },
+  "description": "Your description"
+}' --accountId your_account.near
+```
+
+#### Dismiss and Ban
+
+To initiate a dismiss and ban action, the executing house must have `DismissAndBan` permission. In NDC Gov v1, the authority to dismiss any member of the `HoM` and `CoA` rests with the `TC` (Transparency Commision).
+
+To propose a dismiss and ban proposal, call the `create_proposal` function:
+
+```json
+near call congress-tc-v1.ndc-gwg.near create proposal '{
+  "kind": {
+    "DismissAndBan": {
+      "member": "member_to_dismiss_and_ban.near",
+      "house": "congress-hom-v1.ndc-gwg.near",
+    },
+  },
+  "description": "Your description"
+}' --accountId your_account.near
+```
+
 
 ## Proposal Lifecycle
 
