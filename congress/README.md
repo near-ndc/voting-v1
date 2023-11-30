@@ -29,7 +29,7 @@ In NDC Gov v1 the following entities have permission to veto HoM proposals:
 - `voting-body-v1.ndc-gwg.near`: `VetoBigOrReccurentFundingReq`
 - `congress-coa-v1.ndc-gwg.near`: `VetoAl`
 
-To propose a veto, utilize the `create_proposal` function with the following parameters:
+To create a veto within the congress houses, use the `create_proposal` function:
 
 ```rust
 kind: PropKind::FunctionCall {
