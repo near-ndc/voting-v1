@@ -23,7 +23,11 @@ Below we present how to make a proposal for every possible Congress motion:
 
 #### Veto
 
-To initiate a veto on a proposal within this contract, the executing house must possess the appropriate `Veto` permission. Under this framework, the authority to veto any proposal submitted to the `HoM` rests with the `CoA` (Council of Advisors).
+Veto is created by a separate account or DAO that has a permission to call the `veto_hook`. `VetoAll` permission allows to veto any proposal, while `VetoBigOrReccurentFundingReq` only allows to veto recurrent funding proposals or funding proposals above `big_funding_threshold`.
+In NDC Gov v1 the following entities have permission to veto HoM proposals:
+
+- `voting-body-v1.ndc-gwg.near`: `VetoBigOrReccurentFundingReq`
+- `congress-coa-v1.ndc-gwg.near`: `VetoAl`
 
 To propose a veto, utilize the `create_proposal` function with the following parameters:
 
