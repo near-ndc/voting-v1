@@ -26,6 +26,16 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ### Bug Fixes
 
+## v1.1.1 (2023-12-16)
+
+### Features
+
+- Added `add_fun_call_perm` call, that can only be run by the contract authority.
+
+### Bug Fixes
+
+- Updating Transparency Commission mainnet instance to add `FunctionCall` permission. 
+
 ## v1.1.0 (2023-11-20)
 
 ### Features
