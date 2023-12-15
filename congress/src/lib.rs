@@ -550,8 +550,10 @@ impl Contract {
     pub fn add_fun_call_perm(&mut self) {
         require!(env::predecessor_account_id() == env::current_account_id());
         let mut m = self.members.get().unwrap();
-        m.1.push(PropPerm::FunctionCall);
-        self.members.set(&m);
+        if m.1.contains(&PropPerm::FunctionCall) {
+            m.1.push(PropPerm::FunctionCall);
+            self.members.set(&m);
+        }
     }
 }
 
