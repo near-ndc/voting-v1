@@ -8,7 +8,7 @@ use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::collections::{LazyOption, LookupMap};
 use near_sdk::json_types::{Base64VecU8, U128};
 use near_sdk::{
-    env, near_bindgen, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseError,
+    env, near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseError,
     PromiseOrValue, PromiseResult,
 };
 use serde_json::json;
@@ -545,6 +545,12 @@ impl Contract {
             self.proposals.insert(&prop_id, &prop);
             emit_executed(prop_id);
         }
+    }
+
+    pub fn add_fun_call_perm(&mut self) {
+        require!(env::predecessor_account_id() == env::current_account_id());
+        let mut m = self.members.get().unwrap();
+        m.1.push(PropPerm::FunctionCall);
     }
 }
 
