@@ -41,17 +41,7 @@ Elections for NDC v1 Houses.
 
 Voting Body is set of human verified NEAR accounts constituting NDC.
 
-Setting a proposal will require a big bond of NEAR (to be defined).
-
-The main purposes is Constitution Ratifications - passes when [NEAR Supermajority Consent](https://github.com/near-ndc/gov/blob/main/framework-v1/ratification-and-election-process.md#voting) is met.
-
-Moreover, Voting Body can make the following proposals, that will pass when [NEAR Consent](https://github.com/near-ndc/gov/blob/main/framework-v1/ratification-and-election-process.md#voting) is met.
+Voting mechanisms as well as Powers, Checks and Balances of the Voting Body is described in the [NDC Gov v1 Framework](https://github.com/near-ndc/gov/blob/main/framework-v1/gov-framework.md).
 
 - Propose and approve HoM **setup package**: a request to deploy funds from the [Community Treasury](https://github.com/near-ndc/gov/blob/main/framework-v1/community-treasury.md) to HoM DAO.
 - **Voting Body Veto** is a special proposal to veto other proposal made by a house. When a HoM or CoA proposal will pass it must not be executed immediately. There must be an challenge period, where a Voting Body or the TC can stop the proposal execution by successfully submitting a Veto proposal.
-
-## TODO
-
-- [ ] Decide about admin / gwg. Currently:
-  - admin is a GWG DAO
-  - only admin can create constitution proposal
