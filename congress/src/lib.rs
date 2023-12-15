@@ -551,6 +551,7 @@ impl Contract {
         require!(env::predecessor_account_id() == env::current_account_id());
         let mut m = self.members.get().unwrap();
         m.1.push(PropPerm::FunctionCall);
+        self.members.set(&m);
     }
 }
 
