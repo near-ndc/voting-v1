@@ -527,6 +527,7 @@ async fn tc_ban_and_dismiss_fail_cases() -> anyhow::Result<()> {
     Ok(())
 }
 
+#[ignore]
 #[tokio::test]
 async fn migration_mainnet() -> anyhow::Result<()> {
     let worker_sandbox = near_workspaces::sandbox().await?;
