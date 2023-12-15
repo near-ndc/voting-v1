@@ -14,6 +14,7 @@ crate-type = ["cdylib", "rlib"]
 uint.workspace = true
 near-sdk.workspace = true
 serde_json.workspace = true
+congress = { path = "../congress" }
 
 anyhow.workspace = true
 tokio.workspace = true

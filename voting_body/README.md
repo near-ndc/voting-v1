@@ -216,6 +216,62 @@ near call VOTING_BODY get_vote \
 - **Near Consent:** quorum=(7% of the voting body) + **simple majority**=50%.
 - **Near Supermajority Consent**: quorum=(12% of the voting body) + **super majority**=60%.
 
+### Events
+
+This smart contract emits several events to notify external systems or components about specific actions or state changes. Here's a breakdown of the events and the functions emitting them:
+
+#### `proposal-create`
+
+- **Description:** Emitted when a proposal is created.
+- **Payload:**
+  - `prop_id`: The ID of the created proposal.
+  - `kind`: The kind of proposal.
+  - `active`: Set to true if the proposal was added to an active queue directly.
+
+Functions that invoke `emit_prop_created`: `create_proposal`.
+
+#### `proposal-activate`
+
+- **Description:** Emitted when a proposal is moved from pre-vote to the active queue.
+- **Payload:**
+  - `prop_id`: The ID of the activated proposal.
+
+Functions that invoke `emit_prop_active`: `top_up_proposal`, `support_proposal`, `support_proposal_by_congress`.
+
+#### `proposal-prevote-slash`
+
+- **Description:** Emitted when a pre-vote proposal is removed and slashed for not getting enough support.
+- **Payload:**
+  - `prop_id`: The ID of the slashed pre-vote proposal.
+  - `bond`: The bond amount being slashed (in `U128` format).
+
+List of functions that invoke `emit_prevote_prop_slashed`: `top_up_proposal`, `slash_prevote_proposal`, `support_proposal`, `support_proposal_by_congress`.
+
+#### `proposal-slash`
+
+- **Description:** Emitted when a proposal is slashed.
+- **Payload:**
+  - `prop_id`: The ID of the slashed proposal.
+  - `bond`: The bond amount being slashed (in `U128` format).
+
+List of functions that invoke `emit_prop_slashed`: `execute`.
+
+#### `vote`
+
+- **Description:** Emitted when a vote is cast for a proposal.
+- **Payload:**
+  - `prop_id`: The ID of the proposal being voted on.
+
+List of functions that invoke `emit_vote`: `vote`.
+
+#### `execute`
+
+- **Description:** Emitted when a proposal is executed.
+- **Payload:**
+  - `prop_id`: The ID of the executed proposal.
+
+List of functions that invoke `emit_executed`: `on_execute`.
+
 ## Cheat Sheet
 
 ### Creating a Budget Approval proposal

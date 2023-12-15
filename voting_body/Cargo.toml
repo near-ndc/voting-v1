@@ -17,6 +17,7 @@ serde_json.workspace = true
 itertools.workspace = true
 
 common = { path = "../common" }
+congress = { path = "../congress" }
 
 
 [dev-dependencies]

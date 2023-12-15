@@ -18,8 +18,8 @@ mod events;
 mod ext;
 pub mod proposal;
 mod storage;
-mod types;
-mod view;
+pub mod types;
+pub mod view;
 
 pub use crate::constants::*;
 pub use crate::errors::*;
