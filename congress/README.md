@@ -123,6 +123,15 @@ Any member can vote for any `InProgress` proposal. Members can't overwrite their
 - OR `vote_duration` passed
 - OR `min_vote_duration` passed and the tally can be finalized (proposal reached min amount of approval votes or have enough abstain + reject votes to block the approval).
 
+
+Example CLI command to vote for a proposal:
+
+``` shell
+# vote must be one of: "Approve", "Reject", "Abstain"
+near call HOUSE vote '{"id": PROP_ID, "vote": "Approve"}' --accountId YOU
+```
+
+
 ### Vetoing
 
 Any proposal can be vetoed (even an in progress one) until the cooldown is over.
@@ -147,6 +156,12 @@ A proposal is **approved** when:
 Proposal reaches _failed_ status when it was approved, but the execution failed. In that can be re-executed again.
 
 If proposal execution breaks an invariant check (eg: crossing the budget cap), then the transaction will succeed and a composed error will be returned: the `Ok(Err(ExecRespErr::**))` of `Result<PromiseOrValue<Result<(), ExecRespErr>>, ExecError>` type.
+
+Example CLI command to execute a proposal:
+
+``` shell
+near call HOUSE '{"id": PROP_ID}' --accountId YOU
+```
 
 ## Queries
 
