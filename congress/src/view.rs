@@ -146,6 +146,11 @@ impl Contract {
         hooks.remove(&user).unwrap_or(vec![])
     }
 
+    /// Returns all hook permissions
+    pub fn all_hook_permissions(&self) -> HashMap<AccountId, Vec<HookPerm>> {
+        self.hook_auth.get().unwrap()
+    }
+
     pub fn config(&self) -> ConfigOutput {
         ConfigOutput {
             threshold: self.threshold,
