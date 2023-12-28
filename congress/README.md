@@ -160,7 +160,7 @@ If proposal execution breaks an invariant check (eg: crossing the budget cap), t
 Example CLI command to execute a proposal:
 
 ``` shell
-near call HOUSE '{"id": PROP_ID}' --accountId YOU
+near call HOUSE execute '{"id": PROP_ID}' --gas 300000000000000 --accountId YOU
 ```
 
 ## Queries

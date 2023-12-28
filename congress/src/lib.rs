@@ -143,12 +143,28 @@ impl Contract {
 
         let now = env::block_timestamp_ms();
         let mut new_budget = 0;
-        match kind {
+        match &kind {
             PropKind::FundingRequest(b) => {
                 new_budget = self.budget_spent + b.0;
             }
             PropKind::RecurrentFundingRequest(b) => {
                 new_budget = self.budget_spent + b.0 * (self.remaining_months(now) as u128);
+            }
+            PropKind::FunctionCall { actions, .. } => {
+                let mut sum_gas = 0;
+                for a in actions {
+                    if a.gas.0 < EXEC_CTR_CALL_GAS.0 || a.gas.0 > MAX_EXEC_FUN_CALL_GAS.0 {
+                        return Err(CreatePropError::Gas(
+                            "action gas must be between 8tgas and 280tgas".to_owned(),
+                        ));
+                    }
+                    sum_gas += a.gas.0;
+                }
+                if sum_gas > MAX_EXEC_FUN_CALL_GAS.0 {
+                    return Err(CreatePropError::Gas(
+                        "sum of action gas can't exceed 276tgas".to_owned(),
+                    ));
+                }
             }
             _ => (),
         };
@@ -278,8 +294,9 @@ impl Contract {
                     promise = promise.function_call(
                         action.method_name.clone(),
                         action.args.clone().into(),
-                        action.deposit.0,
-                        Gas(action.gas.0),
+                        // TODO: remove the following changes in v1.2
+                        0, //action.deposit.0,
+                        Gas(action.gas.0) - EXEC_SELF_GAS,
                     );
                 }
                 result = promise.into();
@@ -302,14 +319,14 @@ impl Contract {
                     .as_bytes()
                     .to_vec(),
                     0,
-                    EXECUTE_GAS,
+                    EXEC_CTR_CALL_GAS,
                 );
 
                 let dismiss_promise = Promise::new(house.clone()).function_call(
                     "dismiss_hook".to_owned(),
                     json!({ "member": member }).to_string().as_bytes().to_vec(),
                     0,
-                    EXECUTE_GAS,
+                    EXEC_CTR_CALL_GAS,
                 );
 
                 return Ok(PromiseOrValue::Promise(
@@ -547,6 +564,7 @@ impl Contract {
         }
     }
 
+    /// Every house should be able to make a fun call proposals
     pub fn add_fun_call_perm(&mut self) {
         require!(env::predecessor_account_id() == env::current_account_id());
         let mut m = self.members.get().unwrap();
@@ -554,6 +572,25 @@ impl Contract {
             m.1.push(PropPerm::FunctionCall);
             self.members.set(&m);
         }
+    }
+
+    /// v1.1.2 release: we missed TC perm to dismiss a member from "self"
+    // TODO: we can remove this method in the next release
+    pub fn add_tc_dismiss_perm(&mut self) {
+        let tc = env::predecessor_account_id();
+        require!(tc.as_str() == "congress-tc-v1.ndc-gwg.near");
+        let mut hooks = self.hook_auth.get().unwrap();
+        match hooks.get_mut(&tc) {
+            None => {
+                hooks.insert(tc, vec![HookPerm::Dismiss]);
+            }
+            Some(tc_perms) => {
+                if !tc_perms.contains(&HookPerm::Dismiss) {
+                    tc_perms.push(HookPerm::Dismiss);
+                }
+            }
+        }
+        self.hook_auth.set(&hooks);
     }
 }
 
@@ -1291,7 +1328,7 @@ mod unit_tests {
                             json!({ "member": acc(2) }).to_string().as_bytes().to_vec(),
                         ),
                         deposit: U128(0),
-                        gas: U64(0),
+                        gas: U64(EXEC_CTR_CALL_GAS.0),
                     }]
                     .to_vec(),
                 },

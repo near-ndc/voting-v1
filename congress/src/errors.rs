@@ -52,6 +52,7 @@ pub enum CreatePropError {
     NotAuthorized,
     KindNotAllowed,
     Storage(String),
+    Gas(String),
 }
 
 impl FunctionError for CreatePropError {
@@ -61,6 +62,7 @@ impl FunctionError for CreatePropError {
             CreatePropError::NotAuthorized => panic_str("not authorized"),
             CreatePropError::KindNotAllowed => panic_str("proposal kind not allowed"),
             CreatePropError::Storage(reason) => panic_str(reason),
+            CreatePropError::Gas(reason) => panic_str(reason),
         }
     }
 }

@@ -26,6 +26,17 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ### Bug Fixes
 
+## v1.1.2 (2023-12-28)
+
+### Improvements
+
+- `create_proposal` has additional checks for the function call actions. We observed that too much gas was set in the actions, prohibiting correct contract execution (not enough gas to do self execution).
+- Temporal gas adjustment to allow TC execution of dismiss proposals (related to the point above).
+
+### Bug Fixes
+
+- Added Dismiss hook permission to dismiss members of TC by TC (`congress-tc-v1.ndc-gwg.near`).
+
 ## v1.1.1 (2023-12-16)
 
 ### Features
@@ -34,7 +45,7 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ### Bug Fixes
 
-- Updating Transparency Commission mainnet instance to add `FunctionCall` permission. 
+- Updating Transparency Commission mainnet instance to add `FunctionCall` permission.
 
 ## v1.1.0 (2023-11-20)
 
