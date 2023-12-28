@@ -26,6 +26,12 @@ Change log entries are to be added to the Unreleased section. Example entry:
 
 ### Bug Fixes
 
+## v1.2.0 (2023-12-28)
+
+### Improvements
+
+- Remove temporal `add_tc_dismiss_perm` and gas adjustments in the `execute` method related to the wrong Gas settings in the TC proposals (and missing checks mentioned in the v1.1.2 release).
+
 ## v1.1.2 (2023-12-28)
 
 ### Improvements

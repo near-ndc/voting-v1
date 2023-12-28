@@ -294,9 +294,8 @@ impl Contract {
                     promise = promise.function_call(
                         action.method_name.clone(),
                         action.args.clone().into(),
-                        // TODO: remove the following changes in v1.2
-                        0, //action.deposit.0,
-                        Gas(action.gas.0) - EXEC_SELF_GAS,
+                        action.deposit.0,
+                        Gas(action.gas.0),
                     );
                 }
                 result = promise.into();
@@ -572,25 +571,6 @@ impl Contract {
             m.1.push(PropPerm::FunctionCall);
             self.members.set(&m);
         }
-    }
-
-    /// v1.1.2 release: we missed TC perm to dismiss a member from "self"
-    // TODO: we can remove this method in the next release
-    pub fn add_tc_dismiss_perm(&mut self) {
-        let tc = env::predecessor_account_id();
-        require!(tc.as_str() == "congress-tc-v1.ndc-gwg.near");
-        let mut hooks = self.hook_auth.get().unwrap();
-        match hooks.get_mut(&tc) {
-            None => {
-                hooks.insert(tc, vec![HookPerm::Dismiss]);
-            }
-            Some(tc_perms) => {
-                if !tc_perms.contains(&HookPerm::Dismiss) {
-                    tc_perms.push(HookPerm::Dismiss);
-                }
-            }
-        }
-        self.hook_auth.set(&hooks);
     }
 }
 
