@@ -1164,7 +1164,7 @@ mod unit_tests {
             PropKind::FundingRequest(U128(10000u128)),
             "Funding req".to_owned(),
         )
-            .unwrap();
+        .unwrap();
     }
 
     #[test]
@@ -1345,7 +1345,7 @@ mod unit_tests {
                         deposit: U128(0),
                         gas: U64(EXEC_CTR_CALL_GAS.0),
                     }]
-                        .to_vec(),
+                    .to_vec(),
                 },
                 "Proposal to remove member".to_string(),
             )
