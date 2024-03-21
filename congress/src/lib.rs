@@ -314,9 +314,9 @@ impl Contract {
                         "accounts": vec![member],
                         "memo": "".to_owned()
                     })
-                    .to_string()
-                    .as_bytes()
-                    .to_vec(),
+                        .to_string()
+                        .as_bytes()
+                        .to_vec(),
                     0,
                     EXEC_CTR_CALL_GAS,
                 );
@@ -432,8 +432,13 @@ impl Contract {
         members.remove(idx.unwrap());
 
         emit_dismiss(&member);
+
+        // Update threshold and members_len
+        self.members_len = members.len() as u8;
+        self.threshold = (self.members_len / 2) + 1;
+
         // If DAO doesn't have required threshold, then we dissolve.
-        if members.len() < self.threshold as usize {
+        if members.len() < 2 {
             self.dissolve_and_cleanup();
         }
 
@@ -571,6 +576,14 @@ impl Contract {
             m.1.push(PropPerm::FunctionCall);
             self.members.set(&m);
         }
+    }
+
+    // Manually update the threshold and members_len
+    pub fn update_threshold(&mut self) {
+        require!(env::predecessor_account_id() == env::current_account_id());
+        let (members, _) = self.members.get().unwrap();
+        self.members_len = members.len() as u8;
+        self.threshold = (self.members_len / 2) + 1;
     }
 }
 
@@ -1188,9 +1201,39 @@ mod unit_tests {
         ctx.predecessor_account_id = voting_body();
         testing_env!(ctx);
 
+        // Remove more members to check threshold update
+        ctr.dismiss_hook(acc(1)).unwrap();
+        let (members, _) = ctr.members.get().unwrap();
+        assert_eq!(members.len(), 2);
+        assert_eq!(ctr.threshold, 2);
+    }
+
+    #[test]
+    fn dismiss_hook_threshold_update() {
+        let (mut ctx, mut ctr, _) = setup_ctr(100);
+
+        // Initial checks to confirm setup is correct
+        assert_eq!(ctr.members_len, 4, "Initial members length should be 4");
+        assert_eq!(ctr.threshold, 3, "Initial threshold should be 3");
+
+        // Simulate calling dismiss_hook as the voting body to remove a member
+        ctx.predecessor_account_id = voting_body();
+        testing_env!(ctx);
+        ctr.dismiss_hook(acc(2)).unwrap();
+
+        // Check if member was successfully removed
+        let (members, _) = ctr.members.get().unwrap();
+        assert!(!members.contains(&acc(2)), "Member 2 should have been removed");
+
+        // Check if members count and threshold are updated correctly
+        assert_eq!(ctr.members_len, 3, "Members length should be updated to 3");
+        assert_eq!(ctr.threshold, 2, "Threshold should be updated to 2");
+
         assert!(!ctr.dissolved);
         // Remove more members to check dissolve
-        ctr.dismiss_hook(acc(1)).unwrap();
+        for member in &[acc(1), acc(3)] {
+            ctr.dismiss_hook(member.clone()).unwrap();
+        }
         assert!(ctr.dissolved);
     }
 
