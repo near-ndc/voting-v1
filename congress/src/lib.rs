@@ -577,14 +577,6 @@ impl Contract {
             self.members.set(&m);
         }
     }
-
-    // Manually update the threshold and members_len
-    pub fn update_threshold(&mut self) {
-        require!(env::predecessor_account_id() == env::current_account_id());
-        let (members, _) = self.members.get().unwrap();
-        self.members_len = members.len() as u8;
-        self.threshold = (self.members_len / 2) + 1;
-    }
 }
 
 #[cfg(all(test, not(target_arch = "wasm32")))]
