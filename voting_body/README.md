@@ -216,6 +216,8 @@ near call VOTING_BODY get_vote \
 - **Near Consent:** quorum=(7% of the voting body) + **simple majority**=50%.
 - **Near Supermajority Consent**: quorum=(12% of the voting body) + **super majority**=60%.
 
+Last quorum updated on block: 114549562
+
 ### Events
 
 This smart contract emits several events to notify external systems or components about specific actions or state changes. Here's a breakdown of the events and the functions emitting them:
