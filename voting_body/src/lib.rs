@@ -18,6 +18,7 @@ mod errors;
 mod events;
 mod ext;
 mod impls;
+pub mod migrate;
 pub mod proposal;
 mod storage;
 pub mod types;
