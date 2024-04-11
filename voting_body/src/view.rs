@@ -135,4 +135,8 @@ impl Contract {
     ) -> Vec<ProposalOutput> {
         self._get_proposals(from_index, limit, reverse, true)
     }
+
+    pub fn is_iom_whitelisted(&self, account_id: &AccountId) -> bool {
+        self.iom_whitelist.contains(&account_id)
+    }
 }
