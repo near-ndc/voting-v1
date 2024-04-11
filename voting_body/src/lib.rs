@@ -1360,8 +1360,9 @@ mod unit_tests {
         testing_env!(ctx.clone());
         ctr.admin_add_to_whitelist(acc(1));
         ctx.predecessor_account_id = acc(1);
+        ctx.attached_deposit = VOTE_DEPOSIT;
         testing_env!(ctx.clone());
-        assert_eq!(ctr.vote_whitelist(vote_payload(id, Vote::Approve)), Ok(()));
+        ctr.vote_whitelist(vote_payload(id, Vote::Approve));
     }
 
     #[test]
