@@ -7,8 +7,9 @@ use near_sdk::{
     collections::{LazyOption, LookupMap},
     env::{self, panic_str},
     json_types::U128,
-    near_bindgen, require, AccountId, Balance, Gas, PanicOnDefault, Promise, PromiseOrValue,
-    PromiseResult,
+    near_bindgen, require,
+    store::LookupSet,
+    AccountId, Balance, FunctionError, Gas, PanicOnDefault, Promise, PromiseOrValue, PromiseResult,
 };
 use types::{CreatePropPayload, ExecResponse, SBTs, VotePayload};
 
@@ -16,6 +17,8 @@ mod constants;
 mod errors;
 mod events;
 mod ext;
+mod impls;
+pub mod migrate;
 pub mod proposal;
 mod storage;
 pub mod types;
@@ -54,6 +57,11 @@ pub struct Contract {
     pub pre_vote_duration: u64,
     pub vote_duration: u64,
     pub accounts: LazyOption<Accounts>,
+
+    /// Workaround for removing people from iom registry blacklist
+    /// As we don't have a way to remove people from the blacklist, we can add them to the whitelist
+    /// and allow them to vote directly.
+    pub iom_whitelist: LookupSet<AccountId>,
 }
 
 #[near_bindgen]
@@ -88,6 +96,7 @@ impl Contract {
             accounts: LazyOption::new(StorageKey::Accounts, Some(&accounts)),
             simple_consent,
             super_consent,
+            iom_whitelist: LookupSet::new(StorageKey::IomWhitelist),
         }
     }
 
@@ -99,13 +108,18 @@ impl Contract {
      * TRANSACTIONS
      **********/
 
-    /// Creates a new proposal.
-    /// Returns the new proposal ID.
-    /// Caller is required to attach enough deposit to cover the proposal storage as well as all
-    /// possible votes.
+    #[payable]
+    pub fn create_proposal_whitelist(&mut self, payload: CreatePropPayload) -> u32 {
+        let caller = env::predecessor_account_id();
+        self.assert_whitelist(&caller);
+
+        match self.create_proposal_impl(caller, payload) {
+            Ok(id) => id,
+            Err(error) => error.panic(),
+        }
+    }
+
     /// Must be called via `iah_registry.is_human_call`.
-    /// NOTE: storage is paid from the bond.
-    /// Panics when the FunctionCall is trying to call any of the congress contracts.
     #[payable]
     #[handle_result]
     pub fn create_proposal(
@@ -117,87 +131,8 @@ impl Contract {
         if env::predecessor_account_id() != self.accounts.get().unwrap().iah_registry {
             return Err(CreatePropError::NotIAHreg);
         }
-        let storage_start = env::storage_usage();
-        let now = env::block_timestamp_ms();
-        let bond = env::attached_deposit();
 
-        if bond < self.pre_vote_bond {
-            return Err(CreatePropError::MinBond);
-        }
-
-        // validate proposals
-        match &payload.kind {
-            PropKind::FunctionCall { receiver_id, .. } => {
-                let accounts = self.accounts.get().unwrap();
-                if *receiver_id == accounts.congress_coa
-                    || *receiver_id == accounts.congress_hom
-                    || *receiver_id == accounts.congress_tc
-                {
-                    return Err(CreatePropError::BadRequest(
-                    "receiver_id can't be a congress house, use a specific proposal to interact with the congress".to_string(),
-                ));
-                }
-            }
-            PropKind::UpdateVoteDuration {
-                pre_vote_duration,
-                vote_duration,
-            } => {
-                if *pre_vote_duration < MIN_DURATION
-                    || *vote_duration < MIN_DURATION
-                    || *pre_vote_duration > MAX_DURATION
-                    || *vote_duration > MAX_DURATION
-                {
-                    return Err(CreatePropError::BadRequest(
-                    "receiver_id can't be a congress house, use a specific proposal to interact with the congress".to_string(),
-                ));
-                }
-            }
-            _ => (),
-        }
-
-        // TODO: check if proposal is created by a congress member. If yes, move it to active
-        // immediately.
-        let active = bond >= self.active_queue_bond;
-        self.prop_counter += 1;
-        emit_prop_created(self.prop_counter, &payload.kind, active);
-        let mut prop = Proposal {
-            proposer: caller.clone(),
-            bond,
-            additional_bond: None,
-            description: payload.description,
-            kind: payload.kind,
-            status: if active {
-                ProposalStatus::InProgress
-            } else {
-                ProposalStatus::PreVote
-            },
-            approve: 0,
-            reject: 0,
-            abstain: 0,
-            spam: 0,
-            support: 0,
-            supported: HashSet::new(),
-            start: now,
-            executed_at: None,
-            proposal_storage: 0,
-        };
-        if active {
-            self.proposals.insert(&self.prop_counter, &prop);
-        } else {
-            self.pre_vote_proposals.insert(&self.prop_counter, &prop);
-        }
-
-        prop.proposal_storage = match finalize_storage_check(storage_start, 0, caller) {
-            Err(reason) => return Err(CreatePropError::Storage(reason)),
-            Ok(required) => required,
-        };
-        if active {
-            self.proposals.insert(&self.prop_counter, &prop);
-        } else {
-            self.pre_vote_proposals.insert(&self.prop_counter, &prop);
-        }
-
-        Ok(self.prop_counter)
+        self.create_proposal_impl(caller, payload)
     }
 
     /// Removes overdue pre-vote proposal and slashes the proposer.
@@ -256,6 +191,22 @@ impl Contract {
         Ok(true)
     }
 
+    pub fn support_proposal_whitelist(&mut self, payload: u32) -> bool {
+        let caller = env::predecessor_account_id();
+        self.assert_whitelist(&caller);
+
+        match self.support_proposal_impl(
+            caller,
+            // Lock is required to prevent double voting by moving sbt to another account.
+            // It is not required for the whitelist version, as only whitelisted accounts can call
+            env::block_timestamp_ms() + MAX_DURATION + 1,
+            payload,
+        ) {
+            Ok(supported) => supported,
+            Err(err) => err.panic(),
+        }
+    }
+
     /// Supports proposal in the pre-vote queue.
     /// Returns false if the proposal can't be supported because it is overdue.
     /// Must be called via `iah_registry.is_human_call_lock` with
@@ -272,26 +223,7 @@ impl Contract {
         if env::predecessor_account_id() != self.accounts.get().unwrap().iah_registry {
             return Err(PrevoteError::NotIAHreg);
         }
-        let prop_id = payload;
-        let mut p = self.assert_pre_vote_prop(prop_id)?;
-        let now = env::block_timestamp_ms();
-        if now - p.start > self.pre_vote_duration {
-            self.slash_prop(prop_id, p.bond);
-            self.pre_vote_proposals.remove(&prop_id);
-            return Ok(false);
-        }
-        if locked_until <= p.start + self.pre_vote_duration {
-            return Err(PrevoteError::LockedUntil);
-        }
-
-        p.add_support(caller)?;
-        if p.support >= self.pre_vote_support {
-            self.pre_vote_proposals.remove(&prop_id);
-            self.insert_prop_to_active(prop_id, &mut p);
-        } else {
-            self.pre_vote_proposals.insert(&prop_id, &p);
-        }
-        Ok(true)
+        self.support_proposal_impl(caller, locked_until, payload)
     }
 
     /// Congressional support for a pre-vote proposal to move it to the active queue.
@@ -333,6 +265,20 @@ impl Contract {
         Ok(true)
     }
 
+    pub fn vote_whitelist(&mut self, payload: VotePayload) {
+        let caller = env::predecessor_account_id();
+        self.assert_whitelist(&caller);
+
+        match self.vote_impl(
+            caller,
+            env::block_timestamp_ms() + MAX_DURATION + 1,
+            payload,
+        ) {
+            Ok(_) => (),
+            Err(err) => err.panic(),
+        }
+    }
+
     /// Must be called via `iah_registry.is_human_call_lock` with
     /// `lock_duration: self.vote_duration + 1`.
     #[payable]
@@ -347,32 +293,8 @@ impl Contract {
         if env::predecessor_account_id() != self.accounts.get().unwrap().iah_registry {
             return Err(VoteError::NotIAHreg);
         }
-        let storage_start = env::storage_usage();
-        let mut prop = self
-            .proposals
-            .get(&payload.prop_id)
-            .ok_or(VoteError::PropNotFound)?;
-        if !matches!(prop.status, ProposalStatus::InProgress) {
-            return Err(VoteError::NotInProgress);
-        }
-        if !prop.is_active(self.vote_duration) {
-            return Err(VoteError::Timeout);
-        }
-        if locked_until <= prop.start + self.vote_duration {
-            return Err(VoteError::LockedUntil);
-        }
 
-        self.add_vote(payload.prop_id, caller.clone(), payload.vote, &mut prop);
-        // NOTE: we can't quickly set a status to a finalized one because we don't know the total number of
-        // voters
-
-        self.proposals.insert(&payload.prop_id, &prop);
-        emit_vote(payload.prop_id);
-
-        if let Err(reason) = finalize_storage_check(storage_start, 0, caller) {
-            return Err(VoteError::Storage(reason));
-        }
-        Ok(())
+        self.vote_impl(caller, locked_until, payload)
     }
 
     /// Allows anyone to execute or slash the proposal.
@@ -485,6 +407,18 @@ impl Contract {
         self.super_consent = super_consent;
     }
 
+    /// Allows admin to add a user to the whitelist.
+    pub fn admin_add_to_whitelist(&mut self, user: AccountId) {
+        self.assert_admin();
+        self.iom_whitelist.insert(user);
+    }
+
+    /// Allows admin to remove a user from the whitelist.
+    pub fn admin_remove_from_whitelist(&mut self, user: AccountId) {
+        self.assert_admin();
+        self.iom_whitelist.remove(&user);
+    }
+
     // /// udpate voting time for e2e tests purposes
     // /// TODO: remove
     // pub fn admin_update_durations(&mut self, pre_vote_duration: u64, vote_duration: u64) {
@@ -531,6 +465,10 @@ impl Contract {
             env::predecessor_account_id() == self.accounts.get().unwrap().admin,
             "not authorized"
         );
+    }
+
+    fn assert_whitelist(&self, account_id: &AccountId) {
+        require!(self.iom_whitelist.contains(account_id), "not whitelisted");
     }
 
     fn remove_pre_vote_prop(&mut self, id: u32) -> Result<Proposal, PrevoteError> {
@@ -1400,6 +1338,31 @@ mod unit_tests {
         ctr.admin_update_consent(c1, c2);
         assert_eq!(c1, ctr.simple_consent);
         assert_eq!(c2, ctr.super_consent);
+    }
+
+    #[test]
+    fn update_white_list() {
+        let (mut ctx, mut ctr, _) = setup_ctr(BOND);
+        ctx.predecessor_account_id = admin();
+        testing_env!(ctx.clone());
+
+        assert_eq!(ctr.is_iom_whitelisted(&acc(1)), false);
+        ctr.admin_add_to_whitelist(acc(1));
+        assert_eq!(ctr.is_iom_whitelisted(&acc(1)), true);
+        ctr.admin_remove_from_whitelist(acc(1));
+        assert_eq!(ctr.is_iom_whitelisted(&acc(1)), false);
+    }
+
+    #[test]
+    fn whitelisted_can_vote() {
+        let (mut ctx, mut ctr, id) = setup_ctr(BOND);
+        ctx.predecessor_account_id = admin();
+        testing_env!(ctx.clone());
+        ctr.admin_add_to_whitelist(acc(1));
+        ctx.predecessor_account_id = acc(1);
+        ctx.attached_deposit = VOTE_DEPOSIT;
+        testing_env!(ctx.clone());
+        ctr.vote_whitelist(vote_payload(id, Vote::Approve));
     }
 
     #[test]
