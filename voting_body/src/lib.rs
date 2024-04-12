@@ -265,6 +265,7 @@ impl Contract {
         Ok(true)
     }
 
+    #[payable]
     pub fn vote_whitelist(&mut self, payload: VotePayload) {
         let caller = env::predecessor_account_id();
         self.assert_whitelist(&caller);
