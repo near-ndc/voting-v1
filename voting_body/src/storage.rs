@@ -10,6 +10,7 @@ pub enum StorageKey {
     Accounts,
     Votes,
     IomWhitelist,
+    ProposalConsent,
 }
 
 /// External account required for the Voting Body.

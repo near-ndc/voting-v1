@@ -1,4 +1,5 @@
 use std::cmp::{max, min};
+use std::collections::HashMap;
 
 use itertools::Either;
 use near_sdk::serde::Serialize;
@@ -82,7 +83,7 @@ impl Contract {
 
         iter.filter_map(|id| {
             proposals.get(&id).map(|mut proposal| {
-                proposal.recompute_status(self.vote_duration, self.prop_consent(&proposal));
+                proposal.recompute_status(self.vote_duration, self.prop_consent(id));
                 ProposalOutput { id, proposal }
             })
         })
@@ -96,7 +97,7 @@ impl Contract {
             p = self.pre_vote_proposals.get(&id);
         }
         p.map(|mut proposal| {
-            proposal.recompute_status(self.vote_duration, self.prop_consent(&proposal));
+            proposal.recompute_status(self.vote_duration, self.prop_consent(id));
             ProposalOutput { id, proposal }
         })
     }
@@ -136,7 +137,22 @@ impl Contract {
         self._get_proposals(from_index, limit, reverse, true)
     }
 
-    pub fn is_iom_whitelisted(&self, account_id: &AccountId) -> bool {
-        self.iom_whitelist.contains(&account_id)
+    // pub fn is_iom_whitelisted(&self, account_id: &AccountId) -> bool {
+    //     self.iom_whitelist.contains(&account_id)
+    // }
+
+    pub fn get_proposal_consent(&self, id: u32) -> Consent {
+        self.proposal_consent.get(&id).unwrap_or_else(|| {
+            panic_str("No consent");
+        })
+    }
+
+    pub fn get_proposals_consent(&self, id_list: Vec<u32>) -> HashMap<u32, Consent> {
+        let mut results = HashMap::new();
+        for id in id_list {
+            let consent = self.get_proposal_consent(id);
+            results.insert(id, consent);
+        }
+        results
     }
 }

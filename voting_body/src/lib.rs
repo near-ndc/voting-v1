@@ -62,6 +62,7 @@ pub struct Contract {
     /// As we don't have a way to remove people from the blacklist, we can add them to the whitelist
     /// and allow them to vote directly.
     pub iom_whitelist: LookupSet<AccountId>,
+    pub proposal_consent: LookupMap<u32, Consent>,
 }
 
 #[near_bindgen]
@@ -97,6 +98,7 @@ impl Contract {
             simple_consent,
             super_consent,
             iom_whitelist: LookupSet::new(StorageKey::IomWhitelist),
+            proposal_consent: LookupMap::new(StorageKey::ProposalConsent),
         }
     }
 
@@ -108,16 +110,16 @@ impl Contract {
      * TRANSACTIONS
      **********/
 
-    #[payable]
-    pub fn create_proposal_whitelist(&mut self, payload: CreatePropPayload) -> u32 {
-        let caller = env::predecessor_account_id();
-        self.assert_whitelist(&caller);
-
-        match self.create_proposal_impl(caller, payload) {
-            Ok(id) => id,
-            Err(error) => error.panic(),
-        }
-    }
+    // #[payable]
+    // pub fn create_proposal_whitelist(&mut self, payload: CreatePropPayload) -> u32 {
+    //     let caller = env::predecessor_account_id();
+    //     self.assert_whitelist(&caller);
+    //
+    //     match self.create_proposal_impl(caller, payload) {
+    //         Ok(id) => id,
+    //         Err(error) => error.panic(),
+    //     }
+    // }
 
     /// Must be called via `iah_registry.is_human_call`.
     #[payable]
@@ -191,21 +193,21 @@ impl Contract {
         Ok(true)
     }
 
-    pub fn support_proposal_whitelist(&mut self, payload: u32) -> bool {
-        let caller = env::predecessor_account_id();
-        self.assert_whitelist(&caller);
-
-        match self.support_proposal_impl(
-            caller,
-            // Lock is required to prevent double voting by moving sbt to another account.
-            // It is not required for the whitelist version, as only whitelisted accounts can call
-            env::block_timestamp_ms() + MAX_DURATION + 1,
-            payload,
-        ) {
-            Ok(supported) => supported,
-            Err(err) => err.panic(),
-        }
-    }
+    // pub fn support_proposal_whitelist(&mut self, payload: u32) -> bool {
+    //     let caller = env::predecessor_account_id();
+    //     self.assert_whitelist(&caller);
+    //
+    //     match self.support_proposal_impl(
+    //         caller,
+    //         // Lock is required to prevent double voting by moving sbt to another account.
+    //         // It is not required for the whitelist version, as only whitelisted accounts can call
+    //         env::block_timestamp_ms() + MAX_DURATION + 1,
+    //         payload,
+    //     ) {
+    //         Ok(supported) => supported,
+    //         Err(err) => err.panic(),
+    //     }
+    // }
 
     /// Supports proposal in the pre-vote queue.
     /// Returns false if the proposal can't be supported because it is overdue.
@@ -265,19 +267,19 @@ impl Contract {
         Ok(true)
     }
 
-    pub fn vote_whitelist(&mut self, payload: VotePayload) {
-        let caller = env::predecessor_account_id();
-        self.assert_whitelist(&caller);
-
-        match self.vote_impl(
-            caller,
-            env::block_timestamp_ms() + MAX_DURATION + 1,
-            payload,
-        ) {
-            Ok(_) => (),
-            Err(err) => err.panic(),
-        }
-    }
+    // pub fn vote_whitelist(&mut self, payload: VotePayload) {
+    //     let caller = env::predecessor_account_id();
+    //     self.assert_whitelist(&caller);
+    //
+    //     match self.vote_impl(
+    //         caller,
+    //         env::block_timestamp_ms() + MAX_DURATION + 1,
+    //         payload,
+    //     ) {
+    //         Ok(_) => (),
+    //         Err(err) => err.panic(),
+    //     }
+    // }
 
     /// Must be called via `iah_registry.is_human_call_lock` with
     /// `lock_duration: self.vote_duration + 1`.
@@ -311,7 +313,7 @@ impl Contract {
             return Err(ExecError::AlreadyFinalized);
         }
 
-        prop.recompute_status(self.vote_duration, self.prop_consent(&prop));
+        prop.recompute_status(self.vote_duration, self.prop_consent(id));
         match prop.status {
             ProposalStatus::PreVote => panic_str("pre-vote proposal can't be in the active queue"),
             ProposalStatus::InProgress => return Err(ExecError::InProgress),
@@ -408,16 +410,16 @@ impl Contract {
     }
 
     /// Allows admin to add a user to the whitelist.
-    pub fn admin_add_to_whitelist(&mut self, user: AccountId) {
-        self.assert_admin();
-        self.iom_whitelist.insert(user);
-    }
+    // pub fn admin_add_to_whitelist(&mut self, user: AccountId) {
+    //     self.assert_admin();
+    //     self.iom_whitelist.insert(user);
+    // }
 
     /// Allows admin to remove a user from the whitelist.
-    pub fn admin_remove_from_whitelist(&mut self, user: AccountId) {
-        self.assert_admin();
-        self.iom_whitelist.remove(&user);
-    }
+    // pub fn admin_remove_from_whitelist(&mut self, user: AccountId) {
+    //     self.assert_admin();
+    //     self.iom_whitelist.remove(&user);
+    // }
 
     // /// udpate voting time for e2e tests purposes
     // /// TODO: remove
@@ -467,9 +469,9 @@ impl Contract {
         );
     }
 
-    fn assert_whitelist(&self, account_id: &AccountId) {
-        require!(self.iom_whitelist.contains(account_id), "not whitelisted");
-    }
+    // fn assert_whitelist(&self, account_id: &AccountId) {
+    //     require!(self.iom_whitelist.contains(account_id), "not whitelisted");
+    // }
 
     fn remove_pre_vote_prop(&mut self, id: u32) -> Result<Proposal, PrevoteError> {
         self.pre_vote_proposals
@@ -497,11 +499,8 @@ impl Contract {
         emit_prevote_prop_slashed(prop_id, amount);
     }
 
-    fn prop_consent(&self, prop: &Proposal) -> Consent {
-        match prop.kind.required_consent() {
-            ConsentKind::Simple => self.simple_consent.clone(),
-            ConsentKind::Super => self.super_consent.clone(),
-        }
+    fn prop_consent(&self, id: u32) -> Consent {
+        self.proposal_consent.get(&id).unwrap()
     }
 
     fn add_vote(&mut self, prop_id: u32, user: AccountId, vote: Vote, prop: &mut Proposal) {
@@ -1340,30 +1339,30 @@ mod unit_tests {
         assert_eq!(c2, ctr.super_consent);
     }
 
-    #[test]
-    fn update_white_list() {
-        let (mut ctx, mut ctr, _) = setup_ctr(BOND);
-        ctx.predecessor_account_id = admin();
-        testing_env!(ctx.clone());
-
-        assert_eq!(ctr.is_iom_whitelisted(&acc(1)), false);
-        ctr.admin_add_to_whitelist(acc(1));
-        assert_eq!(ctr.is_iom_whitelisted(&acc(1)), true);
-        ctr.admin_remove_from_whitelist(acc(1));
-        assert_eq!(ctr.is_iom_whitelisted(&acc(1)), false);
-    }
-
-    #[test]
-    fn whitelisted_can_vote() {
-        let (mut ctx, mut ctr, id) = setup_ctr(BOND);
-        ctx.predecessor_account_id = admin();
-        testing_env!(ctx.clone());
-        ctr.admin_add_to_whitelist(acc(1));
-        ctx.predecessor_account_id = acc(1);
-        ctx.attached_deposit = VOTE_DEPOSIT;
-        testing_env!(ctx.clone());
-        ctr.vote_whitelist(vote_payload(id, Vote::Approve));
-    }
+    // #[test]
+    // fn update_white_list() {
+    //     let (mut ctx, mut ctr, _) = setup_ctr(BOND);
+    //     ctx.predecessor_account_id = admin();
+    //     testing_env!(ctx.clone());
+    //
+    //     assert_eq!(ctr.is_iom_whitelisted(&acc(1)), false);
+    //     ctr.admin_add_to_whitelist(acc(1));
+    //     assert_eq!(ctr.is_iom_whitelisted(&acc(1)), true);
+    //     ctr.admin_remove_from_whitelist(acc(1));
+    //     assert_eq!(ctr.is_iom_whitelisted(&acc(1)), false);
+    // }
+    //
+    // #[test]
+    // fn whitelisted_can_vote() {
+    //     let (mut ctx, mut ctr, id) = setup_ctr(BOND);
+    //     ctx.predecessor_account_id = admin();
+    //     testing_env!(ctx.clone());
+    //     ctr.admin_add_to_whitelist(acc(1));
+    //     ctx.predecessor_account_id = acc(1);
+    //     ctx.attached_deposit = VOTE_DEPOSIT;
+    //     testing_env!(ctx.clone());
+    //     ctr.vote_whitelist(vote_payload(id, Vote::Approve));
+    // }
 
     #[test]
     fn not_called_by_iah_registry() {

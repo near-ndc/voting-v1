@@ -96,6 +96,13 @@ impl Contract {
             self.pre_vote_proposals.insert(&self.prop_counter, &prop);
         }
 
+        // Add proposal consent
+        let consent = match prop.kind.required_consent() {
+            ConsentKind::Simple => self.simple_consent.clone(),
+            ConsentKind::Super => self.super_consent.clone(),
+        };
+        self.proposal_consent.insert(&self.prop_counter, &consent);
+
         Ok(self.prop_counter)
     }
 
