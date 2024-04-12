@@ -26,6 +26,9 @@ pub struct OldState {
     pub pre_vote_duration: u64,
     pub vote_duration: u64,
     pub accounts: LazyOption<Accounts>,
+
+    pub iom_whitelist: LookupSet<AccountId>,
+    pub proposal_consent: LookupMap<u32, Consent>,
 }
 
 #[near_bindgen]
@@ -34,6 +37,7 @@ impl Contract {
     #[init(ignore_state)]
     pub fn migrate() -> Self {
         let old_state: OldState = env::state_read().expect("Old state doesn't exist");
+
         Self {
             prop_counter: old_state.prop_counter,
             pre_vote_proposals: old_state.pre_vote_proposals,
@@ -47,7 +51,8 @@ impl Contract {
             pre_vote_duration: old_state.pre_vote_duration,
             vote_duration: old_state.vote_duration,
             accounts: old_state.accounts,
-            iom_whitelist: LookupSet::new(StorageKey::IomWhitelist),
+            iom_whitelist: old_state.iom_whitelist,
+            proposal_consent: old_state.proposal_consent,
         }
     }
 }
